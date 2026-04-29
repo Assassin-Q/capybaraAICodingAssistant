@@ -8,15 +8,15 @@
 
 🚀 **自由模型接入** × 🔧 **高度自定义** × ⚡ **极速开发体验**
 
-[![GitHub Stars](https://img.shields.io/github/stars/anthropics/capybara-ai-coding-assistant?style=flat-square&logo=github)](https://github.com/anthropics/capybara-ai-coding-assistant)
+[![Gitee Stars](https://gitee.com/qianguanshui/capybaraAICodingAssistant/badge/star.svg?style=flat-square)](https://gitee.com/qianguanshui/capybaraAICodingAssistant)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/anthropics/capybara-ai-coding-assistant?style=flat-square&color=green)](https://github.com/anthropics/capybara-ai-coding-assistant/releases)
+[![Release](https://img.shields.io/badge/Release-v1.0.0-green?style=flat-square)](https://gitee.com/qianguanshui/capybaraAICodingAssistant/releases)
 
 </div>
 
 <div align="center">
 
-![CapybaraAI Coding Assistant](./docs/images/example/read.png)
+![CapybaraAI Coding Assistant](./docs/images/example/home.png)
 
 </div>
 
@@ -32,13 +32,17 @@ Q：为什么重写前端，不引用官方前端
 
 A：官方web前端bug太多，会话管理和回显混乱，样式也不适合嵌入进来
 
-吐槽：IntelliJ IDEA插件系统bug也是多的很！！！
+IntelliJ IDEA插件系统兼容性限制很多，如遇到问题请提Issues
 
 ---
 
 ## 使用方式
 
-### 方法一：源码编译
+### 方法一：直接导入
+
+从 `https://gitee.com/qianguanshui/capybaraAICodingAssistant/releases/tag/v1.0.0` 目录获取 ZIP 包，在 IDEA 中通过 `Settings → Plugins → ⚙ → Install Plugin from Disk` 导入即可使用。
+
+### 方法二：源码编译
 
 ```bash
 # 1. 构建前端（需要 pnpm）
@@ -53,9 +57,6 @@ cd ../idea-plugin
 # 3. 产物在 idea-plugin/build/distributions/ 目录下,获取 ZIP 包，在 IDEA 中通过 `Settings → Plugins → ⚙ → Install Plugin from Disk` 导入即可使用。
 ```
 
-### 方法二：直接导入
-
-从 `idea-plugin/build/distributions/` 目录获取 ZIP 包，在 IDEA 中通过 `Settings → Plugins → ⚙ → Install Plugin from Disk` 导入即可使用。
 
 > 插件依赖 OpenCode 服务，请确保本地已安装并配置好 [OpenCode](https://opencode.ai)。
 
