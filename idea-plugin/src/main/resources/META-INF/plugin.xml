@@ -1,0 +1,73 @@
+<idea-plugin>
+    <id>com.aicoding.ai-coding-plugin</id>
+    <name>CapybaraAICodingAssistant</name>
+    <vendor>AI Coding Team</vendor>
+    <description><![CDATA[
+        Capybara AI Coding Assistant plugin for IntelliJ IDEA.
+        Provides AI-powered coding assistance with chat interface, code generation, and more.
+    ]]></description>
+
+    <depends>com.intellij.modules.lang</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="CapybaraAICodingAssistant"
+                    factoryClass="com.aicoding.plugin.AICodingToolWindowFactory" 
+                    icon="/Capybara.svg"
+                    anchor="right"/>
+        <projectService serviceImplementation="com.aicoding.plugin.services.OpenCodeServiceManager"/>
+        <applicationService serviceImplementation="com.aicoding.plugin.services.JNACleanupService"/>
+        <projectManagerListener implementation="com.aicoding.plugin.services.ProjectCleanupListener"/>
+        <postStartupActivity implementation="com.aicoding.plugin.services.JNACleanupStartupActivity"/>
+        
+        <!-- 新增服务和扩展 -->
+        <projectService serviceImplementation="com.aicoding.plugin.services.AIContextService"/>
+        <applicationService serviceImplementation="com.aicoding.plugin.services.AIAsyncManager"/>
+        <projectService serviceImplementation="com.aicoding.plugin.ui.EditorManager"/>
+        <postStartupActivity implementation="com.aicoding.plugin.ui.EditorManagerStartupActivity"/>
+        <!-- 暂时隐藏AI代码补全功能 -->
+        <!-- <completion.contributor language="any" 
+            implementationClass="com.aicoding.plugin.completion.AICodeCompletionContributor"/> -->
+    </extensions>
+
+    <actions>
+        <action id="com.aicoding.plugin.TogglePanelAction" 
+                class="com.aicoding.plugin.actions.TogglePanelAction"
+                text="Toggle AI Assistant Panel"
+                description="Toggle AI Assistant Panel visibility">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl SLASH"/>
+        </action>
+        
+        <!-- AI助手 context menu actions -->
+        <group id="com.aicoding.plugin.AICodingMenu" text="AI助手" description="AI Coding Assistant Actions" popup="true">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+            <add-to-group group-id="EditorTabPopupMenu" anchor="first"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="first"/>
+            <action id="com.aicoding.plugin.AddToConversationAction"
+                    class="com.aicoding.plugin.actions.AddToConversationAction"
+                    text="添加到对话"
+                    description="Add selected code to conversation"/>
+            <action id="com.aicoding.plugin.ExplainCodeAction"
+                    class="com.aicoding.plugin.actions.ExplainCodeAction"
+                    text="解释代码"
+                    description="Explain selected code"/>
+            <action id="com.aicoding.plugin.OptimizeCodeAction"
+                    class="com.aicoding.plugin.actions.OptimizeCodeAction"
+                    text="优化代码"
+                    description="Optimize selected code"/>
+        <action id="com.aicoding.plugin.GenerateUnitTestsAction"
+                class="com.aicoding.plugin.actions.GenerateUnitTestsAction"
+                text="生成单元测试"
+                description="Generate unit tests for selected code"/>
+        </group>
+        
+        <!-- 暂时隐藏AI悬浮框快捷键动作 -->
+        <!-- <action id="com.aicoding.plugin.ShowAIPopupAction"
+                class="com.aicoding.plugin.actions.ShowAIPopupAction"
+                text="显示AI悬浮框"
+                description="Show AI popup for selected code or current line">
+            <add-to-group group-id="EditorPopupMenu" anchor="first" relative-to-action="com.aicoding.plugin.AICodingMenu"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift A"/>
+        </action> -->
+    </actions>
+</idea-plugin>

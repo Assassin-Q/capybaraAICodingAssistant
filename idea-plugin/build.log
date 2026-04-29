@@ -1,0 +1,34 @@
+> Task :initializeIntelliJPlugin SKIPPED
+> Task :checkKotlinGradlePluginConfigurationErrors
+> Task :patchPluginXml UP-TO-DATE
+
+> Task :verifyPluginConfiguration
+[gradle-intellij-plugin :verifyPluginConfiguration] The following plugin configuration issues were found:
+- The dependency on the Kotlin Standard Library (stdlib) is automatically added when using the Gradle Kotlin plugin and may conflict with the version provided with the IntelliJ Platform, see: https://jb.gg/intellij-platform-kotlin-stdlib
+See: https://jb.gg/intellij-platform-versions
+
+> Task :compileKotlin UP-TO-DATE
+> Task :compileJava NO-SOURCE
+> Task :processResources
+> Task :classes
+> Task :instrumentCode UP-TO-DATE
+> Task :compileTestKotlin NO-SOURCE
+> Task :compileTestJava NO-SOURCE
+> Task :processTestResources NO-SOURCE
+> Task :testClasses UP-TO-DATE
+> Task :instrumentTestCode UP-TO-DATE
+> Task :instrumentedJar
+> Task :jar
+> Task :prepareTestingSandbox
+> Task :test NO-SOURCE
+> Task :classpathIndexCleanup
+> Task :prepareSandbox
+> Task :buildSearchableOptions SKIPPED
+> Task :jarSearchableOptions SKIPPED
+> Task :buildPlugin
+> Task :assemble
+> Task :check UP-TO-DATE
+> Task :build
+
+BUILD SUCCESSFUL in 6s
+13 actionable tasks: 9 executed, 4 up-to-date

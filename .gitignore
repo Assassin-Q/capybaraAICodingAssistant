@@ -1,0 +1,16 @@
+# General
+*.log
+
+# IDE
+.idea/
+
+# Dependencies
+frontend/node_modules/
+.opencode/node_modules/
+
+# Build output
+frontend/dist/
+idea-plugin/build/
+idea-plugin/.gradle/
+
+
