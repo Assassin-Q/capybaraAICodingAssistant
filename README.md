@@ -40,7 +40,7 @@ IntelliJ IDEA插件系统兼容性限制很多，如遇到问题请提Issues
 
 ### 方法一：直接导入
 
-从 `https://gitee.com/qianguanshui/capybaraAICodingAssistant/releases/tag/v1.0.0` 目录获取 ZIP 包，在 IDEA 中通过 `Settings → Plugins → ⚙ → Install Plugin from Disk` 导入即可使用。
+从 `https://gitee.com/qianguanshui/capybaraAICodingAssistant/releases/tag/v1.0.1` 目录获取 ZIP 包，在 IDEA 中通过 `Settings → Plugins → ⚙ → Install Plugin from Disk` 导入即可使用。
 
 ### 方法二：源码编译
 
