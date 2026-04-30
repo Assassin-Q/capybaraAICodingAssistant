@@ -1427,13 +1427,14 @@ export function useSSEHandler(props: UseSSEHandlerProps) {
       // 如果需要，可以重新加载待办事项
       // loadTodos()
     } else if (eventType === 'message.part.delta') {
-      // 消息部分增量更新
       const { sessionID, messageID, partID, field, delta } = properties
       if (sessionID === currentSessionId) {
         console.log(`Processing delta for message ${messageID}, part ${partID}, field: ${field}, delta: "${delta}"`)
         setMessages(prev => {
-          return prev.map(msg => {
+          let found = false
+          const mapped = prev.map(msg => {
             if (msg.id === messageID) {
+              found = true
               const existingParts = msg.parts || []
               const partIndex = existingParts.findIndex(p => p.id === partID)
               if (partIndex >= 0) {
@@ -1518,7 +1519,7 @@ export function useSSEHandler(props: UseSSEHandlerProps) {
                       steps: [{
                         id: partID,
                         description: delta,
-                        status: 'completed' as const,
+                         status: 'running' as const,
                         messageId: messageID
                       }],
                        expanded: true  // delta事件表示思考中，展开
@@ -1533,6 +1534,48 @@ export function useSSEHandler(props: UseSSEHandlerProps) {
               return msg
             }
           })
+
+          // 如果delta对应的message不存在，创建一个临时消息来接收后续delta
+          if (!found) {
+            console.log(`Delta for unknown message ${messageID}, creating temp message`)
+            let partType: 'text' | 'reasoning' | 'tool' = 'text'
+            if (field === 'description' || partID.includes('reason') || partID.includes('prt_')) {
+              partType = field === 'description' ? 'reasoning' : 'text'
+            }
+            if (field === 'output') partType = 'tool'
+
+            const newPart: MessagePart = {
+              id: partID,
+              type: partType,
+              content: delta,
+              ...(partType === 'tool' && { state: { status: 'running', output: delta } })
+            }
+
+            let newMsg: Message = {
+              id: messageID,
+              role: 'assistant',
+              content: partType === 'text' ? delta : '',
+              status: 'loading' as const,
+              timestamp: Date.now(),
+              parts: [newPart],
+            }
+
+            if (partType === 'reasoning') {
+              newMsg.thoughtChain = {
+                steps: [{
+                  id: partID,
+                  description: delta,
+                  status: 'running' as const,
+                  messageId: messageID
+                }],
+                expanded: true
+              }
+            }
+
+            return [...mapped.filter(m => !m.id.startsWith('temp-assistant-')), newMsg]
+          }
+
+          return mapped
         })
       }
     } else if (eventType === 'permission.asked') {

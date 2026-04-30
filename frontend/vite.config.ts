@@ -8,7 +8,7 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: process.env.VITE_API_TARGET || 'http://localhost:10002',  // 前端服务器端口范围: 10000-50000
+        target: process.env.VITE_API_TARGET || 'http://localhost:10001',  // 前端服务器端口范围: 10000-50000
         changeOrigin: true,
         ws: true,
         secure: false,

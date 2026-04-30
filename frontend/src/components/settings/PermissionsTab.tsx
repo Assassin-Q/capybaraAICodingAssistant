@@ -327,7 +327,7 @@ const PermissionsTab: React.FC<PermissionsTabProps> = ({
                     </div>
                   )}
 
-                  <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-secondary)', borderRadius: 6 }}>
+                  <div style={{ marginTop: 16, padding: 12, borderRadius: 6 }}>
                     <Text strong style={{ color: 'var(--text-primary)' }}>规则说明：</Text>
                     <ul style={{ margin: '8px 0 0 0', paddingLeft: 20, color: 'var(--text-secondary)' }}>
                       <li><Text type="secondary">规则模式支持通配符：* 匹配任意字符，? 匹配单个字符</Text></li>
@@ -346,7 +346,7 @@ const PermissionsTab: React.FC<PermissionsTabProps> = ({
       <div style={{ 
         marginTop: 16, 
         padding: 12, 
-        backgroundColor: 'var(--bg-secondary)', 
+        // backgroundColor: 'var(--bg-secondary)',
         border: '1px solid var(--border-color)',
         borderRadius: 6,
         fontSize: 12,

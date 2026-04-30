@@ -496,26 +496,19 @@ const MessageContent: React.FC<MessageContentProps> = ({ msg, skills, mcpServers
   const renderToolLabel = (title: string, status?: string) => {
     let icon = null
     if (status === 'running' || status === 'pending') {
-      icon = <ClockCircleOutlined style={{ marginRight: 8, color: 'var(--warning-color)' }} />
+      icon = <ClockCircleOutlined style={{ marginRight: 6, color: 'var(--warning-color)', fontSize: 12, lineHeight: '20px' }} />
     } else if (status === 'success' || status === 'completed') {
-      icon = <CheckCircleOutlined style={{ marginRight: 8, color: 'var(--success-color)' }} />
+      icon = <CheckCircleOutlined style={{ marginRight: 6, color: 'var(--success-color)', fontSize: 12, lineHeight: '20px' }} />
     }
     return (
-      <div style={{ display: 'flex', alignItems: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', lineHeight: '20px', fontSize: 12, fontWeight: 500 }}>
         {icon}
-        <span>{title}</span>
+        <span style={{ lineHeight: '20px' }}>{title}</span>
       </div>
     )
    }
 
-  if (msg.status === 'loading' && !msg.content && (!msg.parts || msg.parts.length === 0)) {
-    return <span style={{ color: 'var(--text-secondary)' }}>思考中...</span>
-  }
-
-
-
   const contentToRender = React.useMemo(() => {
-    // 先高亮指令，再转换标签，避免正则污染 HTML
     const highlighted = msg.role === 'user' ? highlightInstructions(msg.content) : msg.content
     return processContent(highlighted)
   }, [msg.content, processContent, highlightInstructions, msg.role])
@@ -524,6 +517,10 @@ const MessageContent: React.FC<MessageContentProps> = ({ msg, skills, mcpServers
     code: CodeBlock,
     'opencode-tag': OpenCodeTag,
   }), [])
+
+  if (msg.status === 'loading' && !msg.content && (!msg.parts || msg.parts.length === 0)) {
+    return <span style={{ color: 'var(--text-secondary)' }}>思考中...</span>
+  }
 
   // 如果没有parts，直接显示内容（但仍然渲染 Modals 以支持点击弹窗）
   if (!msg.parts || msg.parts.length === 0) {
@@ -690,7 +687,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ msg, skills, mcpServers
         renderedParts.push(
           <Collapse
             key={`tool-${index}-${toolStatus}`}
-            style={{ marginBottom: 8, maxWidth: '100%', overflow: 'auto' }}
+            style={{ marginBottom: 6, maxWidth: '100%', overflow: 'auto', borderRadius: 2, border: '1px solid var(--border-light)' }}
             defaultActiveKey={getToolExpanded(part.id || `tool-${index}`) ? [`tool-${part.id || index}`] : []}
             onChange={(keys) => setToolExpanded(part.id || `tool-${index}`, keys.includes(`tool-${part.id || index}`))}
             items={[{
@@ -716,7 +713,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ msg, skills, mcpServers
         renderedParts.push(
           <Collapse
             key={`tool-${index}-${toolStatus}`}
-            style={{ marginBottom: 8, maxWidth: '100%', overflow: 'auto' }}
+            style={{ marginBottom: 6, maxWidth: '100%', overflow: 'auto', borderRadius: 2, border: '1px solid var(--border-light)' }}
             defaultActiveKey={getToolExpanded(part.id || `tool-${index}`) ? [`tool-${index}`] : []}
             onChange={(keys) => setToolExpanded(part.id || `tool-${index}`, keys.includes(`tool-${part.id || index}`))}
             items={[{
@@ -744,7 +741,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ msg, skills, mcpServers
         renderedParts.push(
           <Collapse
             key={`tool-${index}-${toolStatus}`}
-            style={{ marginBottom: 8, maxWidth: '100%', overflow: 'auto' }}
+            style={{ marginBottom: 6, maxWidth: '100%', overflow: 'auto', borderRadius: 2, border: '1px solid var(--border-light)' }}
             defaultActiveKey={getToolExpanded(part.id || `tool-${index}`) ? [`tool-${index}`] : []}
             onChange={(keys) => setToolExpanded(part.id || `tool-${index}`, keys.includes(`tool-${part.id || index}`))}
             items={[{
@@ -773,11 +770,11 @@ const MessageContent: React.FC<MessageContentProps> = ({ msg, skills, mcpServers
         const isInterrupted = isPartLastAndInterrupted.get(index) || false
         const finalDescription = isInterrupted ? `${description}（思考中止）` : description
         renderedParts.push(
-          <div key={`tool-${index}`} style={{ marginBottom: 8, padding: '3px 12px', background: 'var(--bg-tertiary)', borderRadius: '6px', maxWidth: '100%', overflow: 'auto', wordWrap: 'break-word', wordBreak: 'break-word' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <StatusIcon style={{ color: statusColor, fontSize: 16 }} />
+          <div key={`tool-${index}`} style={{ marginBottom: 6, padding: '6px 12px', background: 'var(--bg-secondary)', borderRadius: 2, border: '1px solid var(--border-light)', maxWidth: '100%', overflow: 'auto', wordWrap: 'break-word', wordBreak: 'break-word' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <StatusIcon style={{ color: statusColor, fontSize: 14 }} />
               <div>
-                <span style={{ fontWeight: 'bold' }}>{subagentType} 智能体：</span>
+                <span style={{ fontWeight: 500, fontSize: 12 }}>{subagentType} 智能体：</span>
                 <span style={{ color: 'var(--accent-color)', cursor: sessionId ? 'pointer' : 'default', textDecoration: sessionId ? 'underline' : 'none' }} onClick={handleGoToSubsession}>
                   {finalDescription}
                 </span>
@@ -800,7 +797,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ msg, skills, mcpServers
         renderedParts.push(
           <Collapse
             key={`tool-${index}-${toolStatus}`}
-            style={{ marginBottom: 8, maxWidth: '100%', overflow: 'auto' }}
+            style={{ marginBottom: 6, maxWidth: '100%', overflow: 'auto', borderRadius: 2, border: '1px solid var(--border-light)' }}
             defaultActiveKey={getToolExpanded(part.id || `tool-${index}`) ? [`tool-${index}`] : []}
             onChange={(keys) => setToolExpanded(part.id || `tool-${index}`, keys.includes(`tool-${part.id || index}`))}
             items={[{

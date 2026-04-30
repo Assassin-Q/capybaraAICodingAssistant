@@ -3,26 +3,20 @@ import { Button, Typography } from 'antd'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
 import type { PermissionRequest } from '../../types'
 
-const { Text, Paragraph } = Typography
+const { Text } = Typography
 
 export interface PermissionPanelProps {
   permission: PermissionRequest
   onPermissionReply: (action: 'reject' | 'once' | 'always') => void
 }
 
-// 权限类型中文映射
 const getPermissionLabel = (permission: string): string => {
   switch (permission) {
-    case 'external_directory':
-      return '需访问目录之外的文件'
-    case 'file_write':
-      return '需要写入文件'
-    case 'file_delete':
-      return '需要删除文件'
-    case 'command_execute':
-      return '需要执行命令'
-    default:
-      return permission
+    case 'external_directory': return '需访问目录之外的文件'
+    case 'file_write': return '需要写入文件'
+    case 'file_delete': return '需要删除文件'
+    case 'command_execute': return '需要执行命令'
+    default: return permission
   }
 }
 
@@ -34,92 +28,131 @@ const PermissionPanel: React.FC<PermissionPanelProps> = ({
     <div
       style={{
         marginBottom: 8,
-        border: '1px solid #faad14',
-        backgroundColor: 'rgba(250, 173, 20, 0.1)',
-        borderRadius: 8,
-        padding: 16,
+        border: '1px solid var(--warning-color)',
+        borderRadius: 2,
+        padding: 10,
+        backgroundColor: 'var(--warning-light)',
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
-      {/* 标题 */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        marginBottom: 12,
-        gap: 8
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        width: 80,
+        height: 80,
+        backgroundColor: 'rgba(252, 196, 25, 0.08)',
+        borderRadius: '50%',
+        filter: 'blur(24px)',
+        transform: 'translate(50%, -50%)',
+      }} />
+
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: 10,
+        gap: 6,
+        position: 'relative',
+        zIndex: 1,
       }}>
-        <ExclamationCircleOutlined style={{ color: '#faad14', fontSize: 18 }} />
-        <Text strong style={{ fontSize: 16 }}>需要权限</Text>
+        <ExclamationCircleOutlined style={{ color: 'var(--warning-color)', fontSize: 15 }} />
+        <Text strong style={{ fontSize: 13, color: 'var(--warning-color)' }}>需要权限</Text>
       </div>
-      
-      {/* 权限内容 */}
-      <div style={{ 
-        marginBottom: 16,
-        padding: '12px',
-        backgroundColor: 'rgba(250, 173, 20, 0.05)',
-        borderRadius: 6,
-        border: '1px solid rgba(250, 173, 20, 0.2)'
+
+      <div style={{
+        marginBottom: 12,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        position: 'relative',
+        zIndex: 1,
       }}>
-        <div style={{ marginBottom: 8 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>权限类型</Text>
-          <div style={{ marginTop: 4 }}>
-            <Text strong>{getPermissionLabel(permission.permission)}</Text>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: 56, flexShrink: 0, marginTop: 2 }}>
+            权限类型
+          </span>
+          <span style={{
+            fontSize: 11,
+            fontFamily: 'monospace',
+            fontWeight: 500,
+            color: 'var(--text-primary)',
+            padding: '1px 6px',
+            borderRadius: 2,
+            border: '1px solid var(--border-light)',
+            backgroundColor: 'var(--bg-primary)',
+          }}>
+            {getPermissionLabel(permission.permission)}
+          </span>
         </div>
-        
+
         {permission.metadata?.filepath && (
-          <div style={{ marginBottom: 8 }}>
-            <Text type="secondary" style={{ fontSize: 12 }}>文件路径</Text>
-            <div style={{ marginTop: 4 }}>
-              <Paragraph 
-                copyable={{ text: permission.metadata.filepath }}
-                style={{ marginBottom: 0, wordBreak: 'break-all' }}
-              >
-                {permission.metadata.filepath}
-              </Paragraph>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: 56, flexShrink: 0, marginTop: 2 }}>
+              文件路径
+            </span>
+            <span style={{
+              fontSize: 10,
+              fontFamily: 'monospace',
+              color: 'var(--text-primary)',
+              padding: '1px 6px',
+              borderRadius: 2,
+              border: '1px solid var(--border-light)',
+              backgroundColor: 'var(--bg-primary)',
+              wordBreak: 'break-all',
+              flex: 1,
+              minWidth: 0,
+            }}>
+              {permission.metadata.filepath}
+            </span>
           </div>
         )}
-        
+
         {permission.patterns && permission.patterns.length > 0 && (
-          <div>
-            <Text type="secondary" style={{ fontSize: 12 }}>匹配模式</Text>
-            <div style={{ marginTop: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: 56, flexShrink: 0, marginTop: 2 }}>
+              匹配模式
+            </span>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
               {permission.patterns.map((pattern, index) => (
-                <div key={index} style={{ 
-                  padding: '4px 8px',
-                  backgroundColor: 'rgba(250, 173, 20, 0.1)',
-                  borderRadius: 4,
-                  marginBottom: 4,
+                <span key={index} style={{
+                  fontSize: 10,
                   fontFamily: 'monospace',
-                  fontSize: 12
+                  color: 'var(--text-primary)',
+                  padding: '1px 6px',
+                  borderRadius: 2,
+                  border: '1px solid var(--border-light)',
+                  backgroundColor: 'var(--bg-primary)',
+                  wordBreak: 'break-all',
                 }}>
                   {pattern}
-                </div>
+                </span>
               ))}
             </div>
           </div>
         )}
       </div>
-      
-      {/* 操作按钮 */}
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <Button 
-          danger 
+
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', position: 'relative', zIndex: 1 }}>
+        <Button
+          size="small"
           onClick={() => onPermissionReply('reject')}
-          style={{ minWidth: 80 }}
+          style={{ borderRadius: 2, fontSize: 11, color: 'var(--error-color)', borderColor: 'var(--error-color)' }}
         >
           拒绝
         </Button>
-        <Button 
+        <Button
+          size="small"
           onClick={() => onPermissionReply('once')}
-          style={{ minWidth: 80 }}
+          style={{ borderRadius: 2, fontSize: 11 }}
         >
           允许一次
         </Button>
-        <Button 
-          type="primary" 
+        <Button
+          size="small"
+          type="primary"
           onClick={() => onPermissionReply('always')}
-          style={{ minWidth: 80 }}
+          style={{ borderRadius: 2, fontSize: 11 }}
         >
           始终允许
         </Button>

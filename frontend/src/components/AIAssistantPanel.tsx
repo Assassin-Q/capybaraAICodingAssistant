@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Button, message as antMessage, Modal } from 'antd'
-import { DownCircleOutlined, ArrowLeftOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, ArrowDownOutlined } from '@ant-design/icons'
 
 
 
@@ -123,7 +123,6 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
   // 使用新的滚动hook
   const {
     forceScrollToBottom,
-    scrollToBottom,
     showScrollToBottom,
     isAtBottom,
     setLoadingHistory,
@@ -133,7 +132,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
     messages,
     loadingMoreMessages,
   })
-  
+
   // 当待办事项面板折叠状态变化时，如果当前在底部，保持滚动到底部
   useEffect(() => {
     if (isAtBottom && scrollRef.current) {
@@ -184,9 +183,65 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
   const [autoConfirm, setAutoConfirm] = useState(false)
   
   // UI 状态
-  const [showSettings, setShowSettings] = useState(false)
+  const [settingsSection, setSettingsSection] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [recording, setRecording] = useState(false)
+  const inputAreaRef = useRef<HTMLDivElement>(null)
+  const [inputAreaHeight, setInputAreaHeight] = useState(160)
+
+  // 监听输入区域高度变化，动态调整消息底部间距
+  useEffect(() => {
+    const el = inputAreaRef.current
+    if (!el) return
+    const observer = new ResizeObserver(() => {
+      setInputAreaHeight(el.offsetHeight + 16)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // 自定义滚动条状态与同步
+  const [scrollInfo, setScrollInfo] = useState({ top: 0, totalHeight: 0, clientHeight: 0 })
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const update = () => {
+      setScrollInfo({ top: el.scrollTop, totalHeight: el.scrollHeight, clientHeight: el.clientHeight })
+    }
+    el.addEventListener('scroll', update, { passive: true })
+    const obs = new ResizeObserver(update)
+    obs.observe(el)
+    update()
+    return () => { el.removeEventListener('scroll', update); obs.disconnect() }
+  }, [])
+  const { top, totalHeight, clientHeight } = scrollInfo
+  const trackHeight = clientHeight - 50 - (inputAreaHeight + 12)
+  const thumbH = totalHeight > 0 ? Math.max(28, trackHeight * (clientHeight / totalHeight)) : 0
+  const maxThumbTravel = trackHeight - thumbH
+  const maxScrollTravel = totalHeight - clientHeight
+  const thumbTopVal = maxScrollTravel > 0 ? (top / maxScrollTravel) * maxThumbTravel : 0
+  const showThumb = totalHeight > clientHeight && thumbH > 0
+
+  // 滚动条拖拽
+  const draggingRef = useRef(false)
+  const handleThumbDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    draggingRef.current = true
+    const startY = e.clientY
+    const startTop = top
+    const onMove = (ev: MouseEvent) => {
+      const dy = ev.clientY - startY
+      const ratio = dy / maxThumbTravel
+      const newTop = startTop + ratio * maxScrollTravel
+      scrollRef.current?.scrollTo({ top: Math.max(0, Math.min(newTop, maxScrollTravel)) })
+    }
+    const onUp = () => { draggingRef.current = false; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [top, maxThumbTravel, maxScrollTravel])
+
+  // 消息区域悬停控制滚动条显隐
+  const [hoverMsgArea, setHoverMsgArea] = useState(false)
   // 会话标题编辑状态
   const [editingSessionTitle, setEditingSessionTitle] = useState(false)
   const [sessionTitleInput, setSessionTitleInput] = useState('')
@@ -1305,12 +1360,10 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
     if (!currentSessionId) return
     
     try {
-      // 重置消息限制为5，仅显示最近的消息
       setMessageLimit(5)
-      // 重新加载会话列表
       await loadSessions()
-      // 重新加载当前会话的消息，只加载最近的5条
       await loadMessages(currentSessionId, 5)
+      setSseReconnectKey(k => k + 1)
       antMessage.success('已刷新')
     } catch (error) {
       console.error('刷新失败', error)
@@ -1703,6 +1756,9 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
     
     setIsSending(true)
     
+    // 每次发送前强制重连SSE，确保流式事件顺序正确
+    setSseReconnectKey(k => k + 1)
+    
     // 将占位符转换为哨兵标签，用于气泡显示（processTags 识别哨兵标签）
     const displayContent = replacePlaceholders(inputValue).trim()
     const tempUserId = `temp-user-${Date.now()}`
@@ -2079,15 +2135,41 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
         style={{
           width: '100%',
           height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          backgroundColor: 'var(--bg-secondary)',
           position: 'relative',
+          overflow: 'hidden',
+          backgroundColor: 'transparent',
         }}
       >
 
-      {/* Toolbar */}
-      <TopToolbar
+      {/* 顶部遮罩 - 吸附顶部边缘，z-index 在工具栏下方 */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 12,
+        zIndex: 19,
+        pointerEvents: 'none',
+        backdropFilter: 'blur(var(--glass-blur))',
+        WebkitBackdropFilter: 'blur(var(--glass-blur))',
+      }} />
+
+      {/* 底部遮罩 - 吸附底部边缘，z-index 在输入区下方 */}
+      <div style={{
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 12,
+        zIndex: 19,
+        pointerEvents: 'none',
+        backdropFilter: 'blur(var(--glass-blur))',
+        WebkitBackdropFilter: 'blur(var(--glass-blur))',
+      }} />
+
+      {/* Toolbar - 悬浮在顶部 */}
+      <div style={{ position: 'absolute', top: 8, left: 12, right: 12, zIndex: 20, pointerEvents: 'auto' }}>
+        <TopToolbar
         serverStatus={serverStatus}
         serverStatusData={serverStatusData || undefined}
         onServiceRestart={async () => {
@@ -2113,7 +2195,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
         setShowQuestionModal={setShowQuestionModal}
         showHistory={showHistory}
         setShowHistory={setShowHistory}
-        setShowSettings={setShowSettings}
+        onOpenSettings={setSettingsSection}
         handleCreateSession={handleCreateSession}
         sessions={sessions}
          currentSessionId={currentSessionId}
@@ -2122,18 +2204,27 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
         sessionTitleInput={sessionTitleInput}
         setSessionTitleInput={setSessionTitleInput}
         setEditingSessionTitle={setEditingSessionTitle}
-         handleSaveSessionTitle={handleSaveSessionTitle}
-       />
-       
-       {/* 返回父会话按钮（当处于子会话时） */}
-       {parentSessionId && (
-         <div style={{
-           display: 'flex',
-           alignItems: 'center',
-           padding: '8px 12px',
-           borderBottom: '1px solid var(--border-color)',
-           backgroundColor: 'var(--bg-tertiary)'
-         }}>
+          handleSaveSessionTitle={handleSaveSessionTitle}
+        />
+      </div>
+        
+        {/* 返回父会话按钮（当处于子会话时） */}
+        {parentSessionId && (
+          <div style={{
+            position: 'absolute',
+            top: 60,
+            left: 12,
+            right: 12,
+            zIndex: 15,
+            display: 'flex',
+            alignItems: 'center',
+            padding: '6px 12px',
+            borderRadius: 4,
+            background: 'var(--glass-bg)',
+            backdropFilter: 'blur(var(--glass-blur))',
+            WebkitBackdropFilter: 'blur(var(--glass-blur))',
+            border: '1px solid var(--glass-border)',
+          }}>
            <Button
              type="text"
              icon={<ArrowLeftOutlined />}
@@ -2161,8 +2252,17 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
          onRevertedMessageIdReset={() => setRevertedMessageId(null)}
        />
 
-       {/* Chat Area */}
-       <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {/* Chat Area - 占满整个容器 */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+        onMouseEnter={() => setHoverMsgArea(true)}
+        onMouseLeave={() => setHoverMsgArea(false)}
+        >
             <ChatArea
               ref={chatAreaRef}
               messages={messages}
@@ -2179,43 +2279,87 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
               mcpServers={settings.mcpServers}
               currentSessionId={currentSessionId}
               currentSessionStatus={currentSessionStatus || undefined}
+              bottomSpacerHeight={inputAreaHeight}
             />
-         
-          {/* 向下箭头按钮 - 右下角，半透明 */}
-          {showScrollToBottom && (
+        </div>
+
+        {/* 自定义滚动条 - 在顶栏和底栏之间 */}
+        <div style={{
+          position: 'absolute',
+          top: 50,
+          bottom: inputAreaHeight + 12,
+          right: 2,
+          width: 4,
+          zIndex: 19,
+          pointerEvents: 'none',
+          opacity: hoverMsgArea ? 1 : 0,
+          transition: 'opacity 0.2s',
+        }}>
+          {showThumb && (
             <div
+              onMouseDown={handleThumbDown}
               style={{
                 position: 'absolute',
-                bottom: 20,
-                right: 20,
-                zIndex: 10,
+                right: 0,
+                top: thumbTopVal,
+                width: 4,
+                height: thumbH,
+                borderRadius: 2,
+                background: 'var(--border-color)',
+                opacity: 0.6,
+                cursor: 'pointer',
+                pointerEvents: 'auto',
               }}
-            >
-              <Button
-                type="primary"
-                shape="circle"
-                icon={<DownCircleOutlined />}
-                size="large"
-                 onClick={scrollToBottom}
-                style={{
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                  opacity: 0.5,
-                  transition: 'opacity 0.2s ease',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5' }}
-             />
-           </div>
-         )}
-       </div>
+            />
+          )}
+        </div>
 
-      {/* Input Area */}
+        {/* 滚动到底部按钮 */}
+        {showScrollToBottom && (
+          <div style={{
+            position: 'absolute',
+            bottom: inputAreaHeight + 20,
+            right: 16,
+            zIndex: 19,
+          }}>
+            <Button
+              type="primary"
+              shape="circle"
+              icon={<ArrowDownOutlined />}
+              size="large"
+              onClick={forceScrollToBottom}
+              style={{
+                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                opacity: 0.6,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '1' }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6' }}
+            />
+          </div>
+        )}
+
+      {/* Input Area - 悬浮在底部 */}
       <div
+        ref={inputAreaRef}
         className="chat-input-area"
         style={{
-          borderTop: '1px solid var(--border-color)',
-          padding: '12px',
-          position: 'relative',
+          position: 'absolute',
+          bottom: 8,
+          left: 12,
+          right: 12,
+          zIndex: 20,
+          pointerEvents: 'auto',
+          borderRadius: 12,
+          padding: '10px 12px',
+          // background: 'var(--glass-bg-heavy)',
+          backdropFilter: 'blur(var(--glass-blur))',
+          WebkitBackdropFilter: 'blur(var(--glass-blur))',
+          border: '1px solid var(--glass-border)',
+          boxShadow: '0 -4px 20px rgba(0,0,0,0.06)',
+          maxHeight: '50%',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
         }}
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
         onDrop={(e) => {
@@ -2406,16 +2550,16 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
 
       {/* Settings Dialog */}
        <SettingsDialog
-         open={showSettings}
-         settings={settings}
-         onSettingsChange={setSettings}
-         isDark={isDark}
-         onThemeChange={onThemeChange}
-         onClose={() => {
-           setShowSettings(false)
-           // 关闭设置对话框时重新加载提供商，确保模型列表最新
-           loadProviders()
-         }}
+          open={settingsSection !== null}
+          activeTab={settingsSection || ''}
+          settings={settings}
+          onSettingsChange={setSettings}
+          isDark={isDark}
+          onThemeChange={onThemeChange}
+          onClose={() => {
+            setSettingsSection(null)
+            loadProviders()
+          }}
           onServiceRestart={async () => {
             // 重启服务后强制重连SSE
             setSseReconnectKey(k => k + 1)

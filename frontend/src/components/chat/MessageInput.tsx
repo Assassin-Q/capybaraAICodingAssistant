@@ -2,7 +2,7 @@
 import React, { RefObject, useMemo, useCallback, memo, useRef, useEffect, useState } from 'react'
 import { Button, Checkbox, Flex, Input, Radio, Select, Space, Switch, Tooltip, Typography, Tag } from 'antd'
 import { 
-  ArrowUpOutlined,
+  SendOutlined,
   AppstoreOutlined, 
   CloudServerOutlined, 
   FileOutlined, 
@@ -300,6 +300,7 @@ const MessageInput = ({
     const isSyncingRef = useRef(false)
     const [pickerSearchText, setPickerSearchText] = useState('')
     const pickerRef = useRef<HTMLDivElement>(null)
+    const [inputFocused, setInputFocused] = useState(false)
 
     // 点击外部关闭 picker
     useEffect(() => {
@@ -799,7 +800,7 @@ const MessageInput = ({
         <div ref={pickerRef} style={{
           position: 'absolute', bottom: '100%', left: 12, width: 300, maxHeight: 320,
           backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)',
-          borderRadius: 8, overflow: 'hidden', zIndex: 1000, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          borderRadius: 4, overflow: 'hidden', zIndex: 1000, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
         }}>
           <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
             <Space style={{ width: '100%' }}>
@@ -850,7 +851,7 @@ const MessageInput = ({
         <div ref={pickerRef} style={{
           position: 'absolute', bottom: '100%', left: 12, width: 300, maxHeight: 320,
           backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-color)',
-          borderRadius: 8, overflow: 'hidden', zIndex: 1000, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          borderRadius: 4, overflow: 'hidden', zIndex: 1000, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
         }}>
           <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
             <Space>
@@ -1021,23 +1022,29 @@ const MessageInput = ({
         </div>
       )}
 
-        {/* 自定义contenteditable输入框和按钮分离布局 */}
+        {/* 自定义contenteditable输入框 */}
         <div style={{
           display: 'flex',
           gap: 8,
-          alignItems: 'flex-end',
+          alignItems: 'stretch',
         }}>
           {/* 输入框区域 */}
           <div style={{
             flex: 1,
             minWidth: 0,
             position: 'relative',
-            border: '1px solid var(--border-color)',
-            borderRadius: 6,
-            backgroundColor: 'var(--bg-primary)',
-            height: 100,
+            border: inputFocused
+              ? '1px solid var(--accent-color)'
+              : '1px solid var(--border-color)',
+            borderRadius: 2,
+            // backgroundColor: 'var(--bg-primary)',
+            height: 80,
             display: 'flex',
             flexDirection: 'column',
+            boxShadow: inputFocused
+              ? '0 0 0 3px var(--accent-light), inset 0 0 8px rgba(51,154,240,0.06)'
+              : 'none',
+            transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
           }}>
             <div
               ref={contentEditableRef}
@@ -1045,6 +1052,8 @@ const MessageInput = ({
               onInput={handleInput}
               onPaste={handlePaste}
               onKeyDown={handleKeyDown}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
               data-placeholder="输入您的需求... 按 Ctrl+Enter 发送（AI生成，仅供参考，注意审查，注意备份代码）"
               style={{
                 flex: 1,
@@ -1075,195 +1084,158 @@ const MessageInput = ({
               输入您的需求... 按 Ctrl+Enter 发送（AI生成，仅供参考，注意审查，注意备份代码）
             </span>
           </div>
-
-          {/* 按钮区域 - 独立于输入框，不影响输入区域 */}
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-            paddingBottom: 4,
-          }}>
-            {/* 语音按钮 */}
-            {/*<button*/}
-            {/*  type="button"*/}
-            {/*  onClick={() => {*/}
-            {/*    const nextRecording = !recording*/}
-            {/*    onRecordingChange(nextRecording)*/}
-            {/*    if (nextRecording) {*/}
-            {/*      speechRecognitionRef.current?.start()*/}
-            {/*    } else {*/}
-            {/*      speechRecognitionRef.current?.stop()*/}
-            {/*    }*/}
-            {/*  }}*/}
-            {/*  style={{*/}
-            {/*    width: 28,*/}
-            {/*    height: 28,*/}
-            {/*    borderRadius: 6,*/}
-            {/*    border: '1px solid var(--border-color)',*/}
-            {/*    backgroundColor: recording ? 'var(--error-color)' : 'var(--bg-secondary)',*/}
-            {/*    color: recording ? 'white' : 'var(--text-secondary)',*/}
-            {/*    display: 'flex',*/}
-            {/*    alignItems: 'center',*/}
-            {/*    justifyContent: 'center',*/}
-            {/*    cursor: 'pointer',*/}
-            {/*    fontSize: 12,*/}
-            {/*    padding: 0,*/}
-            {/*    transition: 'all 0.2s ease',*/}
-            {/*    flexShrink: 0,*/}
-            {/*  }}*/}
-            {/*  title={recording ? '停止录音' : '开始录音'}*/}
-            {/*>*/}
-            {/*  {recording ? '●' : '🎤'}*/}
-            {/*</button>*/}
-            
-            {/* 发送/取消按钮 */}
-            {isSending ? (
-              <button
-                type="button"
-                onClick={onCancel}
-                style={{
-                  width: 28,
-                  height: 28,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 12,
-                  borderRadius: 6,
-                  border: '1px solid var(--error-color)',
-                  backgroundColor: 'var(--error-light)',
-                  color: 'var(--error-color)',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  flexShrink: 0,
-                }}
-              >
-                ✕
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onSendMessage}
-                disabled={!inputValue.trim()}
-                 style={{
-                   width: 28,
-                   height: 28,
-                   display: 'flex',
-                   alignItems: 'center',
-                   justifyContent: 'center',
-                   fontSize: 12,
-                   borderRadius: 6,
-                   border: '1px solid var(--border-color)',
-                   backgroundColor: inputValue.trim() ? 'var(--accent-color)' : 'var(--bg-secondary)',
-                   color: inputValue.trim() ? 'white' : 'var(--text-tertiary)',
-                   cursor: inputValue.trim() ? 'pointer' : 'not-allowed',
-                   transition: 'all 0.2s ease',
-                   flexShrink: 0,
-                 }}
-              >
-                <ArrowUpOutlined />
-              </button>
-            )}
-          </div>
         </div>
 
       {/* 工具栏 */}
-      <Flex gap={8} style={{ marginTop: 8 }}>
-        {/* 智能体/计划 切换 */}
-        <Switch
-          checked={chatMode === 'build'}
-          onChange={(checked) => onChatModeChange(checked ? 'build' : 'plan')}
-          checkedChildren="智能体（build）"
-          unCheckedChildren="计划（plan）"
-          className="mode-switch"
-          style={{
-            backgroundColor: chatMode === 'build' ? '#1677FF !important' : '#52C41A !important',
-          }}
-        />
+      <Flex gap={6} align="center" style={{ marginTop: 6, padding: '0 2px' }} justify="space-between">
+        <Flex gap={6} align="center">
+          {/* 智能体/计划 切换 */}
+          <Switch
+            checked={chatMode === 'build'}
+            onChange={(checked) => onChatModeChange(checked ? 'build' : 'plan')}
+            checkedChildren="构建 (Build)"
+            unCheckedChildren="计划 (Plan)"
+            className="mode-switch"
+          />
         
-        {/* 模型选择 - 使用 Select 支持搜索 */}
-        <Select
-          size="small"
-          value={selectedProvider && selectedModel ? `${selectedProvider}/${selectedModel}` : undefined}
-          placeholder="选择模型"
-          showSearch
-          filterOption={(input, option) => {
-            const searchText = (option as any)?.searchText || ''
-            return searchText.toLowerCase().includes(input.toLowerCase())
-          }}
-          popupMatchSelectWidth={false}
-          getPopupContainer={(trigger) => trigger.parentElement || document.body}
-          listHeight={300}
-          options={modelOptions}
-          optionRender={optionRender}
-          onChange={(value) => {
-            if (value) {
-              const [provId, modelId] = value.split('/')
-              onProviderModelChange(provId, modelId)
-            } else {
-              onProviderModelChange(null, null)
-            }
-          }}
-        />
-        
-        {/* 思考强度选择 - 仅当模型支持推理时显示 */}
-        {modelReasoningCapable && (
+          {/* 模型选择 */}
           <Select
             size="small"
-            value={reasoningEffort || 'medium'}
-            onChange={(value) => onReasoningEffortChange?.(value)}
-            style={{ width: 60 }}
+            value={selectedProvider && selectedModel ? `${selectedProvider}/${selectedModel}` : undefined}
+            placeholder="选择模型"
+            showSearch
+            filterOption={(input, option) => {
+              const searchText = (option as any)?.searchText || ''
+              return searchText.toLowerCase().includes(input.toLowerCase())
+            }}
             popupMatchSelectWidth={false}
-            options={[
-              { label: '低', value: 'low' },
-              { label: '中', value: 'medium' },
-              { label: '高', value: 'high' },
-              { label: '最大', value: 'max' },
-            ]}
+            getPopupContainer={() => document.body}
+            listHeight={300}
+            options={modelOptions}
+            optionRender={optionRender}
+            onChange={(value) => {
+              if (value) {
+                const [provId, modelId] = value.split('/')
+                onProviderModelChange(provId, modelId)
+              } else {
+                onProviderModelChange(null, null)
+              }
+            }}
+            style={{ minWidth: 120, borderRadius: 2 }}
           />
-        )}
         
-        {/* 自动确认权限 */}
-        {/*<Tooltip title={autoConfirm ? '自动确认已关闭' : '自动确认已开启'}>*/}
-        {/*  <Button*/}
-        {/*    size="small"*/}
-        {/*    icon={<SafetyOutlined />}*/}
-        {/*    onClick={() => onAutoConfirmChange(!autoConfirm)}*/}
-        {/*    type={autoConfirm ? 'primary' : 'default'}*/}
-        {/*  />*/}
-        {/*</Tooltip>*/}
+          {/* 思考强度选择 */}
+          {modelReasoningCapable && (
+            <Select
+              size="small"
+              value={reasoningEffort || 'medium'}
+              onChange={(value) => onReasoningEffortChange?.(value)}
+              style={{ width: 56, borderRadius: 2 }}
+              popupMatchSelectWidth={false}
+              options={[
+                { label: '低', value: 'low' },
+                { label: '中', value: 'medium' },
+                { label: '高', value: 'high' },
+                { label: '最大', value: 'max' },
+              ]}
+            />
+          )}
+        
+          <div style={{ width: 1, height: 16, backgroundColor: 'var(--border-color)', margin: '0 2px' }} />
 
-        {/* 技能选择按钮 */}
-        <Tooltip title="选择技能">
-          <Button
-            size="small"
-            icon={<AppstoreOutlined />}
-            onClick={onSkillButtonClick}
-            disabled={!onSkillButtonClick}
-            type={showSkillPicker ? 'primary' : 'default'}
-          />
-        </Tooltip>
+          {/* 技能选择按钮 */}
+          {onSkillButtonClick && (
+            <Tooltip title="选择技能">
+              <Button
+                size="small"
+                icon={<AppstoreOutlined />}
+                onClick={onSkillButtonClick}
+                type="text"
+                style={{ color: showSkillPicker ? 'var(--accent-color)' : 'var(--text-secondary)', borderRadius: 2, fontSize: 11 }}
+              />
+            </Tooltip>
+          )}
 
-        {/* MCP 服务器选择按钮 */}
-        <Tooltip title="选择 MCP 服务器">
-          <Button
-            size="small"
-            icon={<CloudServerOutlined />}
-            onClick={onMCPButtonClick}
-            disabled={!onMCPButtonClick}
-            type={showMCPPicker ? 'primary' : 'default'}
-          />
-        </Tooltip>
+          {/* MCP 服务器选择按钮 */}
+          {onMCPButtonClick && (
+            <Tooltip title="选择 MCP 服务器">
+              <Button
+                size="small"
+                icon={<CloudServerOutlined />}
+                onClick={onMCPButtonClick}
+                type="text"
+                style={{ color: showMCPPicker ? 'var(--accent-color)' : 'var(--text-secondary)', borderRadius: 2, fontSize: 11 }}
+              />
+            </Tooltip>
+          )}
+        </Flex>
 
-        {/* 文件搜索按钮 */}
-        {/*<Tooltip title="搜索文件">*/}
-        {/*  <Button*/}
-        {/*    size="small"*/}
-        {/*    icon={<FileOutlined />}*/}
-        {/*    onClick={onFileButtonClick}*/}
-        {/*    disabled={!onFileButtonClick}*/}
-        {/*    type={showFilePicker ? 'primary' : 'default'}*/}
-        {/*  />*/}
-        {/*</Tooltip>*/}
+        {/* 发送/取消按钮 */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          {isSending ? (
+            <button
+              type="button"
+              onClick={onCancel}
+              title="取消发送"
+              style={{
+                width: 28,
+                height: 28,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 2,
+                border: '1px solid var(--error-color)',
+                backgroundColor: 'transparent',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                flexShrink: 0,
+              }}
+            >
+              <span style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                backgroundColor: 'var(--error-color)',
+                animation: 'pulse-dot 1.5s infinite',
+              }} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onSendMessage}
+              disabled={!inputValue.trim()}
+              style={{
+                width: 28,
+                height: 28,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 2,
+                border: inputValue.trim() ? 'none' : '1px solid var(--border-color)',
+                backgroundColor: inputValue.trim() ? 'var(--accent-color)' : 'var(--bg-secondary)',
+                color: inputValue.trim() ? '#fff' : 'var(--text-tertiary)',
+                cursor: inputValue.trim() ? 'pointer' : 'not-allowed',
+                transition: 'all 0.2s cubic-bezier(0.22, 1, 0.36, 1)',
+                flexShrink: 0,
+                boxShadow: inputValue.trim() ? '0 2px 8px rgba(51, 154, 240, 0.4)' : 'none',
+              }}
+              onMouseEnter={e => {
+                if (inputValue.trim()) {
+                  (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.05)'
+                  ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--accent-hover)'
+                }
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'
+                if (inputValue.trim()) {
+                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--accent-color)'
+                }
+              }}
+            >
+              <SendOutlined style={{ fontSize: 14, marginLeft: -1, transform: 'rotate(-45deg)' }} />
+            </button>
+          )}
+        </div>
       </Flex>
     </>
   )

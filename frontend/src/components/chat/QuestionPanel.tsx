@@ -1,5 +1,5 @@
 import React from 'react'
-import { Button, Input, Radio, Typography } from 'antd'
+import { Button, Input } from 'antd'
 import type { QuestionRequest } from '../../types'
 
 interface QuestionPanelProps {
@@ -33,90 +33,252 @@ const QuestionPanel: React.FC<QuestionPanelProps> = ({
     return null
   }
 
+  const totalQuestions = currentQuestion.questions.length
+
   return (
     <div
       style={{
         marginBottom: 8,
         border: '1px solid var(--border-color)',
-        backgroundColor: 'var(--bg-secondary)',
-        borderRadius: 4,
-        padding: 12,
+        borderRadius: 2,
+        padding: 10,
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
-      <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
-        问题请求 ({currentQuestionIndex + 1}/{currentQuestion.questions.length})
-      </Typography.Text>
-      
+      <div style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 3,
+        backgroundColor: 'var(--accent-color)',
+      }} />
+
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+        paddingLeft: 8,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{
+            width: 20,
+            height: 20,
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'var(--accent-light)',
+            color: 'var(--accent-color)',
+            fontSize: 10,
+            fontWeight: 600,
+          }}>
+            ?
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-color)' }}>
+            需要您确认 ({currentQuestionIndex + 1}/{totalQuestions})
+          </span>
+          <span style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            backgroundColor: 'var(--accent-color)',
+            animation: 'pulse-dot 2s infinite',
+          }} />
+        </div>
+
+        {totalQuestions > 1 && (
+          <div style={{ display: 'flex', gap: 2 }}>
+            <button
+              onClick={onPrevQuestion}
+              disabled={currentQuestionIndex === 0}
+              style={{
+                width: 24,
+                height: 24,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 2,
+                border: '1px solid var(--border-color)',
+                backgroundColor: 'var(--bg-primary)',
+                color: currentQuestionIndex === 0 ? 'var(--text-disabled)' : 'var(--text-secondary)',
+                cursor: currentQuestionIndex === 0 ? 'not-allowed' : 'pointer',
+                fontSize: 10,
+                padding: 0,
+              }}
+            >
+              ‹
+            </button>
+            <button
+              onClick={onNextQuestion}
+              disabled={currentQuestionIndex === totalQuestions - 1}
+              style={{
+                width: 24,
+                height: 24,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 2,
+                border: '1px solid var(--border-color)',
+                backgroundColor: 'var(--bg-primary)',
+                color: currentQuestionIndex === totalQuestions - 1 ? 'var(--text-disabled)' : 'var(--text-secondary)',
+                cursor: currentQuestionIndex === totalQuestions - 1 ? 'not-allowed' : 'pointer',
+                fontSize: 10,
+                padding: 0,
+              }}
+            >
+              ›
+            </button>
+          </div>
+        )}
+      </div>
+
       {currentQuestion.questions.map((q: any, idx: number) => (
-        <div 
-          key={idx} 
-          style={{ 
+        <div
+          key={idx}
+          style={{
             display: idx === currentQuestionIndex ? 'block' : 'none',
-            marginBottom: 12 
+            paddingLeft: 8,
           }}
         >
-          <div style={{ marginBottom: 8 }}>
-            <p><strong>{q.header || `问题 ${idx + 1}`}</strong></p>
-            <p>{q.question}</p>
-          </div>
-          
-          <div style={{ marginBottom: 12 }}>
-            {/* AI返回的4个选项 */}
-            {q.options && q.options.map((opt: any, optIdx: number) => (
-               <div key={optIdx} style={{ marginBottom: 4 }}>
-                   <Radio
-                     checked={selectedAnswers[idx] && selectedAnswers[idx].includes(opt.label)}
-                     onChange={(e) => onAnswerChange(idx, opt.label, e.target.checked)}
-                   >
-                     <span style={{ fontWeight: 'normal' }}>{opt.label}</span>
-                     {opt.description && (
-                       <span style={{ color: 'var(--text-secondary)', fontSize: 12, marginLeft: 8 }}>
-                         {opt.description}
-                       </span>
-                     )}
-                   </Radio>
-               </div>
-            ))}
-            
-            {/* 用户自定义输入框（第5个选项） */}
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>
-                自定义回答（可选）
+          <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 4 }}>
+            {q.header || `问题 ${idx + 1}`}
+          </p>
+          <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.5 }}>
+            {q.question}
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+            {q.options && q.options.map((opt: any, optIdx: number) => {
+              const isChecked = selectedAnswers[idx] && selectedAnswers[idx].includes(opt.label)
+              return (
+                <div
+                  key={optIdx}
+                  onClick={() => onAnswerChange(idx, opt.label, !isChecked)}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: 2,
+                    border: isChecked ? '1px solid var(--accent-color)' : '1px solid var(--border-light)',
+                    backgroundColor: isChecked ? 'var(--accent-light)' : 'var(--bg-primary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.15s',
+                    position: 'relative',
+                  }}
+                >
+                  <div style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    border: isChecked ? 'none' : '1px solid var(--border-color)',
+                    backgroundColor: isChecked ? 'var(--accent-color)' : 'transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    {isChecked && (
+                      <span style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: '#fff' }} />
+                    )}
+                  </div>
+                  <span style={{
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    color: isChecked ? 'var(--accent-color)' : 'var(--text-primary)',
+                    fontWeight: isChecked ? 500 : 400,
+                  }}>
+                    {opt.label}
+                  </span>
+                  {opt.description && (
+                    <span style={{ fontSize: 10, color: 'var(--text-secondary)', marginLeft: 'auto' }}>
+                      {opt.description}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+
+            <div
+              onClick={() => {
+                const isChecked = selectedAnswers[idx] && selectedAnswers[idx].includes('__custom__')
+                onAnswerChange(idx, '__custom__', !isChecked)
+              }}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 2,
+                border: selectedAnswers[idx]?.includes('__custom__') ? '1px solid var(--accent-color)' : '1px solid var(--border-light)',
+                backgroundColor: selectedAnswers[idx]?.includes('__custom__') ? 'var(--accent-light)' : 'var(--bg-primary)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              <div style={{
+                width: 14,
+                height: 14,
+                borderRadius: '50%',
+                border: selectedAnswers[idx]?.includes('__custom__') ? 'none' : '1px solid var(--border-color)',
+                backgroundColor: selectedAnswers[idx]?.includes('__custom__') ? 'var(--accent-color)' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                {selectedAnswers[idx]?.includes('__custom__') && (
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: '#fff' }} />
+                )}
               </div>
-              <Input
-                placeholder="输入您的自定义回答..."
-                value={customAnswers[idx] || ''}
-                onChange={(e) => onCustomAnswerChange(idx, e.target.value)}
-                style={{ width: '100%' }}
-              />
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>自定义回答</span>
             </div>
+
+            {selectedAnswers[idx]?.includes('__custom__') && (
+              <div style={{ padding: '4px 0' }}>
+                <Input
+                  size="small"
+                  placeholder="请输入您的回答..."
+                  value={customAnswers[idx] || ''}
+                  onChange={(e) => onCustomAnswerChange(idx, e.target.value)}
+                  style={{ borderRadius: 2, fontSize: 12 }}
+                />
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', borderTop: '1px solid var(--border-light)', paddingTop: 10 }}>
+            <Button
+              size="small"
+              onClick={onQuestionReject}
+              style={{ borderRadius: 2, fontSize: 11 }}
+            >
+              忽略
+            </Button>
+            {totalQuestions > 1 && currentQuestionIndex < totalQuestions - 1 ? (
+              <Button
+                size="small"
+                type="primary"
+                onClick={onNextQuestion}
+                style={{ borderRadius: 2, fontSize: 11 }}
+              >
+                下一步
+              </Button>
+            ) : (
+              <Button
+                size="small"
+                type="primary"
+                onClick={onQuestionReply}
+                style={{ borderRadius: 2, fontSize: 11 }}
+              >
+                提交
+              </Button>
+            )}
           </div>
         </div>
       ))}
-      
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        {/* 忽略按钮（拒绝回答） */}
-        <Button danger onClick={onQuestionReject}>
-          忽略
-        </Button>
-        
-        {/* 导航按钮 */}
-        {currentQuestion.questions.length > 1 && currentQuestionIndex > 0 && (
-          <Button onClick={onPrevQuestion}>
-            返回
-          </Button>
-        )}
-        
-        {currentQuestion.questions.length > 1 && currentQuestionIndex < currentQuestion.questions.length - 1 ? (
-          <Button type="primary" onClick={onNextQuestion}>
-            下一步
-          </Button>
-        ) : (
-          <Button type="primary" onClick={onQuestionReply}>
-            提交
-          </Button>
-        )}
-      </div>
     </div>
   )
 }

@@ -27,7 +27,7 @@ const TodoPanel: React.FC<TodoPanelProps> = ({
       style={{
         marginBottom: 8,
         border: '1px solid var(--border-color)',
-        backgroundColor: 'var(--bg-secondary)',
+        // backgroundColor: 'var(--bg-secondary)',
       }}
       items={[{
         key: 'todos',

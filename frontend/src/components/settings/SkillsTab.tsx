@@ -236,7 +236,7 @@ const SkillsTab: React.FC<SkillsTabProps> = ({
         }
         open={showAddSkill}
         centered
-        maskClosable={false}
+        mask={{ closable: false }}
         onCancel={() => {
           setShowAddSkill(false)
           setIsEditingSkill(false)
@@ -697,7 +697,7 @@ const SkillsTab: React.FC<SkillsTabProps> = ({
       <div style={{ 
         marginTop: 16, 
         padding: 12, 
-        backgroundColor: 'var(--bg-secondary)', 
+        // backgroundColor: 'var(--bg-secondary)',
         border: '1px solid var(--border-color)',
         borderRadius: 6,
         fontSize: 12

@@ -8,19 +8,27 @@ html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
+  background: transparent;
 }
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: var(--bg-primary);
+  background: transparent;
   color: var(--text-primary);
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: color 0.3s ease;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: transparent;
+  color: var(--text-primary);
+  transition: color 0.3s ease;
 }
 
 /* Scrollbar styles */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -29,11 +37,34 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--border-color);
-  border-radius: 3px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
+  background: var(--text-tertiary);
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+/* 消息区域使用更细的滚动条 */
+.chat-scroll-area::-webkit-scrollbar {
+  display: none;
+}
+.chat-scroll-area {
+  scrollbar-width: none;
 }
 
 /* ============================================
@@ -47,6 +78,7 @@ body {
   --bg-secondary: #25262b;
   --bg-tertiary: #2c2e33;
   --bg-elevated: #373a40;
+  --bg-gradient: linear-gradient(160deg, #1a1b1e 0%, #1a1d26 30%, #182230 60%, #1a1b1e 100%);
   
   /* 文字色 */
   --text-primary: #e1e2e4;
@@ -80,9 +112,9 @@ body {
   
   /* 圆角 */
   --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 6px;
-  --radius-xl: 8px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
   
   /* 间距 */
   --spacing-xs: 4px;
@@ -99,6 +131,12 @@ body {
   /* 代码块 */
   --bg-code: #282c34;
   --text-code: #abb2bf;
+
+  /* 毛玻璃效果 */
+  --glass-bg: rgba(26, 27, 30, 0.82);
+  --glass-bg-heavy: rgba(26, 27, 30, 0.92);
+  --glass-blur: 12px;
+  --glass-border: rgba(255, 255, 255, 0.06);
 }
 
 body[data-theme='dark'] .ant-collapse {
@@ -107,13 +145,24 @@ body[data-theme='dark'] .ant-collapse {
 
 /* Collapse 面板头部收窄 */
 .ant-collapse .ant-collapse-header {
-  padding: 6px 12px !important;
-  font-size: 13px !important;
-  line-height: 1.3 !important;
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+  line-height: 20px !important;
   min-height: unset !important;
+  align-items: center !important;
 }
 
-/* 消息气泡最大宽度 90% */
+/* Collapse 面板头部文字垂直居中 */
+.ant-collapse .ant-collapse-header-text {
+  line-height: 20px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+/* Collapse 内容区内边距收窄 */
+.ant-collapse .ant-collapse-content-box {
+  padding: 8px 12px !important;
+}
 .ant-bubble-content {
   max-width: 90% !important;
 }
@@ -125,6 +174,7 @@ body[data-theme='light'] {
   --bg-secondary: #f8f9fa;
   --bg-tertiary: #f1f3f5;
   --bg-elevated: #ffffff;
+  --bg-gradient: linear-gradient(160deg, #f0f4ff 0%, #e8f0fe 30%, #dce8fc 60%, #eef2ff 100%);
   
   /* 文字色 */
   --text-primary: #212529;
@@ -158,9 +208,9 @@ body[data-theme='light'] {
   
   /* 圆角 */
   --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 6px;
-  --radius-xl: 8px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
   
   /* 间距 */
   --spacing-xs: 4px;
@@ -177,13 +227,15 @@ body[data-theme='light'] {
   /* 代码块 */
   --bg-code: #f8f9fa;
   --text-code: #212529;
+
+  /* 毛玻璃效果 */
+  --glass-bg: rgba(255, 255, 255, 0.82);
+  --glass-bg-heavy: rgba(255, 255, 255, 0.92);
+  --glass-blur: 12px;
+  --glass-border: rgba(0, 0, 0, 0.06);
 }
 
 /* 全局主题变量应用 */
-body {
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-}
 
 /* 修复中文输入法下划线问题 */
 input, textarea {
@@ -227,13 +279,6 @@ textarea::placeholder {
 .ant-btn-primary:hover {
   background-color: var(--accent-hover) !important;
   border-color: var(--accent-hover) !important;
-}
-
-/* 气泡样式 */
-.ant-bubble {
-  background-color: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
 }
 
 /* 发送者样式 */
@@ -361,8 +406,8 @@ textarea::placeholder {
 
 .ant-collapse {
   border-color: var(--border-color) !important;
-  border-radius: var(--radius-lg) !important;
-  background-color: var(--bg-secondary) !important;
+  border-radius: var(--radius-sm) !important;
+  background-color: transparent !important;
 }
 
 .ant-collapse-item {
@@ -377,7 +422,7 @@ textarea::placeholder {
 }
 
 .ant-collapse-header:hover {
-  background-color: var(--bg-tertiary) !important;
+  /*background-color: var(--bg-tertiary) !important;*/
 }
 
 .ant-collapse-content {
@@ -387,6 +432,10 @@ textarea::placeholder {
 
 .ant-collapse-content-box {
   padding: var(--spacing-md) !important;
+}
+
+.ant-collapse .ant-collapse-panel{
+  background-color:transparent;
 }
 
 /* ============================================
@@ -450,11 +499,25 @@ textarea::placeholder {
    模态框样式
    ============================================ */
 
+.ant-modal-mask {
+  background-color: rgba(0, 0, 0, 0.25) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+}
+
 .ant-modal-content {
-  /*background-color: var(--bg-elevated) !important;*/
-  border-radius: var(--radius-lg) !important;
+  border-radius: var(--radius-md) !important;
   box-shadow: var(--shadow-lg) !important;
 }
+
+/*.ant-modal .ant-modal-container{*/
+/*  background-color: transparent !important;*/
+/*  backdrop-filter: blur(var(--glass-blur)) !important;*/
+/*  border-radius: 12px !important;*/
+/*  border: 1px solid var(--glass-border) !important;*/
+/*  box-shadow: rgba(0, 0, 0, 0.05) 0px 2px 12px !important;*/
+/*  gap: 8px !important;*/
+/*}*/
 
 /* 通用Modal样式 - 85%宽度，90%最大高度，垂直居中 */
 .ant-modal {
@@ -493,7 +556,8 @@ textarea::placeholder {
 
 .ant-modal .ant-modal-body {
   flex: 1;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   max-height: calc(90vh - 110px);
 }
 
@@ -585,35 +649,7 @@ textarea::placeholder {
 }
 
 /* ============================================
-   消息气泡样式
-   ============================================ */
-
-.message-bubble {
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-md) var(--spacing-lg);
-  max-width: 80%;
-  word-break: break-word;
-  transition: box-shadow 0.2s ease;
-}
-
-.message-bubble:hover {
-  box-shadow: var(--shadow-sm);
-}
-
-.message-bubble-user {
-  background-color: var(--accent-color);
-  color: var(--text-inverse);
-  border-bottom-right-radius: var(--radius-sm);
-}
-
-.message-bubble-assistant {
-  background-color: var(--bg-tertiary);
-  color: var(--text-primary);
-  border-bottom-left-radius: var(--radius-sm);
-}
-
-/* ============================================
-   输入区域样式
+    输入区域样式
    ============================================ */
 
 .input-area {
@@ -737,12 +773,7 @@ body[data-theme='dark'] .ant-collapse {
 }
 
 /* 设置对话框深色模式优化 */
-body[data-theme='dark'] .settings-modal .ant-modal-content {
-  background-color: var(--bg-secondary);
-}
-
 body[data-theme='dark'] .settings-modal .ant-modal-header {
-  /*background-color: var(--bg-secondary);*/
   border-bottom-color: var(--border-color);
 }
 
@@ -759,7 +790,9 @@ body[data-theme='light'] {
   --bg-tertiary: #f1f3f5;
   --border-color: #dee2e6;
 }
-
+body[data-theme='light'] .ant-table-wrapper .ant-table{
+  background: rgb(255 255 255 / 16%) !important;
+}
 /* ============================================
    响应式设计
    ============================================ */
@@ -792,6 +825,11 @@ body[data-theme='light'] {
   100% {
     transform: rotate(360deg);
   }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 /* ============================================

@@ -9,6 +9,7 @@ interface ModelTabProps {
   setError: (error: string | null) => void
   providers: Provider[]
   allProviders: Provider[]
+  systemProviders: any[]
   showAddModel: boolean
   setShowAddModel: React.Dispatch<React.SetStateAction<boolean>>
   selectedProvider: string
@@ -60,6 +61,7 @@ const ModelTab: React.FC<ModelTabProps> = ({
   setError,
   providers,
   allProviders,
+  systemProviders,
   showAddModel,
   setShowAddModel,
   selectedProvider,
@@ -135,7 +137,7 @@ const ModelTab: React.FC<ModelTabProps> = ({
         title={isEditingModel ? "编辑模型密钥" : "添加新模型"}
         open={showAddModel}
         centered
-        maskClosable={false}
+        mask={{ closable: false }}
         onCancel={() => { 
           setShowAddModel(false); 
           setIsEditingModel(false);
@@ -180,19 +182,15 @@ const ModelTab: React.FC<ModelTabProps> = ({
               filterOption={(input, option) => 
                 (option?.searchText || '').toLowerCase().includes(input.toLowerCase())
               }
-              options={allProviders
-                .filter(p => !p.isConnected) // 过滤掉已连接的厂商
-                .map(p => {
-                  return {
-                    label: (
-                      <Space>
-                        {p.name}
-                      </Space>
-                    ),
-                    value: p.id,
-                    searchText: p.name,
-                  }
-                })}
+              options={(systemProviders.length > 0 ? systemProviders : allProviders)
+                .filter((p: any) => !allProviders.some(ap => ap.id === p.id)) // 排除已配置的
+                .filter((p: any) => p.id !== 'opencode') // 排除 opencode
+                .map((p: any) => ({
+                  label: `${p.name} (${p.id})`,
+                  value: p.id,
+                  searchText: `${p.name} ${p.id}`,
+                }))
+              }
             />
           )}
         </div>
@@ -211,7 +209,7 @@ const ModelTab: React.FC<ModelTabProps> = ({
         title="添加自定义模型"
         open={showAddCustomModel}
         centered
-        maskClosable={false}
+        mask={{ closable: false }}
         onCancel={() => { setShowAddCustomModel(false); resetCustomModelForm() }}
         footer={[
           <Button key="cancel" onClick={() => { setShowAddCustomModel(false); resetCustomModelForm() }}>
@@ -268,7 +266,7 @@ const ModelTab: React.FC<ModelTabProps> = ({
             <div key={index} style={{ 
               marginBottom: 16, 
               padding: 12, 
-              background: 'var(--bg-tertiary)', 
+              // background: 'var(--bg-tertiary)',
               borderRadius: 6,
               border: '1px solid var(--border-color)'
             }}>
@@ -417,6 +415,7 @@ const ModelTab: React.FC<ModelTabProps> = ({
                     icon={<EditOutlined />}
                     disabled={record.id === 'opencode'}
                     onClick={() => handleEditProvider(record)}
+                    style={{ color: 'var(--text-primary)' }}
                   />
                   <Button
                     type="text"
@@ -440,7 +439,7 @@ const ModelTab: React.FC<ModelTabProps> = ({
         <div style={{ 
           marginTop: 16, 
           padding: 12, 
-          backgroundColor: 'var(--bg-secondary)', 
+          // backgroundColor: 'var(--bg-secondary)',
           border: '1px solid var(--border-color)',
           borderRadius: 6,
           fontSize: 12

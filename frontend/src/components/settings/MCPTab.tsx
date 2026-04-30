@@ -433,7 +433,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
         title={editingServer ? `编辑 MCP 服务器: ${editingServer.name}` : '添加 MCP 服务器'}
         open={showAddMCP}
         centered
-        maskClosable={false}
+        mask={{ closable: false }}
         onCancel={() => { 
           setShowAddMCP(false); 
           setEditingServer(null);
@@ -702,7 +702,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
       <div style={{ 
         marginTop: 16, 
         padding: 12, 
-        backgroundColor: 'var(--bg-secondary)', 
+        // backgroundColor: 'var(--bg-secondary)',
         border: '1px solid var(--border-color)',
         borderRadius: 6,
         fontSize: 12

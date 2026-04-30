@@ -1,14 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Modal, Tabs, Space, message } from 'antd'
+import { Modal, message } from 'antd'
 
 import JSZip from 'jszip'
-import {
-  AppstoreOutlined,
-  CloudServerOutlined,
-  BulbOutlined,
-  BgColorsOutlined,
-  SafetyOutlined,
-} from '@ant-design/icons'
 import { Settings, SkillConfig, MCPServer, Provider } from '../types'
 import { kotlinApi } from '../utils/kotlinApi'
 import SkillsTab from './settings/SkillsTab'
@@ -19,6 +12,7 @@ import PermissionsTab from './settings/PermissionsTab'
 
 interface SettingsDialogProps {
   open: boolean
+  activeTab: string
   settings: Settings
   onSettingsChange: (settings: Settings) => void
   isDark: boolean
@@ -30,6 +24,7 @@ interface SettingsDialogProps {
 
 const SettingsDialog: React.FC<SettingsDialogProps> = ({
   open,
+  activeTab,
   settings,
   onSettingsChange,
   isDark,
@@ -45,6 +40,8 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
   const [showAddModel, setShowAddModel] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState<string>('')
   const [apiKey, setApiKey] = useState('')
+  const [systemProviders, setSystemProviders] = useState<any[]>([])
+  const configProvidersRef = useRef<Record<string, any>>({})
   
   // Skills 管理
   const [showAddSkill, setShowAddSkill] = useState(false)
@@ -146,24 +143,31 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
       let allList: any[] = []
       let opencodeAllMap: Record<string, any> = {}
       
-      // 2. 从 /provider 获取模型数量
+      // 2. 从 /provider 获取所有系统供应商（含模型列表）
+      let systemProviders: any[] = []
       try {
         const providerResponse = await kotlinApi.getProviders()
         if (providerResponse.data?.all && Array.isArray(providerResponse.data.all)) {
+          systemProviders = providerResponse.data.all
           providerResponse.data.all.forEach((p: any) => {
             opencodeAllMap[p.id] = p.models || {}
           })
         }
       } catch { /* ignore */ }
       
-      // 3. 从 getConfigProviders 获取 opencode.jsonc 配置（用于判断是否为自定义厂家）
+      // 3. 从 opencode.jsonc 的 provider 键判断自定义厂商，获取 options.baseURL
       let configProviderIds = new Set<string>()
+      const configProvidersMap: Record<string, any> = {}
       try {
-        const configResponse = await kotlinApi.getConfigProviders()
-        if (configResponse.data && typeof configResponse.data === 'object') {
-          Object.keys(configResponse.data as Record<string, any>).forEach(id => configProviderIds.add(id))
+        const configResponse = await kotlinApi.getConfig()
+        if (configResponse.data?.provider && typeof configResponse.data.provider === 'object') {
+          Object.entries(configResponse.data.provider as Record<string, any>).forEach(([id, cfg]) => {
+            configProviderIds.add(id)
+            configProvidersMap[id] = cfg
+          })
         }
       } catch { /* ignore */ }
+      configProvidersRef.current = configProvidersMap
       
       // 4. 构建列表：以 auth.json 数据为主
       if (authResponse.data?.providers && Array.isArray(authResponse.data.providers)) {
@@ -171,12 +175,14 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
           ...p,
           models: opencodeAllMap[p.id] || p.models || {},
           isConnected: true,
-          isCustom: configProviderIds.has(p.id), // 在 opencode.jsonc 中也有配置 = 自定义厂家
+          isCustom: configProviderIds.has(p.id),
+          source: configProviderIds.has(p.id) ? 'config' : p.source,
         }))
       }
       
       setAllProviders(allList)
-      setProviders(allList) // 全部已连接
+      setProviders(allList)
+      setSystemProviders(systemProviders)
       onProvidersChange?.(allList)
     } catch (error) {
       setError('获取模型列表失败')
@@ -302,33 +308,32 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
   // 编辑厂商密钥
   const handleEditProvider = (provider: Provider) => {
-    // 检查是否为opencode厂商
     if (provider.id.toLowerCase() === 'opencode') {
       message.warning('OpenCode厂商不能被编辑')
       return
     }
-    
-    // 检查是否为自定义厂商（通过source="config"判断）
-    const isCustomProvider = provider.source === 'config'
+
+    // 从 config 数据中获取完整配置（含 options.baseURL、models 等）
+    const configData = configProvidersRef.current[provider.id]
+    const isCustomProvider = !!configData
     
     if (isCustomProvider) {
-      // 打开自定义模型编辑弹窗并预填充数据
-      // 注意：对于自定义厂商，我们不设置 isEditingModel，因为它只用于标准模型密钥模态框
-      // 确保标准模型密钥模态框的编辑状态被重置
       setIsEditingModel(false)
       setSelectedProvider('')
       setApiKey('')
       
-      // 预填充自定义厂商数据
-      setCustomProviderName(provider.name)
+      // 优先使用 config 数据中的完整配置
+      const cfg = configData || provider
+      setCustomProviderName(cfg.name || provider.name)
       setCustomProviderId(provider.id)
-      setCustomBaseUrl(provider.options?.baseURL || '')
+      setCustomBaseUrl(cfg.options?.baseURL || '')
       setCustomApiKey(provider.key || '')
       setEditingProvider(provider)
-      
-      // 转换模型数据 - provider.models是 { [key: string]: ModelInfo } 格式
-      const modelsArray = provider.models ? Object.entries(provider.models).map(([modelId, model]) => ({
-        id: modelId,  // 使用对象的key作为模型ID
+
+      // 转换模型数据 - 优先使用 config 中的 models
+      const sourceModels = cfg.models || provider.models
+      const modelsArray = sourceModels ? Object.entries(sourceModels).map(([modelId, model]: [string, any]) => ({
+        id: modelId,
         name: model.name || modelId,
         options: {
           reasoning: model.reasoning || model.capabilities?.reasoning || false,
@@ -361,10 +366,12 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
       setCustomModels(modelsArray)
       
       // 转换请求头数据
-      const headersArray = provider.options?.headers ? Object.entries(provider.options.headers).map(([name, value]) => ({
-        name,
-        value: String(value)
-      })) : [{name: '', value: ''}]
+      const headersArray = (cfg.options?.headers || provider.options?.headers)
+        ? Object.entries(cfg.options?.headers || provider.options?.headers || {}).map(([name, value]) => ({
+          name,
+          value: String(value)
+        }))
+        : [{name: '', value: ''}]
       setCustomHeaders(headersArray)
       
       setShowAddCustomModel(true)
@@ -394,6 +401,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
       okText: '删除',
       okType: 'danger',
       cancelText: '取消',
+      centered: true,
       async onOk() {
         try {
           console.log('开始删除厂商:', providerId)
@@ -1442,222 +1450,188 @@ npm run build
 
 
 
-  const items = [
-    {
-      key: 'skills',
-      label: (
-        <Space>
-          <AppstoreOutlined />
-          <span>Skills</span>
-        </Space>
-      ),
-      children: (
-        <SkillsTab
-          settings={settings}
-          onSettingsChange={onSettingsChange}
-          isDark={isDark}
-          onServiceRestart={onServiceRestart}
-          showAddSkill={showAddSkill}
-          setShowAddSkill={setShowAddSkill}
-          isEditingSkill={isEditingSkill}
-          setIsEditingSkill={setIsEditingSkill}
-          setEditingSkillId={setEditingSkillId}
-          editingSkillId={editingSkillId}
-          newSkillName={newSkillName}
-          setNewSkillName={setNewSkillName}
-          newSkillContent={newSkillContent}
-          setNewSkillContent={setNewSkillContent}
-          skillScope={skillScope}
-          setSkillScope={setSkillScope}
-          skillDescription={skillDescription}
-          setSkillDescription={setSkillDescription}
-          skillVersion={skillVersion}
-          setSkillVersion={setSkillVersion}
-          skillTemplates={skillTemplates}
-          setSkillTemplates={setSkillTemplates}
-          skillGoodExamples={skillGoodExamples}
-          setSkillGoodExamples={setSkillGoodExamples}
-          skillAntiPatterns={skillAntiPatterns}
-          setSkillAntiPatterns={setSkillAntiPatterns}
-          skillRules={skillRules}
-          setSkillRules={setSkillRules}
-          skillScripts={skillScripts}
-          setSkillScripts={setSkillScripts}
-          skillActiveTab={skillActiveTab}
-          setSkillActiveTab={setSkillActiveTab}
-          loadingSkillFiles={loadingSkillFiles}
-          savingSkill={savingSkill}
-          originalSkillScope={originalSkillScope}
-          handleAddSkill={handleAddSkill}
-          handleImportSkill={handleImportSkill}
-          handleUseTemplate={handleUseTemplate}
-          resetSkillForm={resetSkillForm}
-          addFile={addFile}
-          removeFile={removeFile}
-          updateFileName={updateFileName}
-          updateFileContent={updateFileContent}
-           handleEditSkill={handleEditSkill}
-          handleExportSkill={handleExportSkill}
-          fetchSkills={fetchSkills}
-        />
-      ),
-    },
-    {
-      key: 'mcp',
-      label: (
-        <Space>
-          <CloudServerOutlined />
-          <span>MCP</span>
-        </Space>
-      ),
-      children: (
-        <MCPTab
-          settings={settings}
-          onSettingsChange={onSettingsChange}
-          isDark={isDark}
-          onServiceRestart={onServiceRestart}
-          showAddMCP={showAddMCP}
-          setShowAddMCP={setShowAddMCP}
-          newMCPName={newMCPName}
-          setNewMCPName={setNewMCPName}
-          newMCPConfig={newMCPConfig}
-          setNewMCPConfig={setNewMCPConfig}
-          editingMCPId={editingMCPId}
-          setEditingMCPId={setEditingMCPId}
-          handleAddMCP={handleAddMCP}
-          fetchMCPServers={fetchMCPServers}
-        />
-      ),
-    },
-    {
-      key: 'model',
-      label: (
-        <Space>
-          <BulbOutlined />
-          <span>模型配置</span>
-        </Space>
-      ),
-      children: (
-        <ModelTab
-          error={error}
-          setError={setError}
-          providers={providers}
-          allProviders={allProviders}
-          showAddModel={showAddModel}
-          setShowAddModel={setShowAddModel}
-          selectedProvider={selectedProvider}
-          setSelectedProvider={setSelectedProvider}
-          apiKey={apiKey}
-          setApiKey={setApiKey}
-          editingProvider={editingProvider}
-          setEditingProvider={setEditingProvider}
-          isEditingModel={isEditingModel}
-          setIsEditingModel={setIsEditingModel}
-          showAddCustomModel={showAddCustomModel}
-          setShowAddCustomModel={setShowAddCustomModel}
-          customProviderName={customProviderName}
-          setCustomProviderName={setCustomProviderName}
-          customProviderId={customProviderId}
-          setCustomProviderId={setCustomProviderId}
-          customBaseUrl={customBaseUrl}
-          setCustomBaseUrl={setCustomBaseUrl}
-          customApiKey={customApiKey}
-          setCustomApiKey={setCustomApiKey}
-          customModels={customModels}
-          customHeaders={customHeaders}
-          handleAddModel={handleAddModel}
-          handleEditProvider={handleEditProvider}
-          handleDeleteProvider={handleDeleteProvider}
-          handleAddCustomModel={handleAddCustomModel}
-          resetCustomModelForm={resetCustomModelForm}
-          addModelRow={addModelRow}
-          removeModelRow={removeModelRow}
-          updateModelField={updateModelField}
-          updateModelOptions={updateModelOptions}
-          addHeaderRow={addHeaderRow}
-          removeHeaderRow={removeHeaderRow}
-          updateHeaderField={updateHeaderField}
-        />
-      ),
+  const getTitle = () => {
+    switch (activeTab) {
+      case 'skills': return '技能管理'
+      case 'mcp': return 'MCP 服务器配置'
+      case 'model': return '模型提供商配置'
+      case 'permissions': return '权限管理'
+      case 'theme': return '外观主题'
+      default: return '助手设置'
+    }
+  }
 
-    },
-
-    {
-      key: 'permissions',
-      label: (
-        <Space>
-          <SafetyOutlined />
-          <span>权限</span>
-        </Space>
-      ),
-      children: (
-        <PermissionsTab
-          settings={settings}
-          onSettingsChange={onSettingsChange}
-          onServiceRestart={onServiceRestart}
-        />
-      ),
-    },
-    {
-      key: 'theme',
-      label: (
-        <Space>
-          <BgColorsOutlined />
-          <span>主题</span>
-        </Space>
-      ),
-      children: (
-        <ThemeTab
-          isDark={isDark}
-          onThemeChange={onThemeChange}
-        />
-      ),
-    },
-  ]
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'skills':
+        return (
+          <SkillsTab
+            settings={settings}
+            onSettingsChange={onSettingsChange}
+            isDark={isDark}
+            onServiceRestart={onServiceRestart}
+            showAddSkill={showAddSkill}
+            setShowAddSkill={setShowAddSkill}
+            isEditingSkill={isEditingSkill}
+            setIsEditingSkill={setIsEditingSkill}
+            setEditingSkillId={setEditingSkillId}
+            editingSkillId={editingSkillId}
+            newSkillName={newSkillName}
+            setNewSkillName={setNewSkillName}
+            newSkillContent={newSkillContent}
+            setNewSkillContent={setNewSkillContent}
+            skillScope={skillScope}
+            setSkillScope={setSkillScope}
+            skillDescription={skillDescription}
+            setSkillDescription={setSkillDescription}
+            skillVersion={skillVersion}
+            setSkillVersion={setSkillVersion}
+            skillTemplates={skillTemplates}
+            setSkillTemplates={setSkillTemplates}
+            skillGoodExamples={skillGoodExamples}
+            setSkillGoodExamples={setSkillGoodExamples}
+            skillAntiPatterns={skillAntiPatterns}
+            setSkillAntiPatterns={setSkillAntiPatterns}
+            skillRules={skillRules}
+            setSkillRules={setSkillRules}
+            skillScripts={skillScripts}
+            setSkillScripts={setSkillScripts}
+            skillActiveTab={skillActiveTab}
+            setSkillActiveTab={setSkillActiveTab}
+            loadingSkillFiles={loadingSkillFiles}
+            savingSkill={savingSkill}
+            originalSkillScope={originalSkillScope}
+            handleAddSkill={handleAddSkill}
+            handleImportSkill={handleImportSkill}
+            handleUseTemplate={handleUseTemplate}
+            resetSkillForm={resetSkillForm}
+            addFile={addFile}
+            removeFile={removeFile}
+            updateFileName={updateFileName}
+            updateFileContent={updateFileContent}
+            handleEditSkill={handleEditSkill}
+            handleExportSkill={handleExportSkill}
+            fetchSkills={fetchSkills}
+          />
+        )
+      case 'mcp':
+        return (
+          <MCPTab
+            settings={settings}
+            onSettingsChange={onSettingsChange}
+            isDark={isDark}
+            onServiceRestart={onServiceRestart}
+            showAddMCP={showAddMCP}
+            setShowAddMCP={setShowAddMCP}
+            newMCPName={newMCPName}
+            setNewMCPName={setNewMCPName}
+            newMCPConfig={newMCPConfig}
+            setNewMCPConfig={setNewMCPConfig}
+            editingMCPId={editingMCPId}
+            setEditingMCPId={setEditingMCPId}
+            handleAddMCP={handleAddMCP}
+            fetchMCPServers={fetchMCPServers}
+          />
+        )
+      case 'model':
+        return (
+          <ModelTab
+            error={error}
+            setError={setError}
+            providers={providers}
+            allProviders={allProviders}
+            systemProviders={systemProviders}
+            showAddModel={showAddModel}
+            setShowAddModel={setShowAddModel}
+            selectedProvider={selectedProvider}
+            setSelectedProvider={setSelectedProvider}
+            apiKey={apiKey}
+            setApiKey={setApiKey}
+            editingProvider={editingProvider}
+            setEditingProvider={setEditingProvider}
+            isEditingModel={isEditingModel}
+            setIsEditingModel={setIsEditingModel}
+            showAddCustomModel={showAddCustomModel}
+            setShowAddCustomModel={setShowAddCustomModel}
+            customProviderName={customProviderName}
+            setCustomProviderName={setCustomProviderName}
+            customProviderId={customProviderId}
+            setCustomProviderId={setCustomProviderId}
+            customBaseUrl={customBaseUrl}
+            setCustomBaseUrl={setCustomBaseUrl}
+            customApiKey={customApiKey}
+            setCustomApiKey={setCustomApiKey}
+            customModels={customModels}
+            customHeaders={customHeaders}
+            handleAddModel={handleAddModel}
+            handleEditProvider={handleEditProvider}
+            handleDeleteProvider={handleDeleteProvider}
+            handleAddCustomModel={handleAddCustomModel}
+            resetCustomModelForm={resetCustomModelForm}
+            addModelRow={addModelRow}
+            removeModelRow={removeModelRow}
+            updateModelField={updateModelField}
+            updateModelOptions={updateModelOptions}
+            addHeaderRow={addHeaderRow}
+            removeHeaderRow={removeHeaderRow}
+            updateHeaderField={updateHeaderField}
+          />
+        )
+      case 'permissions':
+        return (
+          <PermissionsTab
+            settings={settings}
+            onSettingsChange={onSettingsChange}
+            onServiceRestart={onServiceRestart}
+          />
+        )
+      case 'theme':
+        return (
+          <ThemeTab
+            isDark={isDark}
+            onThemeChange={onThemeChange}
+          />
+        )
+      default:
+        return null
+    }
+  }
 
   return (
     <Modal
-      title="助手设置"
+      title={getTitle()}
       open={open}
       onCancel={onClose}
       footer={null}
       centered
-      maskClosable={false}
+      mask={{ closable: false }}
       className="settings-modal"
       styles={{
         body: {
           overflow: 'auto',
-          padding: 0,
+          padding: '12px 16px',
         },
       }}
     >
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <Tabs
-          tabPosition="left"
-          items={items}
-          style={{ 
-            flex: 1,
-            minHeight: 0,
-          }}
-        />
-        </div>
+      {renderContent()}
 
       <div style={{
-        padding: '12px 24px',
+        padding: '10px 0',
         borderTop: '1px solid var(--border-color)',
         textAlign: 'center',
-        fontSize: 12,
+        fontSize: 11,
         color: 'var(--text-secondary)',
+        marginTop: 4,
       }}>
         开源作者：<a href="https://gitee.com/qianguanshui" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)' }}>Assassin-Q</a>，
         主页：<a href="https://gitee.com/qianguanshui" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)' }}>https://gitee.com/qianguanshui</a>
       </div>
-      
+
       {/* 迁移技能文件确认弹窗 */}
       <Modal
         title="迁移技能文件"
         centered
-        maskClosable={false}
+        mask={{ closable: false }}
         open={showMigrationModal}
         onOk={async () => {
           try {
@@ -1670,7 +1644,7 @@ npm run build
           }
           setShowMigrationModal(false)
           finishSkillSave(migrationSkillId)
-          fetchSkills() // 重新从后端加载技能列表，确保scope正确
+          fetchSkills()
         }}
         okText="移动文件"
         cancelText="仅复制"
@@ -1685,7 +1659,7 @@ npm run build
           }
           setShowMigrationModal(false)
           finishSkillSave(migrationSkillId)
-          fetchSkills() // 重新从后端加载技能列表，确保scope正确
+          fetchSkills()
         }}
       >
         <p>检测到您将技能范围从{migrationOriginalScope === 'project' ? '项目级' : '全局'}切换到了{migrationNewScope === 'project' ? '项目级' : '全局'}，是否需要将文件也迁移过去？</p>

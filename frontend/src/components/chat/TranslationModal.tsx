@@ -109,7 +109,7 @@ const TranslationModal: React.FC<TranslationModalProps> = ({ open, text, onClose
       onCancel={onClose}
       footer={null}
       centered
-      destroyOnClose
+      destroyOnHidden
       styles={{ body: { maxHeight: '90vh', minHeight: '35vh', overflow: 'auto' } }}
     >
       {/* API Key 配置 */}
