@@ -84,7 +84,7 @@ const ChatArea = forwardRef<ChatAreaHandle, ChatAreaProps>(({
           padding: '0 12px 16px 12px',
         }}
       >
-        <div style={{ maxWidth: '85%', minWidth: 0 }}>
+        <div style={{ width: '100%', minWidth: 0 }}>
           <div
             style={{
               color: 'var(--text-primary)',

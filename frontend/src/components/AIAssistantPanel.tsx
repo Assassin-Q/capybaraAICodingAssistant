@@ -2284,7 +2284,10 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
         </div>
 
         {/* 自定义滚动条 - 在顶栏和底栏之间 */}
-        <div style={{
+        <div
+          onMouseEnter={() => setHoverMsgArea(true)}
+          onMouseLeave={() => setHoverMsgArea(false)}
+          style={{
           position: 'absolute',
           top: 50,
           bottom: inputAreaHeight + 12,
@@ -2357,7 +2360,6 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
           border: '1px solid var(--glass-border)',
           boxShadow: '0 -4px 20px rgba(0,0,0,0.06)',
           maxHeight: '50%',
-          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
         }}
