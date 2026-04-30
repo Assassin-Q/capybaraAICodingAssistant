@@ -2308,7 +2308,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
                 width: 4,
                 height: thumbH,
                 borderRadius: 2,
-                background: 'var(--border-color)',
+                background: 'var(--text-tertiary)',
                 opacity: 0.6,
                 cursor: 'pointer',
                 pointerEvents: 'auto',

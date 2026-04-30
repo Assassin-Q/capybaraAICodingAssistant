@@ -36,17 +36,13 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+  background: var(--text-tertiary);
   border-radius: 10px;
-  border: 1px solid transparent;
-  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-tertiary);
+  background: var(--text-secondary);
   border-radius: 10px;
-  border: 1px solid transparent;
-  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-corner {
@@ -56,7 +52,7 @@ body {
 /* Firefox scrollbar */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--border-color) transparent;
+  scrollbar-color: var(--text-tertiary) transparent;
 }
 
 /* 消息区域使用更细的滚动条 */
