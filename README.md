@@ -24,7 +24,7 @@
 
 ## 🎬 演示视频 / Demo Video
 
-<video src="./docs/vedio/capybaraAICodingAssistantPreview.mp4" controls width="100%" style="max-width: 800px; border-radius: 8px;">
+<video src="https://www.shine.jx.cn/capybaraAICodingAssistantPreview.mp4" controls width="100%" style="max-width: 800px; border-radius: 8px;">
   您的浏览器不支持视频播放 / Your browser does not support the video tag.
 </video>
 
