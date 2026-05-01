@@ -9,6 +9,7 @@ import MCPTab from './settings/MCPTab'
 import ThemeTab from './settings/ThemeTab'
 import ModelTab from './settings/ModelTab'
 import PermissionsTab from './settings/PermissionsTab'
+import { useLocale } from '../locales/LocaleContext'
 
 interface SettingsDialogProps {
   open: boolean
@@ -33,6 +34,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
   onServiceRestart,
   onProvidersChange,
 }) => {
+  const { t } = useLocale()
   const [providers, setProviders] = useState<Provider[]>([])
   const [allProviders, setAllProviders] = useState<Provider[]>([])
   const [_loading, setLoading] = useState(false)
@@ -186,7 +188,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
       setSystemProviders(systemProviders)
       onProvidersChange?.(allList)
     } catch (error) {
-      setError('获取模型列表失败')
+      setError(t('model.fetchProvidersFailed'))
       setProviders([])
     } finally {
       setLoading(false)
@@ -206,21 +208,21 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
   // 添加自定义模型
   const handleAddCustomModel = async () => {
     if (!customProviderName || !customBaseUrl) {
-       message.warning('请填写提供商名称和基础URL')
+       message.warning(t('settings.fillNameAndUrl'))
       return
     }
 
     // 验证提供商ID格式
     const providerId = editingProvider ? editingProvider.id : (customProviderId || generateProviderId())
     if (!/^[a-z0-9_-]+$/.test(providerId)) {
-       message.warning('提供商ID只能使用小写字母、数字、连字符或下划线')
+       message.warning(t('settings.invalidProviderId'))
       return
     }
 
     // 验证模型列表
     const validModels = customModels.filter(m => m.id && m.name)
     if (validModels.length === 0) {
-       message.warning('请至少添加一个有效的模型')
+       message.warning(t('settings.addAtLeastOneModel'))
       return
     }
 
@@ -262,7 +264,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
       if (customApiKey) {
         const authResponse = await kotlinApi.saveModelAuth(providerId, customApiKey)
         if (authResponse.error) {
-          setError(`${isEditingModel ? '更新' : '添加'}自定义模型失败: ${authResponse.error}`)
+          setError(`${t('settings.customModelSaveFailed')}: ${authResponse.error}`)
           return
         }
       }
@@ -270,9 +272,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
       // 2. 通过直接Kotlin端点保存模型配置到opencode.jsonc
       const configResponse = await kotlinApi.saveModelConfig(providerId, providerConfig)
       if (configResponse.error) {
-        setError(`${isEditingModel ? '更新' : '添加'}自定义模型失败: ${configResponse.error}`)
+        setError(`${t('settings.customModelSaveFailed')}: ${configResponse.error}`)
       } else {
-         message.success(`自定义模型${isEditingModel ? '更新' : '添加'}成功`)
+         message.success(t('settings.customModelUpdateSuccess'))
         setShowAddCustomModel(false)
         setIsEditingModel(false)
         setEditingProvider(null)
@@ -280,7 +282,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
         fetchProviders()
       }
     } catch (error) {
-      setError(`${isEditingModel ? '更新' : '添加'}自定义模型失败`)
+      setError(t('settings.customModelSaveFailed'))
       console.error(error)
     }
   }
@@ -311,7 +313,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
   // 编辑厂商密钥
   const handleEditProvider = (provider: Provider) => {
     if (provider.id.toLowerCase() === 'opencode') {
-      message.warning('OpenCode厂商不能被编辑')
+      message.warning(t('settings.openCodeNotEditable'))
       return
     }
 
@@ -391,7 +393,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
   // 删除厂商
   const handleDeleteProvider = async (providerId: string) => {
     if (providerId === 'opencode') {
-      message.warning('OpenCode厂商不能被移除')
+      message.warning(t('settings.openCodeNotRemovable'))
       return
     }
     
@@ -399,11 +401,11 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
     const providerName = provider?.name || providerId
     
     Modal.confirm({
-      title: '确认删除厂商',
-      content: `确定要删除厂商 "${providerName}" 吗？${provider?.source === 'config' ? '此操作将永久删除自定义厂商配置。' : '此操作将禁用该厂商，您可以在配置中重新启用。'}`,
-      okText: '删除',
+      title: t('model.deleteProviderConfirmTitle'),
+      content: `${t('model.deleteProviderConfirmContent', { name: providerName })}${provider?.source === 'config' ? t('model.deleteProviderCustomHint') : t('model.deleteProviderStandardHint')}`,
+      okText: t('common.delete'),
       okType: 'danger',
-      cancelText: '取消',
+      cancelText: t('common.cancel'),
       centered: true,
       async onOk() {
         try {
@@ -420,10 +422,10 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
             console.warn(`删除厂商 ${providerId} 的认证信息失败: ${authResponse.error}`)
           }
           
-          message.success('厂商已删除')
+          message.success(t('model.deleteSuccess'))
           fetchProviders()
         } catch (error) {
-          setError('删除厂商失败')
+          setError(t('model.deleteFailed'))
           console.error(error)
         }
       }
@@ -565,9 +567,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
       const response = await kotlinApi.saveModelAuth(selectedProvider, apiKey)
 
       if (response.error) {
-        setError(`${isEditingModel ? '更新' : '添加'}模型失败: ${response.error}`)
+        setError(`${t('model.saveModelFailed')} ${response.error}`)
       } else {
-        message.success(`模型${isEditingModel ? '更新' : '添加'}成功`)
+        message.success(t('model.saveModelSuccess'))
         setShowAddModel(false)
         setIsEditingModel(false)
         setEditingProvider(null)
@@ -576,7 +578,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
         fetchProviders()
       }
     } catch (err) {
-      setError(`${isEditingModel ? '更新' : '添加'}模型失败`)
+      setError(t('model.saveModelFailed'))
     }
   }
 
@@ -622,7 +624,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
   // 添加自定义模型
   const handleAddSkill = () => {
     if (!newSkillName) {
-      message.warning('请填写技能名称')
+      message.warning(t('skills.fillName'))
       return
     }
 
@@ -636,13 +638,13 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
       
       const scopeChanged = currentEditingSkill && currentSkillScope !== currentOriginalScope
       if (scopeChanged) {
-        message.success('技能配置已保存成功！')
+        message.success(t('skills.saveSuccess'))
         setMigrationSkillId(skillId)
         setMigrationOriginalScope(currentOriginalScope)
         setMigrationNewScope(currentSkillScope)
         setShowMigrationModal(true)
       } else {
-        message.success(`技能${isEditingSkill ? '更新' : '添加'}成功！技能ID: ${skillId}`)
+        message.success(t('skills.updateSuccess') + skillId)
         finishSkillSave(skillId)
         fetchSkills() // 重新从后端加载技能列表
       }
@@ -730,14 +732,14 @@ ${newSkillContent}`
       }
 
       if (response.error) {
-        setError(`${isEditingSkill ? '更新' : '添加'}技能失败: ${response.error}`)
+        setError(`${t('skills.saveFailed')} ${response.error}`)
       } else {
         // 保存成功，返回 skillId 给 handleAddSkill 处理 scope 迁移逻辑
         setSavingSkill(false)
         return skillId
       }
     } catch (err) {
-      setError(`${isEditingSkill ? '更新' : '添加'}技能失败`)
+      setError(t('skills.saveFailed'))
       console.error(err)
     } finally {
       setSavingSkill(false)
@@ -796,7 +798,7 @@ ${newSkillContent}`
           // 查找SKILL.md文件
           const skillMdFile = zip.file(/^SKILL\.md$/i)[0]
           if (!skillMdFile) {
-            message.error('ZIP包中未找到SKILL.md文件')
+            message.error(t('skills.importNoSkillMd'))
             return
           }
           
@@ -937,10 +939,10 @@ ${newSkillContent}`
           // 切换到基础信息标签页
           setSkillActiveTab('basic')
           
-          message.success('技能ZIP包导入成功')
+          message.success(t('skills.importSuccess'))
         } catch (error) {
-          console.error('解析ZIP包失败:', error)
-          message.error('解析ZIP包失败')
+          console.error('parse ZIP failed:', error)
+          message.error(t('skills.importParseFailed'))
         }
       }
       reader.readAsArrayBuffer(file)
@@ -995,7 +997,7 @@ ${newSkillContent}`
             // 切换到基础信息标签页
             setSkillActiveTab('basic')
             
-            message.success('技能导入成功')
+            message.success(t('skills.importSuccess'))
           } else {
             // 没有frontmatter，直接使用内容
             setNewSkillContent(content.trim())
@@ -1009,17 +1011,17 @@ ${newSkillContent}`
               }
             }
             
-            message.success('技能导入成功（无frontmatter）')
+            message.success(t('skills.importSuccess'))
           }
         } catch (error) {
-          console.error('解析技能文件失败:', error)
-          message.error('解析技能文件失败')
+          console.error('parse skill file failed:', error)
+          message.error(t('skills.importParseFailed'))
         }
       }
       reader.readAsText(file)
       return false
     } else {
-      message.warning('请导入SKILL.md文件或ZIP包')
+      message.warning(t('skills.importNoSkillMd'))
       return false
     }
   }
@@ -1041,14 +1043,14 @@ ${newSkillContent}`
       
       // 在IntelliJ插件环境中，可能需要触发文件保存对话框
       // 添加一个提示，告诉用户文件下载位置
-      message.success(`技能"${skill.name}"已导出为${skillId}.zip，请检查您的下载文件夹`)
+      message.success(t('skills.exportSuccess'))
       
       link.click()
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
     } catch (error) {
       console.error('导出技能失败:', error)
-      message.error(`导出技能失败: ${(error as Error).message}`)
+      message.error(t('skills.exportFailed'))
     }
   }
 
@@ -1223,12 +1225,12 @@ npm run build
 
 # 更多脚本...
 `}])
-    message.success('已填充模板内容，请根据需要进行修改')
+    message.success(t('skills.templateFilled'))
   }
 
   const handleAddMCP = async () => {
     if (!newMCPName || !newMCPConfig) {
-      message.warning('请填写服务器名称和配置')
+      message.warning(t('mcp.fillServerNameAndConfig'))
       return
     }
 
@@ -1237,9 +1239,9 @@ npm run build
       const response = await kotlinApi.addMCPServer(newMCPName, config)
 
       if (response.error) {
-        setError(`添加 MCP 服务器失败: ${response.error}`)
+        setError(`${t('mcp.saveFailed')}: ${response.error}`)
       } else {
-        message.success(editingMCPId ? 'MCP 服务器更新成功' : 'MCP 服务器添加成功')
+        message.success(editingMCPId ? t('mcp.updateSuccess') : t('mcp.saveSuccess'))
         const serverId = editingMCPId || `mcp-${Date.now()}`
         const newServer: MCPServer = {
           id: serverId,
@@ -1273,7 +1275,7 @@ npm run build
         setEditingMCPId(null)
       }
     } catch (err) {
-      setError('添加 MCP 服务器失败：配置 JSON 格式错误')
+      setError(t('mcp.jsonError'))
     }
   }
 
@@ -1455,12 +1457,12 @@ npm run build
 
   const getTitle = () => {
     switch (activeTab) {
-      case 'skills': return '技能管理'
-      case 'mcp': return 'MCP 服务器配置'
-      case 'model': return '模型提供商配置'
-      case 'permissions': return '权限管理'
-      case 'theme': return '外观主题'
-      default: return '助手设置'
+      case 'skills': return t('settings.title.skills')
+      case 'mcp': return t('settings.title.mcp')
+      case 'model': return t('settings.title.model')
+      case 'permissions': return t('settings.title.permissions')
+      case 'theme': return t('settings.title.theme')
+      default: return t('settings.title.default')
     }
   }
 
@@ -1628,8 +1630,8 @@ npm run build
         color: 'var(--text-secondary)',
         marginTop: 4,
       }}>
-        开源作者：<a href="https://gitee.com/qianguanshui" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)' }}>Assassin-Q</a>，
-        主页：<a href="https://gitee.com/qianguanshui" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)' }}>https://gitee.com/qianguanshui</a>
+         {t('settings.footerAuthor')}<a href="https://gitee.com/qianguanshui" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)' }}>Assassin-Q</a>，
+         {t('settings.footerHomepage')}<a href="https://gitee.com/qianguanshui" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-color)' }}>https://gitee.com/qianguanshui</a>
       </div>
 
       {/* 迁移技能文件确认弹窗 */}

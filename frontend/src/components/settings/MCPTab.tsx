@@ -3,6 +3,7 @@ import { Button, Table, Modal, Flex, Input, Switch, Select, Form, Space, Tabs, R
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import type { MCPServer, Settings } from '../../types'
 import { kotlinApi } from '../../utils/kotlinApi'
+import { useLocale } from '../../locales/LocaleContext'
 
 
 const { TextArea } = Input
@@ -57,6 +58,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
   handleAddMCP,
   fetchMCPServers,
 }) => {
+  const { t } = useLocale()
   const [form] = Form.useForm()
   const [activeTab, setActiveTab] = useState<'local' | 'remote'>('remote')
   const [restartLoading, setRestartLoading] = useState(false)
@@ -230,40 +232,40 @@ const MCPTab: React.FC<MCPTabProps> = ({
       
       // 检查type字段
       if (!config.type || !['local', 'remote'].includes(config.type)) {
-        return { valid: false, error: 'type字段必须是"local"或"remote"' }
+        return { valid: false, error: t('mcp.validationType') }
       }
       
       // 检查local类型的必填字段
       if (config.type === 'local') {
         if (!config.command || !Array.isArray(config.command) || config.command.length === 0) {
-          return { valid: false, error: 'local类型必须提供command数组' }
+          return { valid: false, error: t('mcp.validationCommand') }
         }
       }
       
       // 检查remote类型的必填字段
       if (config.type === 'remote') {
         if (!config.url || typeof config.url !== 'string') {
-          return { valid: false, error: 'remote类型必须提供url字符串' }
+          return { valid: false, error: t('mcp.validationUrl') }
         }
       }
       
       // 检查可选字段类型
       if (config.environment && typeof config.environment !== 'object') {
-        return { valid: false, error: 'environment必须是对象类型' }
+        return { valid: false, error: t('mcp.validationEnvironment') }
       }
       if (config.headers && typeof config.headers !== 'object') {
-        return { valid: false, error: 'headers必须是对象类型' }
+        return { valid: false, error: t('mcp.validationHeaders') }
       }
       if (config.timeout !== undefined && (typeof config.timeout !== 'number' || config.timeout < 0)) {
-        return { valid: false, error: 'timeout必须是非负数字' }
+        return { valid: false, error: t('mcp.validationTimeout') }
       }
       if (config.enabled !== undefined && typeof config.enabled !== 'boolean') {
-        return { valid: false, error: 'enabled必须是布尔类型' }
+        return { valid: false, error: t('mcp.validationEnabled') }
       }
       
       return { valid: true }
     } catch (e) {
-      return { valid: false, error: `JSON解析失败: ${(e as Error).message}` }
+      return { valid: false, error: `${t('mcp.jsonParseError')} ${(e as Error).message}` }
     }
   }
 
@@ -289,7 +291,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
         setActiveTab(formData.type)
         setJsonError(null)
       } else {
-        message.error('JSON格式错误，无法同步到表单')
+        message.error(t('mcp.jsonFormatError'))
         return // 阻止切换
       }
     }
@@ -304,7 +306,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
       if (jsonMode) {
         const validation = validateMCPConfig(newMCPConfig)
         if (!validation.valid) {
-          message.error(`配置格式错误: ${validation.error}`)
+          message.error(`${t('mcp.configFormatError')} ${validation.error}`)
           return
         }
       }
@@ -322,25 +324,25 @@ const MCPTab: React.FC<MCPTabProps> = ({
 
   const mcpColumns = [
     {
-      title: '名称',
+      title: t('mcp.columnName'),
       dataIndex: 'name',
       key: 'name',
     },
     {
-      title: '类型',
+      title: t('mcp.columnType'),
       dataIndex: 'type',
       key: 'type',
        render: (_: any, record: MCPServer) => {
-         if (record.type === 'local') return '本地'
-         if (record.type === 'remote') return '远程'
+         if (record.type === 'local') return t('mcp.local')
+         if (record.type === 'remote') return t('mcp.remote')
          // 兼容旧数据：根据字段推断
-         if (record.command && record.command.length > 0) return '本地'
-         if (record.url) return '远程'
+         if (record.command && record.command.length > 0) return t('mcp.local')
+         if (record.url) return t('mcp.remote')
          return '未知'
        },
     },
     {
-      title: 'URL/命令',
+      title: t('mcp.columnUrlCommand'),
       dataIndex: 'url',
       key: 'url',
       ellipsis: true,
@@ -352,7 +354,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
        },
     },
     {
-      title: '启用',
+      title: t('mcp.enable'),
       dataIndex: 'enabled',
       key: 'enabled',
       render: (enabled: boolean, record: MCPServer) => (
@@ -368,13 +370,13 @@ const MCPTab: React.FC<MCPTabProps> = ({
       ),
     },
     {
-      title: '状态',
+      title: t('mcp.status'),
       key: 'status',
       render: (_: any, record: MCPServer) => {
         const status = record.status || 'unknown'
         const statusMap: Record<string, { color: string; text: string }> = {
-          'connected': { color: 'green', text: '已连接' },
-          'disconnected': { color: 'default', text: '未连接' },
+          'connected': { color: 'green', text: t('mcp.connected') },
+          'disconnected': { color: 'default', text: t('mcp.disconnected') },
           'error': { color: 'red', text: '错误' },
           'unknown': { color: 'default', text: '未知' },
         }
@@ -387,7 +389,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
       },
     },
     {
-      title: '操作',
+      title: t('mcp.columnActions'),
       key: 'action',
       render: (_: any, record: MCPServer) => (
         <Space>
@@ -418,19 +420,19 @@ const MCPTab: React.FC<MCPTabProps> = ({
   return (
     <div>
       <Flex justify="space-between" style={{ marginBottom: 16 }}>
-        <span style={{ color: 'var(--text-secondary)' }}>配置 MCP 服务器连接</span>
+        <span style={{ color: 'var(--text-secondary)' }}>{t('mcp.title')}</span>
         <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => {
           setEditingServer(null)
           setNewMCPName('')
           setNewMCPConfig('{}')
           setShowAddMCP(true)
         }}>
-          添加服务器
+          {t('mcp.addTitle')}
         </Button>
       </Flex>
 
       <Modal
-        title={editingServer ? `编辑 MCP 服务器: ${editingServer.name}` : '添加 MCP 服务器'}
+        title={editingServer ? t('mcp.editTitle', { name: editingServer.name }) : t('mcp.addTitle')}
         open={showAddMCP}
         centered
         mask={{ closable: false }}
@@ -447,19 +449,19 @@ const MCPTab: React.FC<MCPTabProps> = ({
             setNewMCPName(''); 
             setNewMCPConfig('') 
           }}>
-            取消
+            {t('common.cancel')}
           </Button>,
           <Button key="save" type="primary" onClick={handleFormSubmit}>
-            {editingServer ? '更新' : '保存'}
+            {editingServer ? t('common.update') : t('common.save')}
           </Button>,
         ]}
       >
         <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>服务器名称</div>
+          <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>{t('mcp.serverName')}</div>
           <Input
             value={newMCPName}
             onChange={e => setNewMCPName(e.target.value)}
-            placeholder="输入服务器名称（英文小写，使用连字符）"
+            placeholder={t('mcp.serverNamePlaceholder')}
           />
         </div>
 
@@ -469,7 +471,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
           items={[
             {
               key: 'form',
-              label: '表单配置',
+              label: t('mcp.tabForm'),
               children: (
                 <Form
                   form={form}
@@ -478,21 +480,21 @@ const MCPTab: React.FC<MCPTabProps> = ({
                 >
                   <Form.Item
                     name="type"
-                    label="服务器类型"
+                    label={t('mcp.serverType')}
                     rules={[{ required: true, message: '请选择服务器类型' }]}
                   >
                     <Radio.Group onChange={(e) => setActiveTab(e.target.value)}>
-                      <Radio value="remote">远程服务器 (Remote)</Radio>
-                      <Radio value="local">本地服务器 (Local)</Radio>
+                      <Radio value="remote">{t('mcp.remote')} (Remote)</Radio>
+                      <Radio value="local">{t('mcp.local')} (Local)</Radio>
                     </Radio.Group>
                   </Form.Item>
 
                   <Form.Item
                     name="enabled"
-                    label="启用状态"
+                    label={t('mcp.enable')}
                     valuePropName="checked"
                   >
-                    <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+                    <Switch checkedChildren={t('mcp.enable')} unCheckedChildren={t('mcp.disable')} />
                   </Form.Item>
 
                   {activeTab === 'local' ? (
@@ -515,9 +517,9 @@ const MCPTab: React.FC<MCPTabProps> = ({
                         {(fields, { add, remove }) => (
                           <div>
                             <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>环境变量</div>
+                              <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{t('mcp.env')}</div>
                               <Button type="dashed" size="small" onClick={() => add({ key: '', value: '' })}>
-                                添加环境变量
+                                {t('mcp.envAdd')}
                               </Button>
                             </div>
                             {fields.map(({ key, name, ...restField }) => (
@@ -539,7 +541,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
                                   <Input placeholder="变量值" />
                                 </Form.Item>
                                 <Button type="text" danger onClick={() => remove(name)}>
-                                  删除
+                                  {t('common.delete')}
                                 </Button>
                               </Space>
                             ))}
@@ -551,7 +553,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
                     <>
                       <Form.Item
                         name="url"
-                        label="服务器 URL"
+                        label={t('mcp.serverUrl')}
                         rules={[{ required: true, message: '请输入服务器 URL' }]}
                         extra="远程 MCP 服务器的地址，例如: https://mcp.example.com"
                       >
@@ -562,9 +564,9 @@ const MCPTab: React.FC<MCPTabProps> = ({
                         {(fields, { add, remove }) => (
                           <div>
                             <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>请求头 (Headers)</div>
+                              <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{t('mcp.headers')}</div>
                               <Button type="dashed" size="small" onClick={() => add({ key: '', value: '' })}>
-                                添加请求头
+                                {t('mcp.headerAdd')}
                               </Button>
                             </div>
                             {fields.map(({ key, name, ...restField }) => (
@@ -586,7 +588,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
                                   <Input placeholder="例如: Bearer {env:API_KEY}" />
                                 </Form.Item>
                                 <Button type="text" danger onClick={() => remove(name)}>
-                                  删除
+                                  {t('common.delete')}
                                 </Button>
                               </Space>
                             ))}
@@ -596,13 +598,13 @@ const MCPTab: React.FC<MCPTabProps> = ({
 
                       <Form.Item
                         name="oauth"
-                        label="OAuth 认证"
-                        extra="OpenCode 会自动处理 OAuth 认证流程"
+                        label={t('mcp.oauthLabel')}
+                        extra={t('mcp.oauthHint')}
                       >
                         <Radio.Group>
-                          <Radio value="auto">自动检测（默认）</Radio>
-                          <Radio value="custom">自定义 OAuth 配置</Radio>
-                          <Radio value="disabled">禁用 OAuth（使用 API 密钥）</Radio>
+                          <Radio value="auto">{t('mcp.oauthAuto')}</Radio>
+                          <Radio value="custom">{t('mcp.oauthCustom')}</Radio>
+                          <Radio value="disabled">{t('mcp.oauthDisabled')}</Radio>
                         </Radio.Group>
                       </Form.Item>
 
@@ -611,27 +613,27 @@ const MCPTab: React.FC<MCPTabProps> = ({
                         style={{ marginBottom: 16 }}
                         items={[{
                           key: 'oauth-config',
-                          label: 'OAuth 配置（仅当选择"自定义 OAuth 配置"时生效）',
+                          label: t('mcp.oauthConfigSection'),
                           children: (
                             <>
                               <Form.Item
                                 name="oauthClientId"
                                 label="Client ID"
-                                extra="OAuth 客户端 ID"
+                                extra={t('mcp.oauthClientId')}
                               >
                                 <Input placeholder="客户端 ID" />
                               </Form.Item>
                               <Form.Item
                                 name="oauthClientSecret"
                                 label="Client Secret"
-                                extra="OAuth 客户端密钥（如果需要）"
+                                extra={t('mcp.oauthClientSecret')}
                               >
                                 <Input.Password placeholder="客户端密钥" />
                               </Form.Item>
                               <Form.Item
                                 name="oauthScope"
                                 label="Scope"
-                                extra="请求的权限范围，例如: tools:read tools:execute"
+                                extra={t('mcp.oauthScope')}
                               >
                                 <Input placeholder="scope" />
                               </Form.Item>
@@ -644,7 +646,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
 
                   <Form.Item
                     name="timeout"
-                    label="超时时间（毫秒）"
+                    label={t('mcp.timeout')}
                     extra="从 MCP 服务器获取工具的超时时间，默认 5000（5秒）"
                   >
                     <Input type="number" min={1000} max={30000} />
@@ -654,7 +656,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
             },
             {
               key: 'json',
-              label: 'JSON 配置',
+              label: t('mcp.tabJson'),
               children: (
                 <div>
                   <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>配置 (JSON)</div>
@@ -681,7 +683,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
                     </div>
                   )}
                   <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
-                    提示：切换到表单模式可以自动将JSON配置映射到表单字段
+                    {t('mcp.formHint')}
                   </div>
                 </div>
               ),
@@ -709,7 +711,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
       }}>
         <Flex justify="space-between" align="center">
           <div style={{ color: 'var(--text-secondary)' }}>
-            ⚠️ 添加、修改、删除 MCP 服务器后需要重启服务才能生效
+            {t('mcp.restartHint')}
           </div>
            <Button 
             type="primary" 
@@ -719,7 +721,7 @@ const MCPTab: React.FC<MCPTabProps> = ({
               setRestartLoading(true)
               try {
                 await kotlinApi.restartService()
-                message.success('服务重启成功')
+                message.success(t('model.restartSuccess'))
                 // 刷新MCP服务器列表
                 await fetchMCPServers()
                 // 通知父组件刷新数据
@@ -728,13 +730,13 @@ const MCPTab: React.FC<MCPTabProps> = ({
                 }
               } catch (error) {
                 console.error('重启服务失败:', error)
-                 message.error(`重启服务失败: ${(error as Error).message}`)
+                 message.error(`${t('model.restartFailed')}${(error as Error).message}`)
               } finally {
                 setRestartLoading(false)
               }
             }}
           >
-            重启服务
+            {t('common.restart')}
           </Button>
         </Flex>
       </div>

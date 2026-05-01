@@ -13,9 +13,11 @@ import {
   SafetyOutlined,
   BgColorsOutlined,
   DownloadOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons'
 import type { PermissionRequest, QuestionRequest, TokenUsage, ContextUsage, SessionStatus, UpdateInfo } from '../types'
 import type { ServerStatus, Session } from '../utils/kotlinApi'
+import { useLocale } from '../locales/LocaleContext'
 
 const { Text } = Typography
 
@@ -80,6 +82,8 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
     updateInfo,
     onCheckUpdate,
   } = props
+
+  const { t, locale, setLocale } = useLocale()
 
   const getStatusIconSrc = () => {
     if (!currentSessionStatus) return '/user.jpg'
@@ -184,10 +188,10 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
               ...(serverStatus === 'running' ? { animation: 'pulse-dot 2s infinite' } : {}),
             }} />
             <span style={{ fontSize: 10, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-              {serverStatus === 'running' ? `在线${serverStatusData?.version ? ` (${serverStatusData.version})` : ''}`
-                : serverStatus === 'installed' ? '已停止'
-                : serverStatus === 'loading' ? '检查中'
-                : '未安装'}
+              {serverStatus === 'running' ? `${t('topbar.status.online')}${serverStatusData?.version ? ` (${serverStatusData.version})` : ''}`
+                : serverStatus === 'installed' ? t('topbar.status.stopped')
+                : serverStatus === 'loading' ? t('topbar.status.checking')
+                : t('topbar.status.notInstalled')}
             </span>
           </div>
         </Tooltip>
@@ -196,7 +200,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
         <div style={{ width: 1, height: 14, backgroundColor: 'var(--border-color)', margin: '0 2px' }} />
 
         {/* 主题切换 */}
-        <Tooltip title={isDark ? '浅色主题' : '深色主题'}>
+        <Tooltip title={isDark ? t('topbar.lightTheme') : t('topbar.darkTheme')}>
           <Button
             type="text"
             size="small"
@@ -207,7 +211,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
         </Tooltip>
 
         {/* 刷新 */}
-        <Tooltip title="刷新">
+        <Tooltip title={t('topbar.refresh')}>
           <Button
             type="text"
             size="small"
@@ -333,7 +337,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
         )}
 
         {/* 新建对话按钮 */}
-        <Tooltip title={serverStatus !== 'running' ? '服务未运行' : '新建对话'}>
+        <Tooltip title={serverStatus !== 'running' ? t('topbar.newSessionDisabled') : t('topbar.newSession')}>
           <Button
             type="text"
             size="small"
@@ -345,7 +349,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
         </Tooltip>
 
         {/* 历史会话按钮 */}
-        <Tooltip title={serverStatus !== 'running' ? '服务未运行' : '历史会话'}>
+        <Tooltip title={serverStatus !== 'running' ? t('topbar.historyDisabled') : t('topbar.history')}>
           <Button
             type="text"
             size="small"
@@ -371,7 +375,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
               boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
             }}>
               <div style={{ padding: '6px 10px', marginBottom: 2 }}>
-                <Text style={{ color: 'var(--text-primary)', fontSize: 11, fontWeight: 600 }}>AI 助手设置</Text>
+                <Text style={{ color: 'var(--text-primary)', fontSize: 11, fontWeight: 600 }}>{t('topbar.settings')}</Text>
                 <Tag style={{ marginLeft: 6, fontSize: 9, lineHeight: '16px', padding: '0 4px', border: 'none', color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-tertiary)' }}>v{appVersion}</Tag>
               </div>
 
@@ -381,7 +385,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
                 style={menuItemStyle}
               >
                 <BulbOutlined style={{ fontSize: 12, marginRight: 6 }} />
-                <span>模型配置</span>
+                <span>{t('topbar.modelConfig')}</span>
               </div>
               <div
                 onClick={() => onOpenSettings('mcp')}
@@ -389,7 +393,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
                 style={menuItemStyle}
               >
                 <ApiOutlined style={{ fontSize: 12, marginRight: 6 }} />
-                <span>MCP 服务器</span>
+                <span>{t('topbar.mcpServer')}</span>
               </div>
               <div
                 onClick={() => onOpenSettings('skills')}
@@ -397,7 +401,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
                 style={menuItemStyle}
               >
                 <AppstoreOutlined style={{ fontSize: 12, marginRight: 6 }} />
-                <span>技能管理</span>
+                <span>{t('topbar.skillManage')}</span>
               </div>
 
               <div style={{ height: 1, backgroundColor: 'var(--border-light)', margin: '2px 8px' }} />
@@ -408,9 +412,9 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
                 style={menuItemStyle}
               >
                 <BgColorsOutlined style={{ fontSize: 12, marginRight: 6 }} />
-                <span>外观主题</span>
+                <span>{t('topbar.appearance')}</span>
                 <span style={{ marginLeft: 'auto', fontSize: 9, color: 'var(--text-secondary)' }}>
-                  {isDark ? '深色' : '浅色'}
+                  {isDark ? t('topbar.dark') : t('topbar.light')}
                 </span>
               </div>
               <div
@@ -419,17 +423,8 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
                 style={menuItemStyle}
               >
                 <SafetyOutlined style={{ fontSize: 12, marginRight: 6 }} />
-                <span>权限管理</span>
+                <span>{t('topbar.permissions')}</span>
               </div>
-              <div
-                onClick={handleRefresh}
-                className="settings-menu-item"
-                style={menuItemStyle}
-              >
-                <ReloadOutlined style={{ fontSize: 12, marginRight: 6 }} />
-                <span>刷新</span>
-              </div>
-
               <div style={{ height: 1, backgroundColor: 'var(--border-light)', margin: '2px 8px' }} />
 
               <div
@@ -438,17 +433,39 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
                   if (result.hasUpdate) {
                     window.open(result.downloadUrl, '_blank')
                   } else {
-                    antMessage.success('当前已是最新版本')
+                    antMessage.success(t('topbar.alreadyLatest'))
                   }
                 }}
                 className="settings-menu-item"
                 style={{ ...menuItemStyle, color: updateInfo.checked && updateInfo.hasUpdate ? 'var(--accent-color)' : 'var(--text-primary)' }}
               >
                 <DownloadOutlined style={{ fontSize: 12, marginRight: 6 }} />
-                <span>{updateInfo.checked && updateInfo.hasUpdate ? `新版本 v${updateInfo.latestVersion} 可下载` : '版本检查'}</span>
+                <span>{updateInfo.checked && updateInfo.hasUpdate ? t('topbar.updateAvailable', { version: updateInfo.latestVersion }) : t('topbar.versionCheck')}</span>
                 {updateInfo.checked && updateInfo.hasUpdate && (
                   <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', backgroundColor: 'var(--error-color)' }} />
                 )}
+              </div>
+
+              {/* 语言切换 */}
+              <div style={{ height: 1, backgroundColor: 'var(--border-light)', margin: '2px 8px' }} />
+              <div className="settings-menu-item" style={menuItemStyle}>
+                <GlobalOutlined style={{ fontSize: 12, marginRight: 6 }} />
+                <span>{t('topbar.language')}</span>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setLocale('zh') }}
+                    style={{ fontSize: 10, cursor: 'pointer', padding: '1px 4px', borderRadius: 2, color: locale === 'zh' ? 'var(--accent-color)' : 'var(--text-tertiary)', fontWeight: locale === 'zh' ? 600 : 400 }}
+                  >
+                    {t('topbar.languageZh')}
+                  </span>
+                  <span style={{ color: 'var(--text-tertiary)', fontSize: 10 }}>|</span>
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setLocale('en') }}
+                    style={{ fontSize: 10, cursor: 'pointer', padding: '1px 4px', borderRadius: 2, color: locale === 'en' ? 'var(--accent-color)' : 'var(--text-tertiary)', fontWeight: locale === 'en' ? 600 : 400 }}
+                  >
+                    {t('topbar.languageEn')}
+                  </span>
+                </span>
               </div>
 
               {serverStatus === 'installed' && onServiceRestart && (
@@ -461,7 +478,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
                   style={{ ...menuItemStyle, color: 'var(--error-color)' }}
                 >
                   <ReloadOutlined style={{ fontSize: 12, marginRight: 6 }} />
-                  <span>重启服务</span>
+                  <span>{t('topbar.serviceRestart')}</span>
                 </div>
               )}
             </div>

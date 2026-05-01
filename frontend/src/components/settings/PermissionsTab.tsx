@@ -3,26 +3,26 @@ import { Input, Select, Button, Space, Typography, message, Collapse, Flex } fro
 import { PlusOutlined, DeleteOutlined, UpOutlined, DownOutlined, SaveOutlined } from '@ant-design/icons'
 import type { PermissionCategory, PermissionRule, Settings } from '../../types'
 import { kotlinApi } from '../../utils/kotlinApi'
+import { useLocale } from '../../locales/LocaleContext'
 
 const { Text } = Typography
 const { Option } = Select
 
-// 权限类别列表（根据OpenCode文档）
 const PERMISSION_CATEGORIES = [
-  { key: 'read', label: '读取文件' },
-  { key: 'edit', label: '编辑文件' },
-  { key: 'glob', label: '文件通配' },
-  { key: 'grep', label: '内容搜索' },
-  { key: 'list', label: '列出目录' },
-  { key: 'bash', label: 'Shell命令' },
-  { key: 'task', label: '子代理' },
-  { key: 'skill', label: '加载技能' },
-  { key: 'lsp', label: 'LSP查询' },
-  { key: 'webfetch', label: '获取URL' },
-  { key: 'websearch', label: '网页搜索' },
-  { key: 'codesearch', label: '代码搜索' },
-  { key: 'external_directory', label: '外部目录' },
-  { key: 'doom_loop', label: '循环检测' },
+  { key: 'read' },
+  { key: 'edit' },
+  { key: 'glob' },
+  { key: 'grep' },
+  { key: 'list' },
+  { key: 'bash' },
+  { key: 'task' },
+  { key: 'skill' },
+  { key: 'lsp' },
+  { key: 'webfetch' },
+  { key: 'websearch' },
+  { key: 'codesearch' },
+  { key: 'external_directory' },
+  { key: 'doom_loop' },
 ]
 
 interface RuleItemProps {
@@ -44,6 +44,7 @@ const RuleItem: React.FC<RuleItemProps> = ({
   onRemoveRule,
   onMoveRule 
 }) => {
+  const { t } = useLocale()
   return (
     <div style={{ 
       display: 'flex', 
@@ -75,7 +76,7 @@ const RuleItem: React.FC<RuleItemProps> = ({
       <Input
         value={rule.pattern}
         onChange={e => onRuleChange(categoryKey, index, 'pattern', e.target.value)}
-        placeholder="规则模式（例如：*.js, /home/user/*）"
+        placeholder={t('permissions.patternPlaceholder')}
         style={{ flex: 1 }}
       />
       <Select
@@ -83,9 +84,9 @@ const RuleItem: React.FC<RuleItemProps> = ({
         onChange={value => onRuleChange(categoryKey, index, 'level', value)}
         style={{ width: 120 }}
       >
-        <Option value="allow">允许</Option>
-        <Option value="ask">询问</Option>
-        <Option value="deny">拒绝</Option>
+        <Option value="allow">{t('permissions.allow')}</Option>
+        <Option value="ask">{t('permissions.ask')}</Option>
+        <Option value="deny">{t('permissions.deny')}</Option>
       </Select>
       <Button
         type="text"
@@ -108,6 +109,27 @@ const PermissionsTab: React.FC<PermissionsTabProps> = ({
   onSettingsChange,
   onServiceRestart,
 }) => {
+  const { t } = useLocale()
+
+  const getCategoryLabel = (key: string): string => {
+    const labels: Record<string, string> = {
+      read: t('permissions.categoryRead'),
+      edit: t('permissions.categoryEdit'),
+      glob: t('permissions.categoryGlob'),
+      grep: t('permissions.categoryGrep'),
+      list: t('permissions.categoryList'),
+      bash: t('permissions.categoryBash'),
+      task: t('permissions.categoryTask'),
+      skill: t('permissions.categorySkill'),
+      lsp: t('permissions.categoryLsp'),
+      webfetch: t('permissions.categoryWebfetch'),
+      websearch: t('permissions.categoryWebSearch'),
+      codesearch: t('permissions.categoryCodeSearch'),
+      external_directory: t('permissions.categoryExternalDir'),
+      doom_loop: t('permissions.categoryDoomLoop'),
+    }
+    return labels[key] || key
+  }
   const [permissionCategories, setPermissionCategories] = useState<PermissionCategory[]>(() => {
     // 初始化权限类别，如果settings中没有则使用默认值
     if (settings.permissions && settings.permissions.length > 0) {
@@ -235,13 +257,13 @@ const PermissionsTab: React.FC<PermissionsTabProps> = ({
       })
 
       if (response.error) {
-        message.error(`保存权限配置失败: ${response.error}`)
+        message.error(t('permissions.saveFailed') + ' ' + response.error)
       } else {
-        message.success('权限配置保存成功')
+        message.success(t('permissions.saveSuccess'))
       }
     } catch (error) {
       console.error('保存权限配置失败:', error)
-      message.error('保存权限配置失败')
+      message.error(t('permissions.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -253,7 +275,7 @@ const PermissionsTab: React.FC<PermissionsTabProps> = ({
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
         <Text style={{ color: 'var(--text-primary)' }}>
-          配置不同类别的权限规则。当对话面板中的"自动处理权限"关闭时，将按照这些规则进行权限拦截。
+          {t('permissions.manageTitle')}
         </Text>
         <Button
           type="primary"
@@ -261,7 +283,7 @@ const PermissionsTab: React.FC<PermissionsTabProps> = ({
           onClick={handleSavePermissions}
           loading={saving}
         >
-          保存权限配置
+          {t('permissions.save')}
         </Button>
       </div>
 
@@ -276,9 +298,9 @@ const PermissionsTab: React.FC<PermissionsTabProps> = ({
               key: cat.key,
               label: (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>{cat.label}</span>
+                  <span>{getCategoryLabel(cat.key)}</span>
                   <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                    {rules.length} 条规则
+                    {rules.length} {t('permissions.ruleCount')}
                   </span>
                 </div>
               ),
@@ -292,10 +314,10 @@ const PermissionsTab: React.FC<PermissionsTabProps> = ({
                         onClick={() => handleAddRule(cat.key)}
                         size="small"
                       >
-                        添加规则
+                        {t('permissions.addRule')}
                       </Button>
                       <Text type="secondary" style={{ fontSize: 12 }}>
-                        规则匹配顺序：从上到下，第一个匹配的规则生效
+                        {t('permissions.matchOrder')}
                       </Text>
                     </Space>
                   </div>
@@ -308,7 +330,7 @@ const PermissionsTab: React.FC<PermissionsTabProps> = ({
                       background: 'var(--bg-tertiary)',
                       borderRadius: 8
                     }}>
-                      暂无规则，点击"添加规则"按钮创建第一条规则
+                      {t('permissions.emptyHint')}
                     </div>
                   ) : (
                     <div>
@@ -328,12 +350,12 @@ const PermissionsTab: React.FC<PermissionsTabProps> = ({
                   )}
 
                   <div style={{ marginTop: 16, padding: 12, borderRadius: 6 }}>
-                    <Text strong style={{ color: 'var(--text-primary)' }}>规则说明：</Text>
+                    <Text strong style={{ color: 'var(--text-primary)' }}>{t('permissions.rulesHint')}</Text>
                     <ul style={{ margin: '8px 0 0 0', paddingLeft: 20, color: 'var(--text-secondary)' }}>
-                      <li><Text type="secondary">规则模式支持通配符：* 匹配任意字符，? 匹配单个字符</Text></li>
-                      <li><Text type="secondary">权限级别：允许（自动通过）、询问（提示用户审批）、拒绝（自动拒绝）</Text></li>
-                      <li><Text type="secondary">当"自动处理权限"开启时，所有权限请求将自动审批（值为once）</Text></li>
-                      <li><Text type="secondary">规则按顺序匹配，第一个匹配的规则生效</Text></li>
+                      <li><Text type="secondary">{t('permissions.wildcardHint')}</Text></li>
+                      <li><Text type="secondary">{t('permissions.levelHint')}</Text></li>
+                      <li><Text type="secondary">{t('permissions.autoHint')}</Text></li>
+                      <li><Text type="secondary">{t('permissions.orderHint')}</Text></li>
                     </ul>
                   </div>
                 </>
@@ -354,7 +376,7 @@ const PermissionsTab: React.FC<PermissionsTabProps> = ({
       }}>
         <Flex justify="space-between" align="center">
           <div style={{ color: 'var(--text-secondary)' }}>
-            ⚠️ 修改权限配置后需要重启服务才能生效
+            {'⚠️ ' + t('permissions.restartHint')}
           </div>
            <Button 
             type="primary" 
@@ -364,20 +386,20 @@ const PermissionsTab: React.FC<PermissionsTabProps> = ({
               setRestartLoading(true)
               try {
                 await kotlinApi.restartService()
-                message.success('服务重启成功')
+                message.success(t('permissions.restartSuccess'))
                 // 通知父组件刷新数据
                 if (onServiceRestart) {
                   await onServiceRestart()
                 }
               } catch (error) {
                 console.error('重启服务失败:', error)
-                 message.error(`重启服务失败: ${(error as Error).message}`)
+                 message.error(t('permissions.restartFailed') + ' ' + (error as Error).message)
               } finally {
                 setRestartLoading(false)
               }
             }}
           >
-            重启服务
+            {t('common.restart')}
           </Button>
         </Flex>
       </div>

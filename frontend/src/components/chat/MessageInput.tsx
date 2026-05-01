@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons'
 
 import type { SkillConfig, MCPServer, Provider } from '../../types'
+import { useLocale } from '../../locales/LocaleContext'
 
 const { Text } = Typography
 
@@ -192,8 +193,8 @@ const MessageInput = ({
   onRemoveRightClickFileInfo,
   // 条件显示
   hasQuestionOrPermission,
-  questionMessage = '请先回答问题以继续对话',
-  permissionMessage = '请先处理权限请求以继续对话',
+  questionMessage,
+  permissionMessage,
   rightClickFileInfo,
   // 弹窗显示回调
   onShowLongTextModal,
@@ -206,6 +207,7 @@ const MessageInput = ({
   // 语音识别
   speechRecognitionRef,
 }) => {
+  const { t } = useLocale()
   // 生成模型选项（按厂商分组）
   const modelOptions = useMemo(() => {
     const groupedOptions: Array<{ 
@@ -238,7 +240,7 @@ const MessageInput = ({
           !model.cost || (model.cost.input === 0 && model.cost.output === 0)
         )
         if (isFree) {
-          label = `${model.name}（免费）`
+          label = `${model.name}${t('chat.modelFree')}`
         }
         const value = `${provider.id}/${modelId}`
         // 构建详细tooltip
@@ -250,25 +252,25 @@ const MessageInput = ({
         // 添加上下文大小信息
         if (model.limit?.context) {
           const contextK = Math.round(model.limit.context / 1024)
-          tooltipParts.push(`上下文大小: ${contextK}K tokens`)
+          tooltipParts.push(t('chat.contextSize', { size: String(contextK) }))
         }
         
         // 添加推理支持信息
         if (model.capabilities?.reasoning) {
-          tooltipParts.push('支持推理 (reasoning)')
+          tooltipParts.push(t('chat.supportsReasoning'))
         }
         
         // 添加输入类型支持信息
         if (model.capabilities?.input && typeof model.capabilities.input === 'object') {
           const inputTypes = []
-          if (model.capabilities.input.text === true) inputTypes.push('文本')
-          if (model.capabilities.input.audio === true) inputTypes.push('音频')
-          if (model.capabilities.input.image === true) inputTypes.push('图像')
-          if (model.capabilities.input.video === true) inputTypes.push('视频')
+          if (model.capabilities.input.text === true) inputTypes.push(t('chat.text'))
+          if (model.capabilities.input.audio === true) inputTypes.push(t('chat.audio'))
+          if (model.capabilities.input.image === true) inputTypes.push(t('chat.image'))
+          if (model.capabilities.input.video === true) inputTypes.push(t('chat.video'))
           if (model.capabilities.input.pdf === true) inputTypes.push('PDF')
           
           if (inputTypes.length > 0) {
-            tooltipParts.push(`支持输入: ${inputTypes.join(', ')}`)
+            tooltipParts.push(t('chat.supportsInput', { modalities: inputTypes.join(', ') }))
           }
         }
         
@@ -786,8 +788,8 @@ const MessageInput = ({
     return (
       <div style={{ marginTop: 8, color: 'var(--text-secondary)', fontSize: 12, textAlign: 'center' }}>
         {!currentSessionId 
-          ? '请先创建或选择会话以开始对话' 
-          : (hasQuestionOrPermission ? questionMessage : permissionMessage)}
+          ? t('chat.selectSessionFirst')
+          : (hasQuestionOrPermission ? (questionMessage || t('chat.answerFirst')) : (permissionMessage || t('chat.permissionFirst')))}
       </div>
     )
   }
@@ -806,13 +808,13 @@ const MessageInput = ({
           <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
             <Space style={{ width: '100%' }}>
               <AppstoreOutlined />
-              <Text strong>选择技能</Text>
+              <Text strong>{t('topbar.skillManage')}</Text>
             </Space>
           </div>
           <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-light)' }}>
             <Input
               size="small"
-              placeholder="搜索技能名称或描述..."
+              placeholder={t('chat.searchSkill')}
               value={pickerSearchText}
               onChange={e => setPickerSearchText(e.target.value)}
               allowClear
@@ -828,7 +830,7 @@ const MessageInput = ({
               ))
               const truncate = (text: string, max: number) => text.length > max ? text.slice(0, max) + '...' : text
               return filtered.length === 0 ? (
-                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 12 }}>无匹配技能</div>
+                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 12 }}>{t('chat.noMatchSkill')}</div>
               ) : filtered.map(skill => (
                 <div key={skill.name} style={{ cursor: 'pointer', padding: '8px 12px', borderBottom: '1px solid var(--border-light)' }}
                   onClick={() => onSelectSkill(skill)}
@@ -857,13 +859,13 @@ const MessageInput = ({
           <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
             <Space>
               <CloudServerOutlined />
-              <Text strong>选择 MCP 服务器</Text>
+              <Text strong>{t('topbar.mcpServer')}</Text>
             </Space>
           </div>
           <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--border-light)' }}>
             <Input
               size="small"
-              placeholder="搜索 MCP 名称或地址..."
+              placeholder={t('chat.searchMCP')}
               value={pickerSearchText}
               onChange={e => setPickerSearchText(e.target.value)}
               allowClear
@@ -879,7 +881,7 @@ const MessageInput = ({
               ))
               const truncate = (text: string, max: number) => text.length > max ? text.slice(0, max) + '...' : text
               return filtered.length === 0 ? (
-                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 12 }}>无匹配 MCP 服务器</div>
+                <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 12 }}>{t('chat.noMatchMCP')}</div>
               ) : filtered.map(mcp => (
                 <div key={mcp.name} style={{ cursor: 'pointer', padding: '8px 12px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
                   onClick={() => onSelectMCPServer(mcp)}
@@ -918,13 +920,13 @@ const MessageInput = ({
           <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
             <Space>
               <SearchOutlined />
-              <Text strong>搜索文件</Text>
+              <Text strong>{t('chat.searchFile')}</Text>
             </Space>
           </div>
           <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
             <Input
               prefix={<SearchOutlined />}
-              placeholder="输入文件名搜索..."
+              placeholder={t('chat.searchFilePlaceholder')}
               value={fileSearchQuery}
               onChange={e => onFileSearch(e.target.value)}
               autoFocus
@@ -933,7 +935,7 @@ const MessageInput = ({
           <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>搜索类型</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>{t('chat.searchType')}</div>
                 <Radio.Group 
                   value={fileSearchType} 
                   onChange={e => {
@@ -944,12 +946,12 @@ const MessageInput = ({
                   }}
                   size="small"
                 >
-                  <Radio value="filename">文件名</Radio>
-                  <Radio value="content">内容</Radio>
+                  <Radio value="filename">{t('chat.filename')}</Radio>
+                  <Radio value="content">{t('chat.content')}</Radio>
                 </Radio.Group>
               </div>
                <div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>匹配选项</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>{t('chat.matchOptions')}</div>
                 <Space direction="vertical" size="small" style={{ width: '100%' }}>
                   <Radio.Group 
                     value={fileFuzzyMatch ? 'fuzzy' : fileExactMatch ? 'exact' : 'none'}
@@ -966,8 +968,8 @@ const MessageInput = ({
                     }}
                     size="small"
                   >
-                    <Radio value="fuzzy">模糊匹配</Radio>
-                    <Radio value="exact">全量匹配</Radio>
+                    <Radio value="fuzzy">{t('chat.fuzzyMatch')}</Radio>
+                    <Radio value="exact">{t('chat.exactMatch')}</Radio>
                     <Radio value="none">无特殊匹配</Radio>
                   </Radio.Group>
                   <Checkbox 
@@ -979,13 +981,13 @@ const MessageInput = ({
                       }
                     }}
                   >
-                    区分大小写
+                    {t('chat.caseSensitive')}
                   </Checkbox>
                   <div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>后缀匹配</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>{t('chat.suffixMatch')}</div>
                     <Input
                       size="small"
-                      placeholder="例如: .kt, .java (留空则匹配所有文件)"
+                      placeholder={t('chat.suffixHint')}
                       value={fileExtension}
                       onChange={e => {
                         onFileExtensionChange(e.target.value)
@@ -1055,7 +1057,7 @@ const MessageInput = ({
               onKeyDown={handleKeyDown}
               onFocus={() => setInputFocused(true)}
               onBlur={() => setInputFocused(false)}
-              data-placeholder="输入您的需求... 按 Ctrl+Enter 发送（AI生成，仅供参考，注意审查，注意备份代码）"
+              data-placeholder={t('chat.placeholder')}
               style={{
                 flex: 1,
                 outline: 'none',
@@ -1082,7 +1084,7 @@ const MessageInput = ({
               }}
               data-placeholder-role="true"
             >
-              输入您的需求... 按 Ctrl+Enter 发送（AI生成，仅供参考，注意审查，注意备份代码）
+              {t('chat.placeholder')}
             </span>
           </div>
         </div>
@@ -1094,8 +1096,8 @@ const MessageInput = ({
           <Switch
             checked={chatMode === 'build'}
             onChange={(checked) => onChatModeChange(checked ? 'build' : 'plan')}
-            checkedChildren="构建 (Build)"
-            unCheckedChildren="计划 (Plan)"
+            checkedChildren={t('chat.build')}
+            unCheckedChildren={t('chat.plan')}
             className="mode-switch"
           />
         
@@ -1134,10 +1136,10 @@ const MessageInput = ({
               style={{ width: 56, borderRadius: 2 }}
               popupMatchSelectWidth={false}
               options={[
-                { label: '低', value: 'low' },
-                { label: '中', value: 'medium' },
-                { label: '高', value: 'high' },
-                { label: '最大', value: 'max' },
+                { label: t('chat.effortLow'), value: 'low' },
+                { label: t('chat.effortMedium'), value: 'medium' },
+                { label: t('chat.effortHigh'), value: 'high' },
+                { label: t('chat.effortMax'), value: 'max' },
               ]}
             />
           )}
@@ -1146,7 +1148,7 @@ const MessageInput = ({
 
           {/* 技能选择按钮 */}
           {onSkillButtonClick && (
-            <Tooltip title="选择技能">
+            <Tooltip title={t('topbar.skillManage')}>
               <Button
                 size="small"
                 icon={<AppstoreOutlined />}
@@ -1159,7 +1161,7 @@ const MessageInput = ({
 
           {/* MCP 服务器选择按钮 */}
           {onMCPButtonClick && (
-            <Tooltip title="选择 MCP 服务器">
+            <Tooltip title={t('topbar.mcpServer')}>
               <Button
                 size="small"
                 icon={<CloudServerOutlined />}
@@ -1177,7 +1179,7 @@ const MessageInput = ({
             <button
               type="button"
               onClick={onCancel}
-              title="取消发送"
+              title={t('chat.cancel')}
               style={{
                 width: 28,
                 height: 28,

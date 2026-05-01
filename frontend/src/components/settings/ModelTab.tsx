@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useLocale } from '../../locales/LocaleContext'
 import { Alert, Button, Table, Modal, Space, Flex, Input, Select, Checkbox, message } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import type { Provider } from '../../types'
@@ -102,6 +103,7 @@ const ModelTab: React.FC<ModelTabProps> = ({
   updateHeaderField,
 }) => {
   const [restartLoading, setRestartLoading] = useState(false)
+  const { t } = useLocale()
   
   return (
     <div>
@@ -116,7 +118,7 @@ const ModelTab: React.FC<ModelTabProps> = ({
       )}
       
       <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
-        <span style={{ color: 'var(--text-primary)' }}>模型配置</span>
+        <span style={{ color: 'var(--text-primary)' }}>{t('model.title')}</span>
         <Space>
           <Button
             type="default"
@@ -124,7 +126,7 @@ const ModelTab: React.FC<ModelTabProps> = ({
             icon={<PlusOutlined />}
             onClick={() => setShowAddModel(true)}
           >
-            添加模型密钥
+            {t('model.addKey')}
           </Button>
           <Button
             type="primary"
@@ -132,13 +134,13 @@ const ModelTab: React.FC<ModelTabProps> = ({
             icon={<PlusOutlined />}
             onClick={() => setShowAddCustomModel(true)}
           >
-            添加自定义模型
+            {t('model.addCustom')}
           </Button>
         </Space>
       </Flex>
 
       <Modal
-        title={isEditingModel ? "编辑模型密钥" : "添加新模型"}
+        title={isEditingModel ? t('model.editModelTitle') : t('model.addModelTitle')}
         open={showAddModel}
         centered
         mask={{ closable: false }}
@@ -157,16 +159,16 @@ const ModelTab: React.FC<ModelTabProps> = ({
             setSelectedProvider(''); 
             setApiKey('') 
           }}>
-            取消
+            {t('common.cancel')}
           </Button>,
           <Button key="save" type="primary" onClick={handleAddModel} disabled={!selectedProvider || !apiKey}>
-            {isEditingModel ? '更新' : '保存'}
+            {isEditingModel ? t('common.update') : t('common.save')}
           </Button>,
         ]}
       >
         <div style={{ marginBottom: 16 }}>
           <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
-            {isEditingModel ? '模型厂商' : '选择模型厂商'}
+            {isEditingModel ? t('model.vendorName') : t('model.selectVendor')}
           </div>
           {isEditingModel && editingProvider ? (
             <Input
@@ -179,7 +181,7 @@ const ModelTab: React.FC<ModelTabProps> = ({
               value={selectedProvider}
               onChange={setSelectedProvider}
               style={{ width: '100%' }}
-              placeholder="选择厂商"
+              placeholder={t('model.selectProvider')}
               showSearch
               getPopupContainer={() => document.body}
               popupMatchSelectWidth={false}
@@ -187,8 +189,8 @@ const ModelTab: React.FC<ModelTabProps> = ({
                 (option?.searchText || '').toLowerCase().includes(input.toLowerCase())
               }
               options={(systemProviders.length > 0 ? systemProviders : allProviders)
-                .filter((p: any) => !allProviders.some(ap => ap.id === p.id)) // 排除已配置的
-                .filter((p: any) => p.id !== 'opencode') // 排除 opencode
+                .filter((p: any) => !allProviders.some(ap => ap.id === p.id))
+                .filter((p: any) => p.id !== 'opencode')
                 .map((p: any) => ({
                   label: `${p.name} (${p.id})`,
                   value: p.id,
@@ -199,47 +201,47 @@ const ModelTab: React.FC<ModelTabProps> = ({
           )}
         </div>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>API Key</div>
+          <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>{t('model.apiKey')}</div>
           <Input.Password
             value={apiKey}
             onChange={e => setApiKey(e.target.value)}
-            placeholder="输入 API Key"
+            placeholder={t('model.saveKey')}
           />
         </div>
        </Modal>
 
       {/* 自定义模型弹窗 */}
       <Modal
-        title="添加自定义模型"
+        title={t('model.addCustomTitle')}
         open={showAddCustomModel}
         centered
         mask={{ closable: false }}
         onCancel={() => { setShowAddCustomModel(false); resetCustomModelForm() }}
         footer={[
           <Button key="cancel" onClick={() => { setShowAddCustomModel(false); resetCustomModelForm() }}>
-            取消
+            {t('common.cancel')}
           </Button>,
           <Button key="save" type="primary" onClick={handleAddCustomModel}>
-            保存
+            {t('common.save')}
           </Button>,
         ]}
       >
         <div style={{ marginBottom: 16 }}>
           <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
-            提供商名称
+            {t('model.providerName')}
             <span style={{ color: 'var(--error-color, #ff4d4f)', marginLeft: 2 }}>*</span>
           </div>
           <Input
             value={customProviderName}
             onChange={e => setCustomProviderName(e.target.value)}
-            placeholder="例如：My OpenAI"
+            placeholder={t('model.customProviderNamePlaceholder')}
             status={!customProviderName ? undefined : undefined}
           />
         </div>
         <div style={{ marginBottom: 16 }}>
           <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
-            供应商 ID
-            <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 8 }}>只支持小写字母、数字、连字符或下划线</span>
+            {t('model.providerId')}
+            <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 8 }}>{t('model.providerIdHint')}</span>
           </div>
           <Input
             value={customProviderId}
@@ -249,17 +251,17 @@ const ModelTab: React.FC<ModelTabProps> = ({
         </div>
         <div style={{ marginBottom: 16 }}>
           <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
-            基础 URL
+            {t('model.baseUrl')}
             <span style={{ color: 'var(--error-color, #ff4d4f)', marginLeft: 2 }}>*</span>
           </div>
           <Input
             value={customBaseUrl}
             onChange={e => setCustomBaseUrl(e.target.value)}
-            placeholder="例如：https://api.mysqopenai.com/v1"
+            placeholder={t('model.customBaseUrlPlaceholder')}
           />
         </div>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>API Key（可选）</div>
+          <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>{t('model.apiKeyOptional')}</div>
           <Input.Password
             value={customApiKey}
             onChange={e => setCustomApiKey(e.target.value)}
@@ -268,42 +270,41 @@ const ModelTab: React.FC<ModelTabProps> = ({
         </div>
         <div style={{ marginBottom: 16 }}>
           <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
-            API 格式
-            <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 8 }}>选择供应商的 API 格式</span>
+            {t('model.apiFormat')}
+            <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 8 }}>{t('model.apiFormatHint')}</span>
           </div>
           <Select
             value={customNpm}
             onChange={setCustomNpm}
             style={{ width: '100%' }}
             options={[
-              { label: 'OpenAI 兼容', value: '@ai-sdk/openai-compatible' },
-              { label: 'Anthropic', value: '@ai-sdk/anthropic' },
+              { label: t('model.openaiFormat'), value: '@ai-sdk/openai-compatible' },
+              { label: t('model.anthropicFormat'), value: '@ai-sdk/anthropic' },
             ]}
           />
         </div>
         <div style={{ marginBottom: 16 }}>
           <Flex justify="space-between" align="center" style={{ marginBottom: 8 }}>
-            <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>模型列表</div>
+            <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{t('model.modelList')}</div>
             <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addModelRow}>
-              添加模型
+              {t('model.addModel')}
             </Button>
           </Flex>
           {customModels.map((model, index) => (
             <div key={index} style={{ 
               marginBottom: 16, 
               padding: 12, 
-              // background: 'var(--bg-tertiary)',
               borderRadius: 6,
               border: '1px solid var(--border-color)'
             }}>
               <Space style={{ display: 'flex', marginBottom: 8 }} wrap>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ marginBottom: 4, fontSize: 11, color: 'var(--text-secondary)' }}>
-                    模型 ID
+                    {t('model.modelId')}
                     <span style={{ color: 'var(--error-color, #ff4d4f)', marginLeft: 2 }}>*</span>
                   </div>
                   <Input
-                    placeholder="如 gpt-4o"
+                    placeholder={t('model.modelIdPlaceholder')}
                     value={model.id}
                     onChange={e => updateModelField(index, 'id', e.target.value)}
                     style={{ width: '100%' }}
@@ -311,11 +312,11 @@ const ModelTab: React.FC<ModelTabProps> = ({
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ marginBottom: 4, fontSize: 11, color: 'var(--text-secondary)' }}>
-                    显示名称
+                    {t('model.modelName')}
                     <span style={{ color: 'var(--error-color, #ff4d4f)', marginLeft: 2 }}>*</span>
                   </div>
                   <Input
-                    placeholder="如 GPT-4o"
+                    placeholder={t('model.modelNamePlaceholder')}
                     value={model.name}
                     onChange={e => updateModelField(index, 'name', e.target.value)}
                     style={{ width: '100%' }}
@@ -333,27 +334,26 @@ const ModelTab: React.FC<ModelTabProps> = ({
               
               {/* 模型选项配置 */}
               <div style={{ marginTop: 8 }}>
-                <div style={{ marginBottom: 8, fontSize: 11, color: 'var(--text-secondary)' }}>模型能力配置</div>
+                <div style={{ marginBottom: 8, fontSize: 11, color: 'var(--text-secondary)' }}>{t('model.capabilityConfig')}</div>
                 <Space wrap>
                   <Checkbox
                     checked={model.options.reasoning}
                     onChange={e => updateModelOptions(index, { ...model.options, reasoning: e.target.checked })}
                   >
-                    支持推理
+                    {t('model.supportReasoning')}
                   </Checkbox>
                   <Checkbox
                     checked={model.options.toolcall}
                     onChange={e => updateModelOptions(index, { ...model.options, toolcall: e.target.checked })}
                   >
-                    支持工具调用
+                    {t('model.supportToolCall')}
                   </Checkbox>
                 </Space>
                 
-                <div style={{ marginTop: 8, marginBottom: 4, fontSize: 11, color: 'var(--text-secondary)' }}>输入模态</div>
+                <div style={{ marginTop: 8, marginBottom: 4, fontSize: 11, color: 'var(--text-secondary)' }}>{t('model.inputModality')}</div>
                 <Checkbox.Group
                   value={model.options.modalities}
                   onChange={values => {
-                    // 如果选择了图片、视频、PDF等非文本模态，自动设置attachment为true
                     const hasNonTextModality = values.some(v => v !== 'text')
                     updateModelOptions(index, { 
                       ...model.options, 
@@ -362,22 +362,22 @@ const ModelTab: React.FC<ModelTabProps> = ({
                     })
                   }}
                   options={[
-                    { label: '文本', value: 'text' },
-                    { label: '图片', value: 'image' },
-                    { label: '音频', value: 'audio' },
-                    { label: '视频', value: 'video' },
+                    { label: t('chat.text'), value: 'text' },
+                    { label: t('chat.image'), value: 'image' },
+                    { label: t('chat.audio'), value: 'audio' },
+                    { label: t('chat.video'), value: 'video' },
                     { label: 'PDF', value: 'pdf' }
                   ]}
                 />
                 
                 {model.options.reasoning && (
                   <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-secondary)' }}>
-                    支持推理（推理强度由OpenCode自动管理）
+                    {t('model.reasoningHint')}
                   </div>
                 )}
                 
                 <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>上下文大小</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t('model.contextSize')}</span>
                   <Input
                     type="number"
                     min={0}
@@ -395,21 +395,21 @@ const ModelTab: React.FC<ModelTabProps> = ({
         </div>
         <div style={{ marginBottom: 16 }}>
           <Flex justify="space-between" align="center" style={{ marginBottom: 8 }}>
-            <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>请求头（可选）</div>
+            <div style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{t('model.customHeaders')}</div>
             <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addHeaderRow}>
-              添加请求头
+              {t('model.addHeader')}
             </Button>
           </Flex>
           {customHeaders.map((header, index) => (
             <Space key={index} style={{ display: 'flex', marginBottom: 8 }}>
               <Input
-                placeholder="Header 名称"
+                placeholder={t('model.headerName')}
                 value={header.name}
                 onChange={e => updateHeaderField(index, 'name', e.target.value)}
                 style={{ flex: 1 }}
               />
               <Input
-                placeholder="Header 值"
+                placeholder={t('model.headerValue')}
                 value={header.value}
                 onChange={e => updateHeaderField(index, 'value', e.target.value)}
                 style={{ flex: 1 }}
@@ -430,9 +430,9 @@ const ModelTab: React.FC<ModelTabProps> = ({
         <Table
          dataSource={providers}
          columns={[
-            { title: '厂商名称', dataIndex: 'name', key: 'name' },
+            { title: t('model.vendorName'), dataIndex: 'name', key: 'name' },
             {
-              title: '模型数量',
+              title: t('model.modelCount'),
               key: 'modelCount',
               render: (_, record) => {
                 const fullProvider = allProviders.find(p => p.id === record.id)
@@ -443,7 +443,7 @@ const ModelTab: React.FC<ModelTabProps> = ({
               },
             },
             {
-              title: '操作',
+              title: t('model.actions'),
               key: 'action',
               render: (_, record) => (
                 <Space size="small">
@@ -477,14 +477,13 @@ const ModelTab: React.FC<ModelTabProps> = ({
         <div style={{ 
           marginTop: 16, 
           padding: 12, 
-          // backgroundColor: 'var(--bg-secondary)',
           border: '1px solid var(--border-color)',
           borderRadius: 6,
           fontSize: 12
         }}>
           <Flex justify="space-between" align="center">
             <div style={{ color: 'var(--text-secondary)' }}>
-              ⚠️ 修改模型配置后需要重启服务才能生效
+              ⚠️ {t('model.restartHint')}
             </div>
             <Button 
               type="primary" 
@@ -494,16 +493,16 @@ const ModelTab: React.FC<ModelTabProps> = ({
                 setRestartLoading(true)
                 try {
                   await kotlinApi.restartService()
-                  message.success('服务重启成功')
+                  message.success(t('model.restartSuccess'))
                 } catch (error) {
-                  console.error('重启服务失败:', error)
-                  message.error(`重启服务失败: ${(error as Error).message}`)
+                  console.error('Restart failed:', error)
+                  message.error(t('model.restartFailed') + (error as Error).message)
                 } finally {
                   setRestartLoading(false)
                 }
               }}
             >
-              重启服务
+              {t('common.restart')}
             </Button>
           </Flex>
         </div>
