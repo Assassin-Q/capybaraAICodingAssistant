@@ -335,6 +335,158 @@ class OpenCodeServiceManager : Disposable {
         }
     }
 
+    fun forceRestart(): Boolean {
+        synchronized(lock) {
+            println("Force restarting OpenCode service...")
+            
+            val oldPort = sharedPort
+            
+            // Force kill the process regardless of reference count
+            sharedProcess?.let { p ->
+                println("Killing existing OpenCode process (PID: ${p.pid()})...")
+                try {
+                    val handle = p.toHandle()
+                    handle.descendants().forEach { child ->
+                        try { child.destroyForcibly() } catch (e: Exception) {}
+                    }
+                    handle.destroyForcibly()
+                    
+                    // Wait for the process to actually die
+                    var waitCount = 0
+                    while (p.isAlive && waitCount < 15) {
+                        Thread.sleep(1000)
+                        waitCount++
+                    }
+                    if (p.isAlive) {
+                        println("Process did not die after 15s, forcing...")
+                        handle.destroyForcibly()
+                        p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+                    }
+                    println("Process killed after ${waitCount}s")
+                } catch (e: Exception) {
+                    println("Error killing process: ${e.message}")
+                    p.destroyForcibly()
+                    try { p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) } catch (_: Exception) {}
+                }
+            }
+            
+            // Reset state
+            sharedProcess = null
+            sharedServiceStarted = false
+            sharedPort = MIN_PORT
+            
+            // Wait for the port to be released (up to 30 seconds)
+            if (oldPort > 0) {
+                var portWaitCount = 0
+                while (!isPortAvailableExternal(oldPort) && portWaitCount < 30) {
+                    println("Waiting for port $oldPort to be released...")
+                    Thread.sleep(1000)
+                    portWaitCount++
+                }
+                if (!isPortAvailableExternal(oldPort)) {
+                    println("Warning: Port $oldPort still occupied after ${portWaitCount}s")
+                }
+            }
+            
+            // Start the service
+            val result = startServiceInternal()
+            if (result) {
+                println("Force restart successful on port $sharedPort")
+            } else {
+                println("Force restart failed: could not start service")
+            }
+            return result
+        }
+    }
+    
+    private fun isPortAvailableExternal(port: Int): Boolean {
+        return try {
+            java.net.ServerSocket(port).use { true }
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    private fun startServiceInternal(): Boolean {
+        // This is the actual start logic without the "already running" check
+        // since we've already killed the old process
+        
+        val opencodeCommand = getOpenCodeCommand()
+        if (opencodeCommand == null) {
+            println("OpenCode command not found, service cannot be started")
+            return false
+        }
+        
+        println("Starting OpenCode service on available port...")
+        
+        for (port in MIN_PORT..MAX_PORT) {
+            if (!isPortAvailableExternal(port)) {
+                continue
+            }
+            
+            println("Trying port $port...")
+            try {
+                val processBuilder = ProcessBuilder(opencodeCommand, "serve", "--port", port.toString())
+                
+                val targetProjectPath = if (firstProjectPath != null) {
+                    firstProjectPath
+                } else {
+                    projectPath
+                }
+                
+                targetProjectPath?.let { path ->
+                    val dir = File(path)
+                    if (dir.exists() && dir.isDirectory) {
+                        processBuilder.directory(dir)
+                        println("Working directory: $path")
+                    }
+                }
+                
+                processBuilder.redirectErrorStream(true)
+                sharedProcess = processBuilder.start()
+                
+                var serviceReady = false
+                for (i in 1..15) {
+                    Thread.sleep(1000)
+                    
+                    if (sharedProcess?.isAlive != true) {
+                        println("OpenCode process died during startup")
+                        break
+                    }
+                    
+                    try {
+                        val url = java.net.URL("http://localhost:$port/global/health")
+                        val connection = url.openConnection() as java.net.HttpURLConnection
+                        connection.connectTimeout = 2000
+                        connection.requestMethod = "GET"
+                        if (connection.responseCode == 200) {
+                            sharedPort = port
+                            serviceReady = true
+                            println("OpenCode service started on port $sharedPort")
+                            break
+                        }
+                    } catch (e: Exception) {
+                        // not ready yet
+                    }
+                }
+                
+                if (serviceReady) {
+                    sharedServiceStarted = true
+                    return true
+                }
+                
+                sharedProcess?.destroy()
+                sharedProcess = null
+            } catch (e: Exception) {
+                println("Failed to start on port $port: ${e.message}")
+                sharedProcess?.destroy()
+                sharedProcess = null
+            }
+        }
+        
+        return false
+    }
+
     fun getServiceUrl(): String {
         return "http://localhost:$opencodePort"
     }

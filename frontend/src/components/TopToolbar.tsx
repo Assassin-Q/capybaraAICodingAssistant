@@ -1,5 +1,5 @@
 import React from 'react'
-import { Button, Tooltip, Flex, Badge, Dropdown, Input, Progress, Typography } from 'antd'
+import { Button, Tooltip, Flex, Badge, Dropdown, Input, Progress, Typography, Tag, message as antMessage } from 'antd'
 import {
   PlusOutlined,
   HistoryOutlined,
@@ -12,8 +12,9 @@ import {
   BulbOutlined,
   SafetyOutlined,
   BgColorsOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons'
-import type { PermissionRequest, QuestionRequest, TokenUsage, ContextUsage, SessionStatus } from '../types'
+import type { PermissionRequest, QuestionRequest, TokenUsage, ContextUsage, SessionStatus, UpdateInfo } from '../types'
 import type { ServerStatus, Session } from '../utils/kotlinApi'
 
 const { Text } = Typography
@@ -46,6 +47,9 @@ interface TopToolbarProps {
   setSessionTitleInput: (input: string) => void
   setEditingSessionTitle: (editing: boolean) => void
   handleSaveSessionTitle: () => void
+  appVersion: string
+  updateInfo: UpdateInfo
+  onCheckUpdate: () => Promise<{ hasUpdate: boolean; latestVersion: string; downloadUrl: string }>
 }
 
 const TopToolbar: React.FC<TopToolbarProps> = (props) => {
@@ -72,6 +76,9 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
     setSessionTitleInput,
     setEditingSessionTitle,
     handleSaveSessionTitle,
+    appVersion,
+    updateInfo,
+    onCheckUpdate,
   } = props
 
   const getStatusIconSrc = () => {
@@ -359,16 +366,18 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
               backgroundColor: 'var(--bg-primary)',
               border: '1px solid var(--border-color)',
               borderRadius: 4,
-              width: 190,
+              width: 220,
               padding: 4,
               boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
             }}>
               <div style={{ padding: '6px 10px', marginBottom: 2 }}>
                 <Text style={{ color: 'var(--text-primary)', fontSize: 11, fontWeight: 600 }}>AI 助手设置</Text>
+                <Tag style={{ marginLeft: 6, fontSize: 9, lineHeight: '16px', padding: '0 4px', border: 'none', color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-tertiary)' }}>v{appVersion}</Tag>
               </div>
 
               <div
                 onClick={() => onOpenSettings('model')}
+                className="settings-menu-item"
                 style={menuItemStyle}
               >
                 <BulbOutlined style={{ fontSize: 12, marginRight: 6 }} />
@@ -376,6 +385,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
               </div>
               <div
                 onClick={() => onOpenSettings('mcp')}
+                className="settings-menu-item"
                 style={menuItemStyle}
               >
                 <ApiOutlined style={{ fontSize: 12, marginRight: 6 }} />
@@ -383,6 +393,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
               </div>
               <div
                 onClick={() => onOpenSettings('skills')}
+                className="settings-menu-item"
                 style={menuItemStyle}
               >
                 <AppstoreOutlined style={{ fontSize: 12, marginRight: 6 }} />
@@ -393,6 +404,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
 
               <div
                 onClick={() => { onThemeChange(!isDark) }}
+                className="settings-menu-item"
                 style={menuItemStyle}
               >
                 <BgColorsOutlined style={{ fontSize: 12, marginRight: 6 }} />
@@ -403,6 +415,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
               </div>
               <div
                 onClick={() => onOpenSettings('permissions')}
+                className="settings-menu-item"
                 style={menuItemStyle}
               >
                 <SafetyOutlined style={{ fontSize: 12, marginRight: 6 }} />
@@ -410,10 +423,32 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
               </div>
               <div
                 onClick={handleRefresh}
+                className="settings-menu-item"
                 style={menuItemStyle}
               >
                 <ReloadOutlined style={{ fontSize: 12, marginRight: 6 }} />
                 <span>刷新</span>
+              </div>
+
+              <div style={{ height: 1, backgroundColor: 'var(--border-light)', margin: '2px 8px' }} />
+
+              <div
+                onClick={async () => {
+                  const result = await onCheckUpdate()
+                  if (result.hasUpdate) {
+                    window.open(result.downloadUrl, '_blank')
+                  } else {
+                    antMessage.success('当前已是最新版本')
+                  }
+                }}
+                className="settings-menu-item"
+                style={{ ...menuItemStyle, color: updateInfo.checked && updateInfo.hasUpdate ? 'var(--accent-color)' : 'var(--text-primary)' }}
+              >
+                <DownloadOutlined style={{ fontSize: 12, marginRight: 6 }} />
+                <span>{updateInfo.checked && updateInfo.hasUpdate ? `新版本 v${updateInfo.latestVersion} 可下载` : '版本检查'}</span>
+                {updateInfo.checked && updateInfo.hasUpdate && (
+                  <span style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%', backgroundColor: 'var(--error-color)' }} />
+                )}
               </div>
 
               {serverStatus === 'installed' && onServiceRestart && (
@@ -422,6 +457,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
               {serverStatus === 'installed' && onServiceRestart && (
                 <div
                   onClick={onServiceRestart}
+                  className="settings-menu-item"
                   style={{ ...menuItemStyle, color: 'var(--error-color)' }}
                 >
                   <ReloadOutlined style={{ fontSize: 12, marginRight: 6 }} />
@@ -430,8 +466,9 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
               )}
             </div>
           )}
-          trigger={['click', 'hover']}
+          trigger={['hover']}
         >
+          <Badge dot={updateInfo.checked && updateInfo.hasUpdate} color="var(--error-color)" offset={[-3, 3]}>
           <Button
             type="text"
             size="small"
@@ -439,6 +476,7 @@ const TopToolbar: React.FC<TopToolbarProps> = (props) => {
             disabled={serverStatus !== 'running'}
             style={{ color: 'var(--text-secondary)', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 2 }}
           />
+          </Badge>
         </Dropdown>
       </Flex>
     </Flex>

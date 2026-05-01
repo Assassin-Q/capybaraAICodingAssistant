@@ -1294,16 +1294,14 @@ class HttpServerManager(private val project: Project) {
          }
      }
      
-     private fun handleRestartService(exchange: HttpExchange) {
+      private fun handleRestartService(exchange: HttpExchange) {
         try {
-            // Use the project's OpenCodeServiceManager instance
-            // Stop the current service
-            opencodeServiceManager.stopService()
-            
-            // Start the service again
-            opencodeServiceManager.startService()
-            
-            sendResponse(exchange, 200, """{"success":true,"message":"Service restarted successfully"}""")
+            val success = opencodeServiceManager.forceRestart()
+            if (success) {
+                sendResponse(exchange, 200, """{"success":true,"message":"Service restarted successfully"}""")
+            } else {
+                sendResponse(exchange, 500, """{"error":"Failed to restart service: could not start new process"}""")
+            }
         } catch (e: Exception) {
             sendResponse(exchange, 500, """{"error":"Failed to restart service: ${e.message?.replace("\"", "\\\"")}"}""")
         }

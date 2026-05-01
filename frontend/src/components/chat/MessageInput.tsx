@@ -355,7 +355,7 @@ const MessageInput = ({
         }
         
         const [fullMatch, type, value] = match
-        const el = document.createElement('div')
+        const el = document.createElement('span')
         el.setAttribute('contenteditable', 'false')
         el.className = 'long-text-tag'
         el.style.display = 'inline-block'
@@ -667,7 +667,8 @@ const MessageInput = ({
       const pastedText = e.clipboardData.getData('text/plain')
       if (!pastedText) return
 
-      const target = e.target as HTMLDivElement
+      const root = contentEditableRef.current
+      if (!root) return
 
       if (onPasteText) {
         const processedText = onPasteText(pastedText)
@@ -678,11 +679,11 @@ const MessageInput = ({
             const hasSpecialFormat = /\[(LONG_TEXT|SKILL|MCP|FILE|IMAGE):[^\]]+\]/.test(processedText)
             if (hasSpecialFormat) {
               const fragment = renderTextToDOM(processedText)
-              target.appendChild(fragment)
+              root.appendChild(fragment)
             } else {
-              target.appendChild(document.createTextNode(processedText))
+              root.appendChild(document.createTextNode(processedText))
             }
-            const extractedText = extractTextFromDiv(target)
+            const extractedText = extractTextFromDiv(root)
             onInputChange(extractedText)
             updatePlaceholder()
             return
@@ -700,16 +701,16 @@ const MessageInput = ({
           range.collapse(false)
           selection.removeAllRanges()
           selection.addRange(range)
-          const extractedText = extractTextFromDiv(target)
+          const extractedText = extractTextFromDiv(root)
           onInputChange(extractedText)
           updatePlaceholder()
           return
         }
       }
 
-      target.focus()
-      // 删除选中的内容，使用insertNode替代execCommand
+      // 先捕获选区再聚焦，避免focus()重置光标位置
       const sel = window.getSelection()
+      root.focus()
       if (sel && sel.rangeCount) {
         const range = sel.getRangeAt(0)
         range.deleteContents()
@@ -719,10 +720,10 @@ const MessageInput = ({
         sel.removeAllRanges()
         sel.addRange(range)
       } else {
-        target.appendChild(document.createTextNode(pastedText))
+        root.appendChild(document.createTextNode(pastedText))
       }
 
-      const extractedText = extractTextFromDiv(target)
+      const extractedText = extractTextFromDiv(root)
       onInputChange(extractedText)
       updatePlaceholder()
     }, [onPasteText, onInputChange, onPasteFile, updatePlaceholder, extractTextFromDiv, renderTextToDOM])
@@ -1232,7 +1233,7 @@ const MessageInput = ({
                 }
               }}
             >
-              <SendOutlined style={{ fontSize: 14, marginLeft: -1, transform: 'rotate(-45deg)' }} />
+              <SendOutlined style={{ fontSize: 14,marginLeft: 3, transform: 'rotate(-45deg)', display: 'block' }} />
             </button>
           )}
         </div>

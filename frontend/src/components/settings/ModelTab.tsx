@@ -30,6 +30,8 @@ interface ModelTabProps {
   setCustomBaseUrl: React.Dispatch<React.SetStateAction<string>>
   customApiKey: string
   setCustomApiKey: React.Dispatch<React.SetStateAction<string>>
+  customNpm: string
+  setCustomNpm: React.Dispatch<React.SetStateAction<string>>
   customModels: Array<{
     id: string
     name: string
@@ -82,6 +84,8 @@ const ModelTab: React.FC<ModelTabProps> = ({
   setCustomBaseUrl,
   customApiKey,
   setCustomApiKey,
+  customNpm,
+  setCustomNpm,
   customModels,
   customHeaders,
   handleAddModel,
@@ -221,11 +225,15 @@ const ModelTab: React.FC<ModelTabProps> = ({
         ]}
       >
         <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>提供商名称</div>
+          <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
+            提供商名称
+            <span style={{ color: 'var(--error-color, #ff4d4f)', marginLeft: 2 }}>*</span>
+          </div>
           <Input
             value={customProviderName}
             onChange={e => setCustomProviderName(e.target.value)}
             placeholder="例如：My OpenAI"
+            status={!customProviderName ? undefined : undefined}
           />
         </div>
         <div style={{ marginBottom: 16 }}>
@@ -240,7 +248,10 @@ const ModelTab: React.FC<ModelTabProps> = ({
           />
         </div>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>基础 URL</div>
+          <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
+            基础 URL
+            <span style={{ color: 'var(--error-color, #ff4d4f)', marginLeft: 2 }}>*</span>
+          </div>
           <Input
             value={customBaseUrl}
             onChange={e => setCustomBaseUrl(e.target.value)}
@@ -253,6 +264,21 @@ const ModelTab: React.FC<ModelTabProps> = ({
             value={customApiKey}
             onChange={e => setCustomApiKey(e.target.value)}
             placeholder="输入 API Key（如无需认证可留空）"
+          />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
+            API 格式
+            <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 8 }}>选择供应商的 API 格式</span>
+          </div>
+          <Select
+            value={customNpm}
+            onChange={setCustomNpm}
+            style={{ width: '100%' }}
+            options={[
+              { label: 'OpenAI 兼容', value: '@ai-sdk/openai-compatible' },
+              { label: 'Anthropic', value: '@ai-sdk/anthropic' },
+            ]}
           />
         </div>
         <div style={{ marginBottom: 16 }}>
@@ -270,19 +296,31 @@ const ModelTab: React.FC<ModelTabProps> = ({
               borderRadius: 6,
               border: '1px solid var(--border-color)'
             }}>
-              <Space style={{ display: 'flex', marginBottom: 8 }}>
-                <Input
-                  placeholder="模型 ID（如 gpt-4）"
-                  value={model.id}
-                  onChange={e => updateModelField(index, 'id', e.target.value)}
-                  style={{ flex: 1 }}
-                />
-                <Input
-                  placeholder="显示名称（如 GPT-4）"
-                  value={model.name}
-                  onChange={e => updateModelField(index, 'name', e.target.value)}
-                  style={{ flex: 1 }}
-                />
+              <Space style={{ display: 'flex', marginBottom: 8 }} wrap>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ marginBottom: 4, fontSize: 11, color: 'var(--text-secondary)' }}>
+                    模型 ID
+                    <span style={{ color: 'var(--error-color, #ff4d4f)', marginLeft: 2 }}>*</span>
+                  </div>
+                  <Input
+                    placeholder="如 gpt-4o"
+                    value={model.id}
+                    onChange={e => updateModelField(index, 'id', e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ marginBottom: 4, fontSize: 11, color: 'var(--text-secondary)' }}>
+                    显示名称
+                    <span style={{ color: 'var(--error-color, #ff4d4f)', marginLeft: 2 }}>*</span>
+                  </div>
+                  <Input
+                    placeholder="如 GPT-4o"
+                    value={model.name}
+                    onChange={e => updateModelField(index, 'name', e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
                 {customModels.length > 1 && (
                   <Button
                     type="text"

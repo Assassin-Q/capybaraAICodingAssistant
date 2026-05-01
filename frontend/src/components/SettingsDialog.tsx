@@ -88,6 +88,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
   const [customProviderId, setCustomProviderId] = useState('')
   const [customBaseUrl, setCustomBaseUrl] = useState('')
   const [customApiKey, setCustomApiKey] = useState('')
+  const [customNpm, setCustomNpm] = useState('@ai-sdk/openai-compatible')
   const [customModels, setCustomModels] = useState<Array<{
     id: string
     name: string
@@ -102,7 +103,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
     id: '',
     name: '',
     options: {
-      reasoning: false,
+      reasoning: true,
       modalities: ['text'],
       attachment: false,
       toolcall: true,
@@ -210,7 +211,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
     }
 
     // 验证提供商ID格式
-    const providerId = editingProvider ? editingProvider.id : generateProviderId()
+    const providerId = editingProvider ? editingProvider.id : (customProviderId || generateProviderId())
     if (!/^[a-z0-9_-]+$/.test(providerId)) {
        message.warning('提供商ID只能使用小写字母、数字、连字符或下划线')
       return
@@ -248,7 +249,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
       // 构建提供商配置
       const providerConfig = {
-        npm: '@ai-sdk/openai-compatible',
+        npm: customNpm,
         name: customProviderName,
         options: {
           baseURL: customBaseUrl,
@@ -289,11 +290,12 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setCustomProviderId('')
     setCustomBaseUrl('')
     setCustomApiKey('')
+    setCustomNpm('@ai-sdk/openai-compatible')
     setCustomModels([{
       id: '',
       name: '',
       options: {
-        reasoning: false,
+        reasoning: true,
         modalities: ['text'],
         attachment: false,
         toolcall: true,
@@ -328,6 +330,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
       setCustomProviderId(provider.id)
       setCustomBaseUrl(cfg.options?.baseURL || '')
       setCustomApiKey(provider.key || '')
+      setCustomNpm(cfg.npm || provider.npm || '@ai-sdk/openai-compatible')
       setEditingProvider(provider)
 
       // 转换模型数据 - 优先使用 config 中的 models
@@ -1561,6 +1564,8 @@ npm run build
             setCustomBaseUrl={setCustomBaseUrl}
             customApiKey={customApiKey}
             setCustomApiKey={setCustomApiKey}
+            customNpm={customNpm}
+            setCustomNpm={setCustomNpm}
             customModels={customModels}
             customHeaders={customHeaders}
             handleAddModel={handleAddModel}

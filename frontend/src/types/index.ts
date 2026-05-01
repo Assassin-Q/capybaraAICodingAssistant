@@ -134,6 +134,7 @@ export interface Provider {
   isConnected?: boolean
   source?: string
   env?: string[]
+  npm?: string
   options?: {
     baseURL?: string
     headers?: Record<string, string>
@@ -279,6 +280,13 @@ export interface QuestionRequest {
 export interface PermissionRule {
   pattern: string
   level: 'allow' | 'ask' | 'deny'
+}
+
+export interface UpdateInfo {
+  hasUpdate: boolean
+  latestVersion: string
+  downloadUrl: string
+  checked: boolean
 }
 
 export interface PermissionCategory {

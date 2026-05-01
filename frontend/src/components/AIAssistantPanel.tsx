@@ -18,11 +18,12 @@ import TopToolbar from './TopToolbar'
 import TranslationModal from './chat/TranslationModal'
 import SelectionContextMenu from './chat/SelectionContextMenu'
 
-import { Message, Settings, SkillConfig, Todo, ThoughtStep, MessagePart, PermissionRequest, QuestionRequest, TokenUsage, ContextUsage, SessionStatus } from '../types'
+import { Message, Settings, SkillConfig, Todo, ThoughtStep, MessagePart, PermissionRequest, QuestionRequest, TokenUsage, ContextUsage, SessionStatus, UpdateInfo } from '../types'
 import { kotlinApi, Session, ServerStatus, ChatMessage } from '../utils/kotlinApi'
 import { useSSEHandler } from '../hooks/useSSEHandler'
 import { useKotlinSSE } from '../hooks/useKotlinSSE'
 import { useChatScroll } from '../hooks/useChatScroll'
+import { checkUpdate, APP_VERSION } from '../utils/versionCheck'
 
 // 哨兵标签常量
 const LONG_TEXT_START = '[LONG_TEXT_START]'
@@ -186,6 +187,7 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
   const [settingsSection, setSettingsSection] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({ hasUpdate: false, latestVersion: '', downloadUrl: '', checked: false })
   const inputAreaRef = useRef<HTMLDivElement>(null)
   const [inputAreaHeight, setInputAreaHeight] = useState(160)
 
@@ -199,6 +201,17 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
+
+  // 自动检查更新
+  useEffect(() => {
+    checkUpdate().then(result => setUpdateInfo({ ...result, checked: true }))
+  }, [])
+
+  const handleCheckUpdate = async () => {
+    const result = await checkUpdate()
+    setUpdateInfo({ ...result, checked: true })
+    return result
+  }
 
   // 自定义滚动条状态与同步
   const [scrollInfo, setScrollInfo] = useState({ top: 0, totalHeight: 0, clientHeight: 0 })
@@ -2198,13 +2211,16 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
         onOpenSettings={setSettingsSection}
         handleCreateSession={handleCreateSession}
         sessions={sessions}
-         currentSessionId={currentSessionId}
-         currentSessionStatus={currentSessionStatus}
-         editingSessionTitle={editingSessionTitle}
+          currentSessionId={currentSessionId}
+          currentSessionStatus={currentSessionStatus}
+          editingSessionTitle={editingSessionTitle}
         sessionTitleInput={sessionTitleInput}
         setSessionTitleInput={setSessionTitleInput}
         setEditingSessionTitle={setEditingSessionTitle}
           handleSaveSessionTitle={handleSaveSessionTitle}
+          appVersion={APP_VERSION}
+          updateInfo={updateInfo}
+          onCheckUpdate={handleCheckUpdate}
         />
       </div>
         

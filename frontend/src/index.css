@@ -332,6 +332,11 @@ textarea::placeholder {
   background-color: var(--bg-tertiary) !important;
 }
 
+/* 设置下拉菜单项 hover 效果 */
+.settings-menu-item:hover {
+  background-color: var(--bg-tertiary) !important;
+}
+
 /* 选择器样式 */
 .ant-select-selector {
   background-color: var(--bg-tertiary) !important;

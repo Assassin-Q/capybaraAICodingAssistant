@@ -6,7 +6,11 @@ plugins {
 }
 
 group = "com.aicoding"
-version = "1.0.0"
+version = file("../frontend/package.json").let { file ->
+    val text = file.readText()
+    val regex = """"version":\s*"([^"]+)"""".toRegex()
+    regex.find(text)?.groupValues?.getOrNull(1) ?: "1.0.0"
+}
 
 repositories {
     mavenCentral()
@@ -21,6 +25,7 @@ dependencies {
 intellij {
     version.set("2023.2.4")
     type.set("IC") // IntelliJ Community Edition
+    pluginName.set("capybaraAICodingAssistant")
 }
 
 kotlin {
@@ -35,5 +40,15 @@ tasks {
 
     buildSearchableOptions {
         enabled = false
+    }
+
+    publishPlugin {
+        token.set(System.getenv("PUBLISH_TOKEN"))
+    }
+
+    signPlugin {
+        certificateChain.set(System.getenv("CERTIFICATE_CHAIN"))
+        privateKey.set(System.getenv("PRIVATE_KEY"))
+        password.set(System.getenv("PRIVATE_KEY_PASSWORD"))
     }
 }
