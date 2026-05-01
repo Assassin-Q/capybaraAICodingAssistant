@@ -24,10 +24,11 @@
 
 ## 🎬 演示视频 / Demo Video
 
-<a href="https://www.shine.jx.cn/capybaraAICodingAssistantPreview.mp4" target="_blank">
-  <img src="./docs/images/example/home.png" alt="演示视频 / Demo Video" width="100%" style="max-width: 800px; border-radius: 8px; cursor: pointer;">
-</a>
-<p align="center">▶ 点击图片观看演示视频 / Click the image to watch the demo video</p>
+<p align="center">
+  <a href="https://www.shine.jx.cn/capybaraAICodingAssistantPreview.mp4" target="_blank">
+    ▶ 点击观看演示视频 / Click to watch demo video
+  </a>
+</p>
 
 </div>
 
