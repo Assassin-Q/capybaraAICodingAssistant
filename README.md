@@ -24,9 +24,10 @@
 
 ## 🎬 演示视频 / Demo Video
 
-<video src="https://www.shine.jx.cn/capybaraAICodingAssistantPreview.mp4" controls width="100%" style="max-width: 800px; border-radius: 8px;">
-  您的浏览器不支持视频播放 / Your browser does not support the video tag.
-</video>
+<a href="https://www.shine.jx.cn/capybaraAICodingAssistantPreview.mp4" target="_blank">
+  <img src="./docs/images/example/home.png" alt="演示视频 / Demo Video" width="100%" style="max-width: 800px; border-radius: 8px; cursor: pointer;">
+</a>
+<p align="center">▶ 点击图片观看演示视频 / Click the image to watch the demo video</p>
 
 </div>
 
