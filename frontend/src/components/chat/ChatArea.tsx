@@ -173,7 +173,7 @@ const ChatArea = forwardRef<ChatAreaHandle, ChatAreaProps>(({
 
   const containerStyle = useMemo(() => ({
     flex: 1,
-    backgroundColor: 'var(--bg-primary)',
+    // backgroundColor: 'var(--bg-primary)',
     overflowX: 'hidden' as React.CSSProperties['overflowX'],
     maxWidth: '100%',
     overflowY: 'scroll' as React.CSSProperties['overflowY'],

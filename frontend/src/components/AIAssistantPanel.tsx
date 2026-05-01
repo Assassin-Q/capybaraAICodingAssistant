@@ -15,6 +15,7 @@ import SessionHistoryPanel from './chat/SessionHistoryPanel'
 import ChatArea, { type ChatAreaHandle } from './chat/ChatArea'
 import FileAttachmentPanel from './chat/FileAttachmentPanel'
 import TopToolbar from './TopToolbar'
+import BackgroundSphere from './BackgroundSphere'
 import TranslationModal from './chat/TranslationModal'
 import SelectionContextMenu from './chat/SelectionContextMenu'
 
@@ -2141,8 +2142,9 @@ const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({ isDark, onThemeChan
     }
   }, [sessionStatuses, currentSessionId, isSending])
 
-   return (
-    <>
+    return (
+     <>
+      <BackgroundSphere isDark={isDark} />
       {revertConfirmModal}
       <div
         style={{

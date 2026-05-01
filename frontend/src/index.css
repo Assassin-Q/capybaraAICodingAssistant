@@ -69,70 +69,38 @@ body {
 
 /* 深色主题 - 默认 */
 :root, body[data-theme='dark'] {
-  /* 背景色 */
   --bg-primary: #1a1b1e;
   --bg-secondary: #25262b;
   --bg-tertiary: #2c2e33;
-  --bg-elevated: #373a40;
-  --bg-gradient: linear-gradient(160deg, #1a1b1e 0%, #1a1d26 30%, #182230 60%, #1a1b1e 100%);
-  
-  /* 文字色 */
-  --text-primary: #e1e2e4;
-  --text-secondary: #909296;
-  --text-tertiary: #5c5f66;
-  --text-inverse: #1a1b1e;
-  
-  /* 边框色 */
+  --text-primary: #e1e3e6;
+  --text-secondary: #9b9ea3;
+  --text-tertiary: #6b6f76;
   --border-color: #373a40;
   --border-light: #2c2e33;
-  
-  /* 强调色 */
-  --accent-color: #339af0;
-  --accent-hover: #228be6;
-  --accent-light: rgba(51, 154, 240, 0.15);
-  
-  /* 状态色 */
-  --success-color: #51cf66;
-  --success-light: rgba(81, 207, 102, 0.15);
-  --warning-color: #fcc419;
-  --warning-light: rgba(252, 196, 25, 0.15);
-  --error-color: #ff6b6b;
-  --error-light: rgba(255, 107, 107, 0.15);
-  --info-color: #339af0;
-  --info-light: rgba(51, 154, 240, 0.15);
-  
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  
-  /* 圆角 */
-  --radius-sm: 2px;
-  --radius-md: 3px;
-  --radius-lg: 4px;
-  --radius-xl: 6px;
-  
-  /* 间距 */
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 12px;
-  --spacing-lg: 16px;
-  --spacing-xl: 24px;
-  
-  /* 长文本标签 */
-  --bg-tag: #373a40;
-  --text-tag: #e1e2e4;
-  --border-tag: #4a4d52;
-  
-  /* 代码块 */
-  --bg-code: #282c34;
-  --text-code: #abb2bf;
-
-  /* 毛玻璃效果 */
-  --glass-bg: rgba(26, 27, 30, 0.82);
-  --glass-bg-heavy: rgba(26, 27, 30, 0.92);
+  --accent-color: #61afef;
+  --accent-hover: #528bff;
+  --accent-light: rgba(97, 175, 239, 0.15);
+  --error-color: #e06c75;
+  --success-color: #98c379;
+  --warning-color: #e5c07b;
+  --info-color: #61afef;
+  --bg-elevated: #1e1f24;
+  --bg-glass: rgba(26, 27, 30, 0.72);
   --glass-blur: 12px;
   --glass-border: rgba(255, 255, 255, 0.06);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+
+  /* Background sphere dark colors */
+  --bg-sphere-1: #11121a;
+  --bg-sphere-2: #0a0a10;
+  --bg-sphere-3: #07070b;
+  background: radial-gradient(ellipse at 50% 50%, var(--bg-sphere-1) 0%, var(--bg-sphere-2) 70%, var(--bg-sphere-3) 100%);
+  background-attachment: fixed;
 }
 
 body[data-theme='dark'] .ant-collapse {
@@ -787,9 +755,38 @@ body[data-theme='dark'] .settings-modal .ant-modal-title {
    ============================================ */
 
 body[data-theme='light'] {
+  --bg-primary: #ffffff;
   --bg-secondary: #f8f9fa;
-  --bg-tertiary: #f1f3f5;
-  --border-color: #dee2e6;
+  --bg-tertiary: #f0f1f3;
+  --text-primary: #1a1b1e;
+  --text-secondary: #6b6f76;
+  --text-tertiary: #9b9ea3;
+  --border-color: #d4d6da;
+  --border-light: #e4e6ea;
+  --accent-color: #1677ff;
+  --accent-hover: #4096ff;
+  --accent-light: rgba(22, 119, 255, 0.08);
+  --error-color: #e74c3c;
+  --success-color: #52c41a;
+  --warning-color: #faad14;
+  --info-color: #1677ff;
+  --bg-elevated: #ffffff;
+  --bg-glass: rgba(255, 255, 255, 0.78);
+  --glass-blur: 12px;
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* Background sphere light colors */
+  --bg-sphere-1: #eef1f5;
+  --bg-sphere-2: #e4e8ee;
+  --bg-sphere-3: #dce1e8;
+  background: radial-gradient(ellipse at 50% 50%, var(--bg-sphere-1) 0%, var(--bg-sphere-2) 70%, var(--bg-sphere-3) 100%);
+  background-attachment: fixed;
 }
 body[data-theme='light'] .ant-table-wrapper .ant-table{
   background: rgb(255 255 255 / 16%) !important;
@@ -836,7 +833,7 @@ body[data-theme='light'] .ant-table-wrapper .ant-table{
 /* ============================================
    @pierre/diffs ��ʽ�������ļ��Ա������
    ============================================ */
-@layer pierre-diffs { @layer base, theme, rendered, unsafe;
+@layer pierre-diffs { @layer base, theme, rendered, unsafe; }
 
 @layer pierre-diffs {
   .diff-viewer-container {
@@ -4104,3 +4101,110 @@ body[data-theme='light'] .ant-table-wrapper .ant-table{
   }
 }
 
+
+/* Background Sphere - ���彥�� */
+.fluid-bg-v2 {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(160px);
+  opacity: 0.25;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  will-change: transform, filter;
+  z-index: 0;
+  transition: opacity 0.6s ease, filter 0.6s ease;
+}
+body[data-theme='light'] .fluid-bg-v2 {
+  mix-blend-mode: multiply;
+  opacity: 0.18;
+  filter: blur(160px);
+}
+.fluid-bg-v2.blue {
+  width: 70vmin; height: 70vmin;
+  left: 50%; top: 50%;
+  margin-left: -35vmin; margin-top: -35vmin;
+  background: radial-gradient(circle at 40% 40%,
+    rgba(61, 126, 184, 1) 0%,
+    rgba(38, 88, 154, 1) 40%,
+    rgba(38, 88, 154, 0) 72%);
+  animation: flow-blue 40s cubic-bezier(.45,.05,.55,.95) infinite;
+}
+body[data-theme='light'] .fluid-bg-v2.blue {
+  background: radial-gradient(circle at 40% 40%,
+    rgba(197, 217, 237, 1) 0%,
+    rgba(176, 204, 227, 1) 40%,
+    rgba(176, 204, 227, 0) 72%);
+}
+.fluid-bg-v2.violet {
+  width: 66vmin; height: 66vmin;
+  left: 50%; top: 50%;
+  margin-left: -33vmin; margin-top: -33vmin;
+  background: radial-gradient(circle at 50% 50%,
+    rgba(155, 77, 140, 1) 0%,
+    rgba(122, 52, 112, 1) 42%,
+    rgba(122, 52, 112, 0) 72%);
+  animation: flow-violet 50s cubic-bezier(.45,.05,.55,.95) infinite;
+}
+body[data-theme='light'] .fluid-bg-v2.violet {
+  background: radial-gradient(circle at 50% 50%,
+    rgba(219, 181, 212, 1) 0%,
+    rgba(203, 162, 197, 1) 42%,
+    rgba(203, 162, 197, 0) 72%);
+}
+.fluid-bg-v2.accent {
+  width: 42vmin; height: 42vmin;
+  left: 50%; top: 50%;
+  margin-left: -21vmin; margin-top: -21vmin;
+  opacity: 0.18;
+  filter: blur(140px);
+  background: radial-gradient(circle at 50% 50%,
+    rgba(142, 84, 176, 1) 0%,
+    rgba(106, 61, 140, 1) 45%,
+    rgba(106, 61, 140, 0) 72%);
+  animation: flow-accent 60s cubic-bezier(.45,.05,.55,.95) infinite;
+}
+body[data-theme='light'] .fluid-bg-v2.accent {
+  opacity: 0.15;
+  background: radial-gradient(circle at 50% 50%,
+    rgba(213, 200, 224, 1) 0%,
+    rgba(196, 180, 212, 1) 45%,
+    rgba(196, 180, 212, 0) 72%);
+}
+
+@keyframes flow-blue {
+  0%   { transform: translate(-60vmin, -50vmin) scale(1.00) rotate(0deg); }
+  20%  { transform: translate( 30vmin, -60vmin) scale(1.10) rotate(40deg); }
+  40%  { transform: translate( 70vmin, -10vmin) scale(0.95) rotate(80deg); }
+  60%  { transform: translate( 40vmin,  50vmin) scale(1.12) rotate(120deg); }
+  80%  { transform: translate(-30vmin,  40vmin) scale(0.98) rotate(160deg); }
+  100% { transform: translate(-60vmin, -50vmin) scale(1.00) rotate(360deg); }
+}
+@keyframes flow-violet {
+  0%   { transform: translate( 50vmin,  50vmin) scale(1.05) rotate(0deg); }
+  20%  { transform: translate(-40vmin,  60vmin) scale(0.94) rotate(-40deg); }
+  40%  { transform: translate(-70vmin,   5vmin) scale(1.14) rotate(-80deg); }
+  60%  { transform: translate(-30vmin, -50vmin) scale(0.92) rotate(-120deg); }
+  80%  { transform: translate( 40vmin, -40vmin) scale(1.08) rotate(-160deg); }
+  100% { transform: translate( 50vmin,  50vmin) scale(1.05) rotate(-360deg); }
+}
+@keyframes flow-accent {
+  0%   { transform: translate( 10vmin, -60vmin) scale(1.00); }
+  25%  { transform: translate(-50vmin,  20vmin) scale(1.15); }
+  50%  { transform: translate( 20vmin,  60vmin) scale(0.88); }
+  75%  { transform: translate( 60vmin, -20vmin) scale(1.10); }
+  100% { transform: translate( 10vmin, -60vmin) scale(1.00); }
+}
+
+/* Background Sphere - ������� */
+.bg-noise-v2 {
+  position: fixed;
+  inset: 0;
+  opacity: 0.035;
+  pointer-events: none;
+  z-index: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.15 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  mix-blend-mode: overlay;
+}
+body[data-theme='light'] .bg-noise-v2 {
+  opacity: 0.025;
+}
