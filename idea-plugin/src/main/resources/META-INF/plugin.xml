@@ -3,115 +3,57 @@
     <name>Capybara AI Coding Assistant</name>
     <vendor email="1270374419@qq.com" url="https://gitee.com/qianguanshui/capybaraAICodingAssistant">AI Coding Team</vendor>
     <description><![CDATA[
-        <h2>Capybara AI Coding Assistant</h2>
-        <p>An AI-powered coding assistant for IntelliJ IDEA built on OpenCode — free model integration, highly customizable, rapid development experience.</p>
-        <p>基于 OpenCode 的 IntelliJ IDEA AI 编程助手 —— 自由模型接入、高度自定义、极速开发体验。</p>
-        <p>Supports any AI model provider (OpenAI, Anthropic, DeepSeek, etc.) with streaming chat, code operations, Skill system, MCP protocol integration, and more.</p>
-        <p>支持自由添加任意 AI 模型提供商（OpenAI、Anthropic、DeepSeek 等），提供流式聊天、代码操作、Skills 技能系统、MCP 协议集成等丰富功能。</p>
-        <br>
-        <h3>Features</h3>
-        <ul>
-            <li><b>AI Chat</b> — Streaming chat with multi-turn conversations and real-time SSE updates / 流式聊天界面，支持多轮对话与 SSE 实时更新</li>
-            <li><b>Session Management</b> — Create, rename, delete, fork, and browse history / 创建、重命名、删除、分叉、历史浏览</li>
-            <li><b>Multi-Provider</b> — Manage multiple AI providers with custom model support / 自由管理多个 AI 提供商，自定义接入任意兼容模型</li>
-            <li><b>Skill System</b> — Create, edit, import, export reusable AI prompts with project/global scope / 创建/编辑/导入/导出可复用 AI 指令</li>
-            <li><b>MCP Server</b> — Local and remote MCP server integration / Model Context Protocol 集成，支持本地与远程服务器</li>
-            <li><b>Permission Control</b> — Granular allow/ask/deny rules for files, commands, edits, etc. / 按模式粒度为文件/命令/编辑等操作定义规则</li>
-            <li><b>Code Actions</b> — Right-click menu: explain, optimize, unit test, translate, add to conversation / 右键菜单操作</li>
-            <li><b>File Search</b> — Search by name or content with fuzzy/exact match and extension filter / 按文件名/内容搜索</li>
-            <li><b>Diff Viewer</b> — Inline code diff visualization / 代码差异内联可视化</li>
-            <li><b>Theme</b> — Light and dark themes / 深色/浅色主题</li>
-            <li><b>Update Check</b> — Auto-detect new versions with one-click download / 自动检测新版本，支持一键跳转下载</li>
-        </ul>
-        <br>
-        <h3>Tech Stack</h3>
-        <ul>
-            <li>Frontend: React 18 + TypeScript 5.2 + Ant Design X</li>
-            <li>Plugin: Kotlin 1.9.20 + IntelliJ Platform 2023.2+</li>
-            <li>AI Backend: <a href="https://opencode.ai">OpenCode</a></li>
-        </ul>
-        <br>
-        <h3>Prerequisites</h3>
-        <p>This plugin requires <a href="https://opencode.ai">OpenCode</a> to be installed and configured locally.</p>
-        <p>本插件依赖 OpenCode 服务运行，请确保本地已安装并配置好 OpenCode CLI。</p>
-        <br>
-        <h3>Open Source</h3>
-        <p><a href="https://gitee.com/qianguanshui/capybaraAICodingAssistant">https://gitee.com/qianguanshui/capybaraAICodingAssistant</a></p>
+        A compact IntelliJ IDEA coding assistant powered by a local OpenCode server.
     ]]></description>
-    <change-notes><![CDATA[
-        <h3>v1.0.0</h3>
-        <ul>
-            <li>Initial release</li>
-            <li>Chat-based AI coding assistance with streaming responses</li>
-            <li>Code explanation, optimization, and unit test generation</li>
-            <li>Multi-provider model support</li>
-            <li>Custom skills and MCP server integration</li>
-            <li>File diff viewer and merge conflict resolution</li>
-            <li>Theme support (light/dark)</li>
-        </ul>
-    ]]></change-notes>
 
     <depends>com.intellij.modules.lang</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="CapybaraAICodingAssistant"
-                    factoryClass="com.aicoding.plugin.AICodingToolWindowFactory" 
-                    icon="/Capybara.svg"
-                    anchor="right"/>
-        <projectService serviceImplementation="com.aicoding.plugin.services.OpenCodeServiceManager"/>
-        <applicationService serviceImplementation="com.aicoding.plugin.services.JNACleanupService"/>
-        <projectManagerListener implementation="com.aicoding.plugin.services.ProjectCleanupListener"/>
-        <postStartupActivity implementation="com.aicoding.plugin.services.JNACleanupStartupActivity"/>
-        
-        <!-- 新增服务和扩展 -->
-        <projectService serviceImplementation="com.aicoding.plugin.services.AIContextService"/>
-        <applicationService serviceImplementation="com.aicoding.plugin.services.AIAsyncManager"/>
-        <projectService serviceImplementation="com.aicoding.plugin.ui.EditorManager"/>
-        <postStartupActivity implementation="com.aicoding.plugin.ui.EditorManagerStartupActivity"/>
-        <!-- 暂时隐藏AI代码补全功能 -->
-        <!-- <completion.contributor language="any" 
-            implementationClass="com.aicoding.plugin.completion.AICodeCompletionContributor"/> -->
+        <toolWindow
+            id="水豚 AI 助手"
+            factoryClass="com.aicoding.plugin.AICodingToolWindowFactory"
+            icon="/Capybara.svg"
+            anchor="right" />
     </extensions>
 
     <actions>
-        <action id="com.aicoding.plugin.TogglePanelAction" 
-                class="com.aicoding.plugin.actions.TogglePanelAction"
-                text="Toggle AI Assistant Panel"
-                description="Toggle AI Assistant Panel visibility">
-            <add-to-group group-id="ToolsMenu" anchor="last"/>
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl SLASH"/>
+        <action
+            id="com.aicoding.plugin.TogglePanelAction"
+            class="com.aicoding.plugin.actions.TogglePanelAction"
+            text="打开或关闭水豚 AI 助手"
+            description="显示或隐藏水豚 AI 助手工具窗口">
+            <add-to-group group-id="ToolsMenu" anchor="last" />
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl SLASH" />
         </action>
-        
-        <!-- AI助手 context menu actions -->
-        <group id="com.aicoding.plugin.AICodingMenu" text="AI助手" description="AI Coding Assistant Actions" popup="true">
-            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
-            <add-to-group group-id="EditorTabPopupMenu" anchor="first"/>
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="first"/>
-            <action id="com.aicoding.plugin.AddToConversationAction"
-                    class="com.aicoding.plugin.actions.AddToConversationAction"
-                    text="添加到对话"
-                    description="Add selected code to conversation"/>
-            <action id="com.aicoding.plugin.ExplainCodeAction"
-                    class="com.aicoding.plugin.actions.ExplainCodeAction"
-                    text="解释代码"
-                    description="Explain selected code"/>
-            <action id="com.aicoding.plugin.OptimizeCodeAction"
-                    class="com.aicoding.plugin.actions.OptimizeCodeAction"
-                    text="优化代码"
-                    description="Optimize selected code"/>
-        <action id="com.aicoding.plugin.GenerateUnitTestsAction"
+
+        <group
+            id="com.aicoding.plugin.AICodingMenu"
+            text="水豚 AI 助手"
+            description="将 IDEA 上下文发送给助手"
+            popup="true">
+            <add-to-group group-id="EditorPopupMenu" anchor="first" />
+            <add-to-group group-id="EditorTabPopupMenu" anchor="first" />
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="first" />
+            <action
+                id="com.aicoding.plugin.AddToConversationAction"
+                class="com.aicoding.plugin.actions.AddToConversationAction"
+                text="加入对话"
+                description="将选中的代码或文件加入对话" />
+            <action
+                id="com.aicoding.plugin.ExplainCodeAction"
+                class="com.aicoding.plugin.actions.ExplainCodeAction"
+                text="解释代码"
+                description="将选中的代码加入解释任务" />
+            <action
+                id="com.aicoding.plugin.OptimizeCodeAction"
+                class="com.aicoding.plugin.actions.OptimizeCodeAction"
+                text="优化代码"
+                description="将选中的代码加入优化任务" />
+            <action
+                id="com.aicoding.plugin.GenerateUnitTestsAction"
                 class="com.aicoding.plugin.actions.GenerateUnitTestsAction"
                 text="生成单元测试"
-                description="Generate unit tests for selected code"/>
+                description="为选中的代码生成单元测试" />
         </group>
-        
-        <!-- 暂时隐藏AI悬浮框快捷键动作 -->
-        <!-- <action id="com.aicoding.plugin.ShowAIPopupAction"
-                class="com.aicoding.plugin.actions.ShowAIPopupAction"
-                text="显示AI悬浮框"
-                description="Show AI popup for selected code or current line">
-            <add-to-group group-id="EditorPopupMenu" anchor="first" relative-to-action="com.aicoding.plugin.AICodingMenu"/>
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift A"/>
-        </action> -->
     </actions>
 </idea-plugin>

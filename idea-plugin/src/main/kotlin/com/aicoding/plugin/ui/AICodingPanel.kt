@@ -1,97 +1,131 @@
 package com.aicoding.plugin.ui
 
+import com.aicoding.plugin.server.HttpServerManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
-import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefApp
-import com.intellij.ui.jcef.JBCefClient
-import org.cef.CefSettings
-import com.aicoding.plugin.server.HttpServerManager
+import com.intellij.ui.jcef.JBCefBrowser
+import org.cef.browser.CefBrowser
+import org.cef.browser.CefFrame
+import org.cef.handler.CefLoadHandler.ErrorCode
+import org.cef.handler.CefLoadHandlerAdapter
 import java.awt.BorderLayout
+import java.awt.CardLayout
+import java.awt.Color
+import java.awt.Dimension
+import java.awt.Font
+import javax.swing.BorderFactory
+import javax.swing.JLabel
 import javax.swing.JPanel
+import javax.swing.SwingConstants
+import javax.swing.SwingUtilities
 
-class AICodingPanel(private val project: Project, private val toolWindow: ToolWindow) : JPanel(BorderLayout()), Disposable {
-    private val browser: JBCefBrowser
-    private val httpServer: HttpServerManager
+class AICodingPanel(
+    private val project: Project,
+    @Suppress("UNUSED_PARAMETER") private val toolWindow: ToolWindow,
+) : JPanel(BorderLayout()), Disposable {
+    private val browser = JBCefBrowser.createBuilder()
+        .setOffScreenRendering(false)
+        .build()
+    private val httpServer = HttpServerManager(project)
+    private val cards = JPanel(CardLayout())
+    private val statusLabel = JLabel("正在加载 Capybara AI...", SwingConstants.CENTER)
+    private var frontendUrl = ""
 
     init {
-        // 尝试配置 JCEF 以支持 Monaco Editor 的 Web Worker
-        try {
-            val jbCefApp = JBCefApp.getInstance()
-            // 尝试添加命令行开关（方法名可能不同，尝试常见变体）
-            val method = jbCefApp.javaClass.methods.find { it.name.contains("CommandLineSwitch") }
-            if (method != null) {
-                // 尝试调用添加开关的方法
-                val switches = listOf(
-                    "--disable-web-security",
-                    "--allow-file-access-from-files",
-                    "--allow-file-access",
-                    "--disable-site-isolation-trials"
-                )
-                for (switch in switches) {
-                    try {
-                        method.invoke(jbCefApp, switch)
-                        println("Added JCEF command line switch: $switch")
-                    } catch (e: Exception) {
-                        // 忽略单个开关添加失败
-                    }
-                }
-                println("JCEF command line switches configured for Monaco Editor Worker support")
-            } else {
-                println("Warning: Could not find JCEF command line switch method")
-            }
-        } catch (e: Exception) {
-            println("Warning: Could not configure JCEF settings: ${e.message}")
-        }
-        
-        // 创建并配置 JBCefBrowser 以启用 IME 支持
-        val browserBuilder = JBCefBrowser.createBuilder()
-        // 禁用离屏渲染可能有助于 IME（中文输入法）
-        browserBuilder.setOffScreenRendering(false)
-        
-        browser = browserBuilder.build()
-        
-        // 创建 HttpServerManager，它会管理 OpenCodeServiceManager
-        httpServer = HttpServerManager(project)
-        
-        add(browser.component, BorderLayout.CENTER)
-        startServer()
-        
-        // 注册为 Disposable，确保项目关闭时清理资源
+        val minimumPanelSize = Dimension(560, 480)
+        minimumSize = minimumPanelSize
+        preferredSize = Dimension(640, 720)
+        browser.component.minimumSize = minimumPanelSize
+        browser.component.preferredSize = preferredSize
+        cards.minimumSize = minimumPanelSize
+        cards.preferredSize = preferredSize
+        toolWindow.component.minimumSize = minimumPanelSize
+        statusLabel.font = statusLabel.font.deriveFont(Font.PLAIN, 12f)
+        statusLabel.foreground = Color.GRAY
+        statusLabel.border = BorderFactory.createEmptyBorder(16, 16, 16, 16)
+        cards.add(browser.component, "browser")
+        cards.add(statusLabel, "status")
+        add(cards, BorderLayout.CENTER)
+        installLoadHandler()
+        startFrontend()
         Disposer.register(project, this)
     }
 
-    private fun startServer() {
-        // Get project path
-        val projectPath = project.basePath
-        if (projectPath != null) {
-            println("Project path: $projectPath")
-            httpServer.setProjectPath(projectPath)
-        } else {
-            println("Warning: Project path is null")
+    private fun startFrontend() {
+        if (!JBCefApp.isSupported()) {
+            showStatus("当前 IDEA 运行时不支持 JCEF，无法显示前端界面。")
+            return
         }
-        
-        // 启动 HTTP 服务器（它会自动启动 OpenCode 服务）
-        httpServer.start()
-        val url = "http://localhost:${httpServer.getPort()}"
-        println("Loading frontend from: $url")
-        browser.loadURL(url)
+
+        try {
+            project.basePath?.let(httpServer::setProjectPath)
+            httpServer.start()
+            frontendUrl = "http://127.0.0.1:${httpServer.getPort()}/"
+            println("Capybara JCEF loading $frontendUrl")
+            browser.loadURL(frontendUrl)
+        } catch (error: Exception) {
+            showStatus("Capybara 前端服务启动失败: ${error.message ?: error.javaClass.simpleName}")
+        }
+    }
+
+    private fun installLoadHandler() {
+        browser.jbCefClient.addLoadHandler(object : CefLoadHandlerAdapter() {
+            override fun onLoadingStateChange(
+                cefBrowser: CefBrowser,
+                isLoading: Boolean,
+                canGoBack: Boolean,
+                canGoForward: Boolean,
+            ) {
+                if (isLoading) {
+                    showStatus("正在加载 Capybara AI...")
+                }
+            }
+
+            override fun onLoadEnd(cefBrowser: CefBrowser, frame: CefFrame, httpStatusCode: Int) {
+                if (!frame.isMain) return
+                if (httpStatusCode !in 200..299) {
+                    showStatus("前端页面返回 HTTP $httpStatusCode\n$frontendUrl")
+                } else {
+                    SwingUtilities.invokeLater { cards.showCard("browser") }
+                }
+            }
+
+            override fun onLoadError(
+                cefBrowser: CefBrowser,
+                frame: CefFrame,
+                errorCode: ErrorCode,
+                errorText: String,
+                failedUrl: String,
+            ) {
+                if (frame.isMain) {
+                    showStatus("前端页面加载失败: $errorText ($errorCode)\n$failedUrl")
+                }
+            }
+        }, browser.cefBrowser)
+    }
+
+    private fun showStatus(message: String) {
+        SwingUtilities.invokeLater {
+            statusLabel.text = "<html><div style='text-align:center;'>${escapeHtml(message)}</div></html>"
+            cards.showCard("status")
+        }
+    }
+
+    private fun escapeHtml(value: String): String = value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\n", "<br>")
+
+    private fun JPanel.showCard(name: String) {
+        (layout as CardLayout).show(this, name)
     }
 
     override fun dispose() {
-        println("AICodingPanel disposing...")
-        try {
-            browser.dispose()
-        } catch (e: Exception) {
-            println("Error disposing browser: ${e.message}")
-        }
-        try {
-            httpServer.stop()
-        } catch (e: Exception) {
-            println("Error stopping HTTP server: ${e.message}")
-        }
-        println("AICodingPanel disposed successfully")
+        browser.dispose()
+        httpServer.stop()
     }
 }

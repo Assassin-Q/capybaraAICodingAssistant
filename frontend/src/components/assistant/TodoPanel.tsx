@@ -1,0 +1,88 @@
+import { Check, ChevronUp, Circle, ListTodo, LoaderCircle } from "lucide-react";
+
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
+import type { TodoInfo } from "@/lib/opencode";
+
+const priorityLabel: Record<string, string> = {
+  high: "高",
+  low: "低",
+  medium: "中",
+};
+
+const statusLabel: Record<string, string> = {
+  cancelled: "已取消",
+  completed: "已完成",
+  in_progress: "进行中",
+  pending: "待处理",
+};
+
+const isFinished = (todo: TodoInfo): boolean =>
+  todo.status === "completed" || todo.status === "cancelled";
+
+export function TodoPanel({ todos }: { todos: TodoInfo[] }) {
+  const unfinished = todos.filter((todo) => !isFinished(todo));
+  if (todos.length === 0 || unfinished.length === 0) return null;
+
+  const finishedCount = todos.length - unfinished.length;
+  const activeTodo = todos.find((todo) => todo.status === "in_progress") ?? unfinished[0];
+  const activeIndex = Math.max(0, todos.indexOf(activeTodo));
+  const progress = Math.round((finishedCount / todos.length) * 100);
+
+  return (
+    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-[calc(100%-1.5rem)] max-w-xl -translate-x-1/2">
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            aria-label="查看任务清单"
+            className="pointer-events-auto mx-auto flex h-8 max-w-full items-center gap-2 rounded-full bg-popover px-3 text-xs text-popover-foreground shadow-sm ring-1 ring-border/50 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
+            type="button"
+          >
+            {activeTodo.status === "in_progress"
+              ? <LoaderCircle className="size-3.5 shrink-0 animate-spin text-primary" />
+              : <ListTodo className="size-3.5 shrink-0 text-muted-foreground" />}
+            <span className="shrink-0 font-medium">{`第 ${activeIndex + 1}/${todos.length} 步`}</span>
+            <span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-border" />
+            <span className="min-w-0 truncate text-muted-foreground">{activeTodo.content}</span>
+            <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="center"
+          className="pointer-events-auto w-[min(28rem,calc(100vw-2rem))] border-0 p-3 shadow-lg ring-1 ring-border/50"
+          side="top"
+          sideOffset={8}
+        >
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold">任务清单</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">{`${finishedCount}/${todos.length} 已处理`}</p>
+            </div>
+            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{progress}%</span>
+          </div>
+          <Progress className="mb-3 h-1 bg-muted" value={progress} />
+          <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
+            {todos.map((todo, index) => {
+              const completed = todo.status === "completed";
+              const active = todo.status === "in_progress";
+              const cancelled = todo.status === "cancelled";
+              const Icon = completed ? Check : active ? LoaderCircle : Circle;
+              return (
+                <div className="flex items-start gap-2 rounded-md px-1.5 py-1.5 text-xs" key={todo.id ?? `${todo.content}-${index}`}>
+                  <Icon className={`mt-0.5 size-3.5 shrink-0 ${active ? "animate-spin text-primary" : completed ? "text-emerald-500" : "text-muted-foreground"}`} />
+                  <span className={completed || cancelled ? "min-w-0 flex-1 text-muted-foreground line-through" : "min-w-0 flex-1"}>
+                    {todo.content}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                    {statusLabel[todo.status] ?? todo.status}
+                    {todo.priority && ` · ${priorityLabel[todo.priority] ?? todo.priority}`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}

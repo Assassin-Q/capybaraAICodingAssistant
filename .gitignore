@@ -6,6 +6,7 @@
 
 # Dependencies
 frontend/node_modules/
+frontend/.env.local
 .opencode/node_modules/
 
 # Build output
