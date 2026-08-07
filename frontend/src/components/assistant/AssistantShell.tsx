@@ -22,11 +22,11 @@ import { ContextChip } from "@/components/assistant/ContextChip";
 import type { ConversationTurn } from "@/components/assistant/conversationTurns";
 import {
   AgentPicker,
-  modelVariantIDs,
   ModelPicker,
   NetworkToggle,
   VariantPicker,
 } from "@/components/assistant/ModelPicker";
+import { modelVariantIDs } from "@/components/assistant/modelVariants";
 import { PermissionInline } from "@/components/assistant/PermissionInline";
 import { PromptQueue, type QueuedPrompt } from "@/components/assistant/PromptQueue";
 import { QuestionInline } from "@/components/assistant/QuestionInline";

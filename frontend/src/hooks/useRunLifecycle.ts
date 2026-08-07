@@ -4,6 +4,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { errorMessage } from "@/components/assistant/shared";
 import type { RunStatus } from "@/components/assistant/shared";
 import { reconcileSessionMessages } from "@/components/assistant/liveEvents";
+import { appendRunFailure, DEFAULT_EMPTY_RUN_ERROR, hasRunOutput } from "@/components/assistant/runFailure";
 import { openCodeApi } from "@/lib/opencode";
 import type { SessionMessage } from "@/lib/opencode";
 
@@ -60,7 +61,7 @@ export function useRunLifecycle({
 
   useEffect(() => () => clearStatusPolling(), [clearStatusPolling]);
 
-  const finishRun = useCallback(async (sessionID: string, generation?: number) => {
+  const finishRun = useCallback(async (sessionID: string, generation?: number, failureReason?: string) => {
     if (refs.selectedSessionIDRef.current !== sessionID) return;
     const currentPrompt = refs.activePrompt.current;
     if (generation !== undefined && currentPrompt && currentPrompt.generation !== generation) return;
@@ -82,7 +83,12 @@ export function useRunLifecycle({
         incoming = await openCodeApi.getMessages(sessionID, projectPath);
       }
       if (refs.selectedSessionIDRef.current === sessionID) {
-        setMessages((current) => reconcileSessionMessages(current, incoming));
+        const reason = failureReason || DEFAULT_EMPTY_RUN_ERROR;
+        const finalMessages = hasRunOutput(incoming, currentPrompt)
+          ? incoming
+          : appendRunFailure(incoming, currentPrompt, reason);
+        setMessages((current) => reconcileSessionMessages(current, finalMessages));
+        if (!hasRunOutput(incoming, currentPrompt)) setError(reason);
       }
     } catch {
       // The live reducer already rendered the final event. Reconciliation is a fallback.
@@ -102,7 +108,7 @@ export function useRunLifecycle({
         setRunStatus("ready");
       }
     }
-  }, [clearStatusPolling, projectPath, refs, setMessages, setRunStatus, setStreamingAssistantID]);
+  }, [clearStatusPolling, projectPath, refs, setError, setMessages, setRunStatus, setStreamingAssistantID]);
 
   const pollSessionStatus = useCallback((sessionID: string, generation: number) => {
     clearStatusPolling();

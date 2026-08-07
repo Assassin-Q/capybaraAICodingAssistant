@@ -14,6 +14,7 @@ import {
 } from "@/components/ai-elements/model-selector";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { variantLabel } from "@/components/assistant/modelVariants";
 import { modelKey } from "@/components/assistant/shared";
 import type { AgentInfo, ModelInfo } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
@@ -25,10 +26,6 @@ interface ModelPickerProps {
   onChange: (value: string) => void;
   value: string;
 }
-
-export const modelVariantIDs = (model?: ModelInfo): string[] => {
-  return model?.variants ? Object.keys(model.variants) : [];
-};
 
 const providerLabel = (providerID: string): string => {
   const labels: Record<string, string> = {
@@ -100,19 +97,6 @@ interface VariantPickerProps {
   value?: string;
   variants: string[];
 }
-
-const variantLabel = (value?: string): string => {
-  if (!value || value === "default") return "默认";
-  const labels: Record<string, string> = {
-    high: "高",
-    low: "低",
-    max: "极高",
-    medium: "中",
-    minimal: "极低",
-    none: "关闭",
-  };
-  return labels[value.toLowerCase()] ?? value;
-};
 
 export function VariantPicker({ className, onChange, value, variants }: VariantPickerProps) {
   const [open, setOpen] = useState(false);

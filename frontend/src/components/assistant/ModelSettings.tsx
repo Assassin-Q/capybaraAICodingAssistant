@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ModelVariantSummary } from "@/components/assistant/ModelVariantSummary";
+import { modelVariantIDs } from "@/components/assistant/modelVariants";
 import { errorMessage } from "@/components/assistant/shared";
 import { openCodeApi } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
@@ -26,17 +28,6 @@ interface ModelDraft {
   outputModalities: ModelModality[];
   reasoning: boolean;
   toolCall: boolean;
-  variants: VariantEntry[];
-}
-
-interface VariantEntry {
-  key: string;
-  parameters: VariantParameter[];
-}
-
-interface VariantParameter {
-  key: string;
-  value: string;
 }
 
 interface ProviderDraft {
@@ -85,7 +76,6 @@ const emptyModel = (): ModelDraft => ({
   outputModalities: ["text"],
   reasoning: false,
   toolCall: true,
-  variants: [],
 });
 
 const providerName = (providerID: string, catalog: ProviderCatalog): string =>
@@ -136,13 +126,6 @@ const modelDraftFromConfig = (id: string, model: CustomModelConfig | undefined, 
   outputModalities: normalizeModalities(model?.modalities?.output, ["text"]),
   reasoning: model?.reasoning === true,
   toolCall: model?.tool_call !== false,
-  variants: Object.entries(model?.variants ?? {}).map(([key, value]) => ({
-    key,
-    parameters: Object.entries(value).map(([parameterKey, parameterValue]) => ({
-      key: parameterKey,
-      value: typeof parameterValue === "string" ? parameterValue : JSON.stringify(parameterValue),
-    })),
-  })),
 });
 
 const modelDraftFromCatalog = (model: ModelInfo, enabled: boolean): ModelDraft => ({
@@ -160,44 +143,9 @@ const modelDraftFromCatalog = (model: ModelInfo, enabled: boolean): ModelDraft =
   ),
   reasoning: model.capabilities?.reasoning === true,
   toolCall: model.capabilities?.toolcall !== false,
-  variants: Object.entries(model.variants ?? {}).map(([key, value]) => ({
-    key,
-    parameters: Object.entries(value).map(([parameterKey, parameterValue]) => ({
-      key: parameterKey,
-      value: typeof parameterValue === "string" ? parameterValue : JSON.stringify(parameterValue),
-    })),
-  })),
 });
-
-const parseParameterValue = (value: string): unknown => {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  try {
-    return JSON.parse(trimmed) as unknown;
-  } catch {
-    return trimmed;
-  }
-};
-
-const parseVariants = (entries: VariantEntry[]): Record<string, Record<string, unknown>> | undefined => {
-  const result: Record<string, Record<string, unknown>> = {};
-  entries.forEach((entry) => {
-    const key = entry.key.trim();
-    if (!key && entry.parameters.length === 0) return;
-    if (!key) throw new Error("思考档位名称不能为空");
-    const parameters: Record<string, unknown> = {};
-    entry.parameters.forEach((parameter) => {
-      const parameterKey = parameter.key.trim();
-      if (!parameterKey && !parameter.value.trim()) return;
-      if (!parameterKey) throw new Error(`请填写“${key}”档位的参数名`);
-      parameters[parameterKey] = parseParameterValue(parameter.value);
-    });
-    result[key] = parameters;
-  });
-  return Object.keys(result).length > 0 ? result : undefined;
-};
-
-const toModelConfig = (draft: ModelDraft): CustomModelConfig => ({
+const toModelConfig = (draft: ModelDraft, existing?: CustomModelConfig): CustomModelConfig => ({
+  ...existing,
   attachment: draft.inputModalities.includes("image"),
   limit: draft.context.trim() ? { context: Number(draft.context) || undefined } : undefined,
   modalities: { input: draft.inputModalities, output: draft.outputModalities },
@@ -205,7 +153,6 @@ const toModelConfig = (draft: ModelDraft): CustomModelConfig => ({
   reasoning: draft.reasoning,
   status: "active",
   tool_call: draft.toolCall,
-  variants: parseVariants(draft.variants),
 });
 
 function SettingField({ children, label }: { children: React.ReactNode; label: string }) {
@@ -410,7 +357,7 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
       const nextProvider = {
         ...existing,
         blacklist: [...blacklist],
-        models: { ...(existing.models ?? {}), [modelID]: toModelConfig({ ...modelDraft, id: modelID }) },
+        models: { ...(existing.models ?? {}), [modelID]: toModelConfig({ ...modelDraft, id: modelID }, existing.models?.[modelID]) },
       };
       await openCodeApi.updateConfig({
         provider: {
@@ -539,16 +486,7 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
           </div>
         </div>
       </div>
-      <div className="grid gap-2">
-        <div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">思考档位</span><Button className="h-7 px-2 text-xs" onClick={() => setModelDraft((current) => ({ ...current, variants: [...current.variants, { key: "", parameters: [] }] }))} size="sm" type="button" variant="ghost"><Plus className="size-3.5" />添加档位</Button></div>
-        {modelDraft.variants.length === 0 ? <p className="text-[11px] text-muted-foreground">此模型没有额外思考档位。</p> : <div className="grid gap-2">
-          {modelDraft.variants.map((variant, index) => <div className="grid gap-2 rounded-md bg-muted/30 p-2.5" key={`${variant.key}-${index}`}>
-            <div className="flex items-center gap-2"><Input className="h-8 min-w-0 flex-1 text-xs" onChange={(event) => setModelDraft((current) => ({ ...current, variants: current.variants.map((item, itemIndex) => itemIndex === index ? { ...item, key: event.target.value } : item) }))} placeholder="档位名称，例如 high" value={variant.key} /><Button aria-label={`删除思考档位 ${variant.key || index + 1}`} className="size-8 shrink-0" onClick={() => setModelDraft((current) => ({ ...current, variants: current.variants.filter((_, itemIndex) => itemIndex !== index) }))} size="icon-sm" title="删除档位" type="button" variant="ghost"><Trash2 className="size-3.5" /></Button></div>
-            {variant.parameters.map((parameter, parameterIndex) => <div className="flex items-center gap-2" key={`${parameter.key}-${parameterIndex}`}><Input className="h-8 min-w-0 flex-1 font-mono text-xs" onChange={(event) => setModelDraft((current) => ({ ...current, variants: current.variants.map((item, itemIndex) => itemIndex === index ? { ...item, parameters: item.parameters.map((parameterItem, currentParameterIndex) => currentParameterIndex === parameterIndex ? { ...parameterItem, key: event.target.value } : parameterItem) } : item) }))} placeholder="参数名，例如 reasoningEffort" value={parameter.key} /><Input className="h-8 min-w-0 flex-1 text-xs" onChange={(event) => setModelDraft((current) => ({ ...current, variants: current.variants.map((item, itemIndex) => itemIndex === index ? { ...item, parameters: item.parameters.map((parameterItem, currentParameterIndex) => currentParameterIndex === parameterIndex ? { ...parameterItem, value: event.target.value } : parameterItem) } : item) }))} placeholder="参数值，例如 high" value={parameter.value} /><Button aria-label="删除档位参数" className="size-8 shrink-0" onClick={() => setModelDraft((current) => ({ ...current, variants: current.variants.map((item, itemIndex) => itemIndex === index ? { ...item, parameters: item.parameters.filter((_, currentParameterIndex) => currentParameterIndex !== parameterIndex) } : item) }))} size="icon-sm" title="删除参数" type="button" variant="ghost"><Trash2 className="size-3.5" /></Button></div>)}
-            <Button className="h-7 w-fit px-2 text-xs" onClick={() => setModelDraft((current) => ({ ...current, variants: current.variants.map((item, itemIndex) => itemIndex === index ? { ...item, parameters: [...item.parameters, { key: "", value: "" }] } : item) }))} size="sm" type="button" variant="ghost"><Plus className="size-3.5" />添加参数</Button>
-          </div>)}
-        </div>}
-      </div>
+      <ModelVariantSummary variants={modelVariantIDs(editingModelID && editingModelID !== "new" ? catalogModels[editingModelID] : undefined)} />
       <div className="flex justify-end gap-2"><Button onClick={() => setEditingModelID(undefined)} size="sm" type="button" variant="ghost">取消</Button><Button disabled={saving} onClick={() => void saveModel()} size="sm" type="button"><Check className="size-3.5" />保存模型</Button></div>
     </div>
   );

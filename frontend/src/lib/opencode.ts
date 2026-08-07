@@ -119,7 +119,10 @@ const normalizeModelVariants = (value: unknown): Record<string, Record<string, u
         })
         .filter((item): item is readonly [string, Record<string, unknown>] => Boolean(item))
     );
-    return Object.keys(variants).length > 0 ? variants : undefined;
+    // `/api/model` uses an empty array to explicitly state that the runtime
+    // model has no selectable variants. Preserve that signal so stale catalog
+    // variants cannot be merged back into the active model.
+    return variants;
   }
 
   const record = asRecord(value);
@@ -127,7 +130,7 @@ const normalizeModelVariants = (value: unknown): Record<string, Record<string, u
   const variants = Object.fromEntries(
     Object.entries(record).filter(([, variant]) => Boolean(asRecord(variant)))
   ) as Record<string, Record<string, unknown>>;
-  return Object.keys(variants).length > 0 ? variants : undefined;
+  return variants;
 };
 
 const mergeModelInfo = (base: ModelInfo, incoming: ModelInfo): ModelInfo => ({

@@ -28,11 +28,24 @@ export const errorMessage = (error: unknown): string => {
   if (typeof error === "string" && error.trim()) return error;
   if (error && typeof error === "object") {
     const record = error as Record<string, unknown>;
-    const data = record.data && typeof record.data === "object"
-      ? record.data as Record<string, unknown>
-      : undefined;
-    const message = data?.message ?? record.message;
-    if (typeof message === "string" && message.trim()) return message;
+    const tag = typeof record._tag === "string" ? record._tag : typeof record.name === "string" ? record.name : "";
+    if (tag.includes("VariantUnavailable")) {
+      const provider = typeof record.providerID === "string" ? record.providerID : "";
+      const model = typeof record.modelID === "string" ? record.modelID : "";
+      const variant = typeof record.variant === "string" ? record.variant : "";
+      return `思考档位“${variant || "未知"}”不适用于 ${provider && model ? `${provider}/${model}` : "当前模型"}`;
+    }
+    for (const key of ["message", "detail", "reason"]) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) return value;
+    }
+    for (const key of ["error", "data", "cause"]) {
+      const value = record[key];
+      if (value && value !== error) {
+        const nested = errorMessage(value);
+        if (nested !== "请求失败，请检查 OpenCode 服务") return nested;
+      }
+    }
   }
   return "请求失败，请检查 OpenCode 服务";
 };

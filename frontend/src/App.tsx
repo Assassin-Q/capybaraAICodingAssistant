@@ -8,6 +8,7 @@ import { contextPrompt, fileToEmbeddedTextAttachment, fileToPromptAttachment, is
 import type { QueuedPrompt } from "@/components/assistant/PromptQueue";
 import { errorMessage, modelKey } from "@/components/assistant/shared";
 import type { ContextChip as ContextChipData, RunStatus } from "@/components/assistant/shared";
+import { modelRefWithAvailableVariant, modelSupportsVariant } from "@/components/assistant/modelVariants";
 import {
   eventAssistantParentID,
   eventMessageID,
@@ -28,6 +29,7 @@ import { useBatchedOpenCodeEvents } from "@/hooks/useBatchedOpenCodeEvents";
 import { useInteractiveStatePolling } from "@/hooks/useInteractiveStatePolling";
 import { useIdeaTheme } from "@/hooks/useIdeaTheme";
 import { useSessionDiffs } from "@/hooks/useSessionDiffs";
+import { useModelVariantGuard } from "@/hooks/useModelVariantGuard";
 import {
   createMessageID,
   createOptimisticUserMessage,
@@ -156,6 +158,7 @@ function App() {
   const resolvedModelKey = selectedModelKey || (currentSession?.model ? modelKey(currentSession.model) : "");
   const selectedModel = selectableModels.find((model) => modelKey(model) === resolvedModelKey);
   const isGenerating = runStatus === "submitted" || runStatus === "streaming";
+  const ensureSelectedModelVariant = useModelVariantGuard({ model: selectedModel, projectPath, selectedSessionID, selectedVariant, setError, setSelectedVariant, setSessions });
   const diffsByMessageID = useSessionDiffs({ messages, projectPath, runStatus, sessionID: selectedSessionID });
 
   const syncQuestionAnswers = useCallback((requests: QuestionRequest[]) => {
@@ -256,9 +259,7 @@ function App() {
     if (!projectPath) return;
     try {
       setError("");
-      const model = selectedModel
-        ? { id: selectedModel.id, providerID: selectedModel.providerID, variant: selectedVariant }
-        : undefined;
+      const model = selectedModel ? modelRefWithAvailableVariant(selectedModel, selectedVariant) : undefined;
       const session = await openCodeApi.createSession(projectPath, model, selectedAgentID || undefined);
       setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
       setSelectedSessionID(session.id);
@@ -488,11 +489,11 @@ function App() {
           }
           if (finished) {
             flushOpenCodeEvents();
-            if (type === "session.error" || type === "session.execution.failed") {
-              setError(errorMessage(event.properties?.error));
-            }
-            if (currentPrompt && (activePromptHasActivity.current || type === "session.error")) {
-              void finishRun(sourceSessionID ?? selectedSessionIDRef.current, currentPrompt?.generation);
+            const failed = type === "session.error" || type === "session.execution.failed";
+            const failureReason = failed ? errorMessage(event.properties) : undefined;
+            if (failureReason) setError(failureReason);
+            if (currentPrompt && (activePromptHasActivity.current || failed)) {
+              void finishRun(sourceSessionID ?? selectedSessionIDRef.current, currentPrompt.generation, failureReason);
             }
           }
         }
@@ -575,14 +576,11 @@ function App() {
         .filter((file) => !file.textAttachment)
         .map((file) => file.attachment);
       const fullPrompt = appendTextAttachments(text, textAttachments);
+      const model = await ensureSelectedModelVariant();
       const messageID = createMessageID();
       cancelledPromptIDs.current.delete(messageID);
       activePrompt.current = { fingerprint, generation, messageID, sessionID: selectedSessionID, startedAt: Date.now() };
       lastSubmittedPrompt.current = { fingerprint, sentAt: Date.now() };
-      const model = selectedModel
-        ? { id: selectedModel.id, providerID: selectedModel.providerID, variant: selectedVariant }
-        : undefined;
-
       const commandText = typedText.startsWith("$") ? `/${typedText.slice(1)}` : typedText;
       if (commandText.startsWith("/")) {
         const commandMatch = /^\/([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/.exec(commandText);
@@ -665,7 +663,7 @@ function App() {
     } finally {
       submitting.current = false;
     }
-  }, [agents, commands, mcpNames, pollSessionStatus, preferences, projectPath, selectedAgentID, selectedModel, selectedSessionID, selectedVariant]);
+  }, [agents, commands, ensureSelectedModelVariant, mcpNames, pollSessionStatus, preferences, projectPath, selectedAgentID, selectedSessionID]);
 
   const handlePrompt = useCallback(async ({ text, files }: PromptInputMessage) => {
     if (!selectedSessionID || !projectPath || submitting.current) return false;
@@ -816,8 +814,9 @@ function App() {
 
   const handleVariantChange = useCallback(async (variant: string | undefined) => {
     if (!selectedSessionID || !selectedModel || variant === selectedVariant) return;
+    if (!modelSupportsVariant(selectedModel, variant)) return setError(`当前模型不支持思考档位“${variant}”`);
     const previous = selectedVariant;
-    const nextRef = { id: selectedModel.id, providerID: selectedModel.providerID, ...(variant ? { variant } : {}) };
+    const nextRef = modelRefWithAvailableVariant(selectedModel, variant);
     setSelectedVariant(variant);
     try {
       await openCodeApi.switchModel(selectedSessionID, nextRef, projectPath);
