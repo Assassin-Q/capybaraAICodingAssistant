@@ -39,6 +39,7 @@ export interface DevelopmentEnvironmentInfo {
   version?: string;
   paths: string[];
   source: string;
+  manual?: boolean;
 }
 
 export interface MemorySystemStatus {
@@ -73,6 +74,7 @@ export interface MemorySettingsRequest {
   environmentSyncEnabled: boolean;
   memoryProvider?: string;
   memoryModel?: string;
+  storagePath?: string;
 }
 
 export interface MemoryActionResponse {
@@ -225,6 +227,12 @@ export const ideaApi = {
   scanDevelopmentEnvironments: (sync = true) =>
     request<MemoryActionResponse>("/memory/scan", {
       body: JSON.stringify({ sync }),
+      method: "POST",
+    }),
+
+  saveDevelopmentEnvironments: (environments: DevelopmentEnvironmentInfo[], sync = true) =>
+    request<MemoryActionResponse>("/memory/environments", {
+      body: JSON.stringify({ environments, sync }),
       method: "POST",
     }),
 

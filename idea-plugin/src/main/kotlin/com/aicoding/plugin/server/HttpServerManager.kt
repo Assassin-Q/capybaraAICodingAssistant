@@ -1,6 +1,7 @@
 package com.aicoding.plugin.server
 
 import com.aicoding.plugin.services.ChatMessage
+import com.aicoding.plugin.services.DevelopmentEnvironmentsRequest
 import com.aicoding.plugin.services.LineRange
 import com.aicoding.plugin.services.MemorySettingsRequest
 import com.aicoding.plugin.services.MemorySystemService
@@ -182,6 +183,8 @@ class HttpServerManager(private val project: Project) {
                         handleMemorySettings(exchange)
                     exchange.requestURI.path == "/api/memory/scan" && exchange.requestMethod == "POST" ->
                         handleMemoryScan(exchange)
+                    exchange.requestURI.path == "/api/memory/environments" && exchange.requestMethod == "POST" ->
+                        handleMemoryEnvironments(exchange)
                     exchange.requestURI.path == "/api/memory/memories" && exchange.requestMethod == "GET" ->
                         writeResponse(
                             exchange,
@@ -303,6 +306,13 @@ class HttpServerManager(private val project: Project) {
             ?.let { json.decodeFromString<MemoryScanRequest>(it) }
             ?: MemoryScanRequest()
         writeJson(exchange, 200, memorySystem.scanEnvironments(request.sync))
+    }
+
+    private fun handleMemoryEnvironments(exchange: HttpExchange) {
+        val request = exchange.requestBody.bufferedReader(Charsets.UTF_8).use { input ->
+            json.decodeFromString<DevelopmentEnvironmentsRequest>(input.readText())
+        }
+        writeJson(exchange, 200, memorySystem.updateEnvironments(request))
     }
 
     private fun handleAddMemory(exchange: HttpExchange) {

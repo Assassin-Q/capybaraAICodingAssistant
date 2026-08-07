@@ -66,5 +66,5 @@ export const saveWorkspacePreferences = (
 ): WorkspacePreferences => {
   const normalized = normalize(preferences);
   window.localStorage.setItem(preferenceKey(projectPath), JSON.stringify(normalized));
-  return normalized;
+  return loadWorkspacePreferences(projectPath);
 };

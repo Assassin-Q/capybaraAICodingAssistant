@@ -44,6 +44,7 @@ data class DevelopmentEnvironmentInfo(
     val version: String? = null,
     val paths: List<String> = emptyList(),
     val source: String,
+    val manual: Boolean = false,
 )
 
 @Serializable
@@ -80,6 +81,13 @@ data class MemorySettingsRequest(
     val environmentSyncEnabled: Boolean = true,
     val memoryProvider: String? = null,
     val memoryModel: String? = null,
+    val storagePath: String? = null,
+)
+
+@Serializable
+data class DevelopmentEnvironmentsRequest(
+    val environments: List<DevelopmentEnvironmentInfo>,
+    val sync: Boolean = true,
 )
 
 @Serializable
@@ -201,6 +209,8 @@ class MemorySystemService(
     @Synchronized
     fun updateSettings(request: MemorySettingsRequest): MemoryActionResponse {
         lastError = null
+        val storageError = validateStoragePath(request.storagePath)
+        if (storageError != null) return MemoryActionResponse(false, status(), storageError)
         val current = loadState()
         updateState(
             current.copy(
@@ -267,7 +277,8 @@ class MemorySystemService(
 
     fun scanEnvironments(sync: Boolean): MemoryActionResponse {
         return try {
-            val environments = buildEnvironmentIndex()
+            val manualEnvironments = loadEnvironments().filter { it.manual }
+            val environments = mergeEnvironmentOverrides(buildEnvironmentIndex(), manualEnvironments)
             environmentFile.parentFile?.mkdirs()
             environmentFile.writeText(json.encodeToString(environments), Charsets.UTF_8)
             val content = environmentMemory(environments)
@@ -280,6 +291,38 @@ class MemorySystemService(
             MemoryActionResponse(true, status(), syncMessage ?: "已扫描 ${environments.size} 项开发环境")
         } catch (error: Exception) {
             lastError = error.message ?: "开发环境扫描失败"
+            MemoryActionResponse(false, status(), lastError)
+        }
+    }
+
+    @Synchronized
+    fun updateEnvironments(request: DevelopmentEnvironmentsRequest): MemoryActionResponse {
+        return try {
+            val environments = request.environments.mapIndexed { index, environment ->
+                val name = environment.name.trim()
+                require(name.isNotEmpty()) { "第 ${index + 1} 项开发环境缺少名称" }
+                val paths = environment.paths.map(String::trim).filter(String::isNotEmpty).distinct()
+                require(paths.isNotEmpty()) { "${name} 至少需要一个路径" }
+                environment.copy(
+                    id = environment.id.trim().ifEmpty { "manual-${sha256("$name-${paths.joinToString()}").take(12)}" },
+                    name = name,
+                    version = environment.version?.trim()?.takeIf(String::isNotEmpty),
+                    paths = paths,
+                    source = environment.source.trim().ifEmpty { "手动" },
+                )
+            }.distinctBy { it.id }
+            environmentFile.parentFile?.mkdirs()
+            environmentFile.writeText(json.encodeToString(environments), Charsets.UTF_8)
+            val content = environmentMemory(environments)
+            val fingerprint = sha256(content)
+            val current = loadState()
+            updateState(current.copy(lastEnvironmentScan = System.currentTimeMillis(), environmentFingerprint = fingerprint))
+            val syncMessage = if (request.sync && current.enabled && current.environmentSyncEnabled) {
+                syncEnvironmentMemory(content, fingerprint, current.environmentFingerprint)
+            } else null
+            MemoryActionResponse(true, status(), syncMessage ?: "已保存 ${environments.size} 项开发环境")
+        } catch (error: Exception) {
+            lastError = error.message ?: "保存开发环境失败"
             MemoryActionResponse(false, status(), lastError)
         }
     }
@@ -334,6 +377,7 @@ class MemorySystemService(
                 environmentSyncEnabled = true,
                 memoryProvider = inferred?.first,
                 memoryModel = inferred?.second,
+                storagePath = "~/.opencode-mem/data",
             )
         )
     }
@@ -362,8 +406,15 @@ class MemorySystemService(
         compaction["enabled"] = JsonPrimitive(active)
         root["compaction"] = JsonObject(compaction)
 
-        request.memoryProvider?.trim()?.takeIf { it.isNotEmpty() }?.let { root["opencodeProvider"] = JsonPrimitive(it) }
-        request.memoryModel?.trim()?.takeIf { it.isNotEmpty() }?.let { root["opencodeModel"] = JsonPrimitive(it) }
+        request.memoryProvider?.trim()?.let {
+            if (it.isEmpty()) root.remove("opencodeProvider") else root["opencodeProvider"] = JsonPrimitive(it)
+        }
+        request.memoryModel?.trim()?.let {
+            if (it.isEmpty()) root.remove("opencodeModel") else root["opencodeModel"] = JsonPrimitive(it)
+        }
+        request.storagePath?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            root["storagePath"] = JsonPrimitive(normalizePath(expandPath(it)))
+        }
         writeMemoryConfig(JsonObject(root))
     }
 
@@ -590,6 +641,15 @@ class MemorySystemService(
         )
     }
 
+    private fun mergeEnvironmentOverrides(
+        detected: List<DevelopmentEnvironmentInfo>,
+        manual: List<DevelopmentEnvironmentInfo>,
+    ): List<DevelopmentEnvironmentInfo> {
+        val merged = detected.associateByTo(linkedMapOf()) { it.id }
+        manual.forEach { merged[it.id] = it.copy(manual = true) }
+        return merged.values.sortedBy { it.name.lowercase() }
+    }
+
     private fun where(command: String): List<String> = runCatching {
         val child = ProcessBuilder("where.exe", command).redirectErrorStream(true).start()
         child.inputStream.bufferedReader(Charsets.UTF_8).readLines()
@@ -600,16 +660,27 @@ class MemorySystemService(
 
     private fun commandOutput(command: List<String>): String? = runCatching {
         val child = ProcessBuilder(windowsCommand(command)).redirectErrorStream(true).start()
-        val lines = child.inputStream.bufferedReader(Charsets.UTF_8).readLines()
+        val output = child.inputStream.readBytes()
         if (!child.waitFor(5, TimeUnit.SECONDS)) child.destroyForcibly()
-        lines.firstOrNull { it.isNotBlank() }?.trim()?.take(160)
+        decodeCommandOutput(output).lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.take(160)
     }.getOrNull()
+
+    private fun decodeCommandOutput(output: ByteArray): String {
+        if (output.isEmpty()) return ""
+        val sampleSize = minOf(output.size, 64)
+        val oddNulls = (1 until sampleSize step 2).count { output[it] == 0.toByte() }
+        if (sampleSize >= 4 && oddNulls >= sampleSize / 4) return output.toString(Charsets.UTF_16LE)
+
+        val utf8 = output.toString(Charsets.UTF_8)
+        if (!utf8.contains('\uFFFD')) return utf8
+        return runCatching { output.toString(charset("GB18030")) }.getOrDefault(utf8)
+    }
 
     private fun windowsCommand(command: List<String>): List<String> {
         val executable = command.firstOrNull().orEmpty()
         if (!executable.endsWith(".cmd", true) && !executable.endsWith(".bat", true)) return command
-        val line = command.joinToString(" ") { "\"${it.replace("\"", "\\\"")}\"" }
-        return listOf("cmd.exe", "/d", "/s", "/c", line)
+        val line = command.joinToString(" ") { "\"${it.replace("\"", "\"\"")}\"" }
+        return listOf("cmd.exe", "/d", "/s", "/c", "\"$line\"")
     }
 
     private fun environmentMemory(environments: List<DevelopmentEnvironmentInfo>): String = buildString {
@@ -797,6 +868,18 @@ class MemorySystemService(
         path == "~" -> System.getProperty("user.home")
         path.startsWith("~/") || path.startsWith("~\\") -> File(System.getProperty("user.home"), path.drop(2)).absolutePath
         else -> path
+    }
+
+    private fun validateStoragePath(path: String?): String? {
+        val value = path?.trim() ?: return null
+        if (value.isEmpty()) return "记忆存储位置不能为空"
+        val directory = File(expandPath(value))
+        if (!directory.isAbsolute) return "记忆存储位置需要使用绝对路径或 ~/ 开头的路径"
+        if (directory.exists() && !directory.isDirectory) return "记忆存储位置指向了文件，请选择目录"
+        return runCatching {
+            if (!directory.exists()) require(directory.mkdirs()) { "无法创建记忆存储目录" }
+            null
+        }.getOrElse { it.message ?: "无法使用该记忆存储目录" }
     }
 
     private fun normalizePath(path: String): String = runCatching { File(path).canonicalPath }.getOrDefault(path)

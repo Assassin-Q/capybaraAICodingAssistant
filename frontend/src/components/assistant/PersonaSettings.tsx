@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bot, Check, PencilLine, Save, Sparkles } from "lucide-react";
+import { Bot, Check, CheckCircle2, PencilLine, Save, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,16 +10,22 @@ import type { WorkspacePreferences } from "@/lib/preferences";
 import { cn } from "@/lib/utils";
 
 interface PersonaSettingsProps {
-  onSave: (preferences: WorkspacePreferences) => void;
+  onSave: (preferences: WorkspacePreferences) => WorkspacePreferences;
   preferences: WorkspacePreferences;
 }
 
 export function PersonaSettings({ onSave, preferences }: PersonaSettingsProps) {
   const [persona, setPersona] = useState(preferences.persona);
+  const [saved, setSaved] = useState(false);
 
-  useEffect(() => setPersona(preferences.persona), [preferences.persona]);
+  useEffect(() => {
+    setPersona(preferences.persona);
+  }, [preferences.persona]);
 
-  const update = (changes: Partial<typeof persona>) => setPersona((current) => ({ ...current, ...changes }));
+  const update = (changes: Partial<typeof persona>) => {
+    setSaved(false);
+    setPersona((current) => ({ ...current, ...changes }));
+  };
   const choosePreset = (presetId: string) => {
     if (presetId === CUSTOM_PERSONA_ID) {
       update({ presetId });
@@ -27,9 +33,21 @@ export function PersonaSettings({ onSave, preferences }: PersonaSettingsProps) {
     }
     const preset = findPersonaPreset(presetId);
     if (!preset) return;
+    setSaved(false);
     setPersona({ enabled: true, instructions: preset.instructions, name: preset.name, presetId: preset.id });
   };
   const customize = (changes: Partial<typeof persona>) => update({ ...changes, presetId: CUSTOM_PERSONA_ID });
+  const dirty = persona.enabled !== preferences.persona.enabled
+    || persona.name !== preferences.persona.name
+    || persona.instructions !== preferences.persona.instructions
+    || persona.presetId !== preferences.persona.presetId;
+  const valid = persona.name.trim().length > 0 && persona.instructions.trim().length > 0;
+  const save = () => {
+    if (!valid) return;
+    const next = onSave({ ...preferences, persona: { ...persona, name: persona.name.trim(), instructions: persona.instructions.trim() } });
+    setPersona(next.persona);
+    setSaved(true);
+  };
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-5">
@@ -55,7 +73,11 @@ export function PersonaSettings({ onSave, preferences }: PersonaSettingsProps) {
         </div>
       </div>
       <div className="flex max-w-5xl items-start gap-2 bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground"><Sparkles className="mt-0.5 size-3.5 shrink-0" /><span>人格只改变交流方式，不会修改 OpenCode agent、项目文件或 AGENTS.md；自定义内容仅保存在当前工作区。</span></div>
-      <div><Button onClick={() => onSave({ ...preferences, persona })} size="sm" type="button"><Save className="size-3.5" />保存人格</Button></div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button disabled={!dirty || !valid} onClick={save} size="sm" type="button"><Save className="size-3.5" />保存人格</Button>
+        {saved && <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-500"><CheckCircle2 className="size-3.5" />已保存并应用，下一条消息起生效</span>}
+        {!valid && <span className="text-xs text-destructive">角色名称和角色指令不能为空</span>}
+      </div>
     </section>
   );
 }

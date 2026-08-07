@@ -11,11 +11,13 @@ import { Button } from "@/components/ui/button";
 import { loadWorkspacePreferences, saveWorkspacePreferences } from "@/lib/preferences";
 import { cn } from "@/lib/utils";
 import type { WorkspacePreferences } from "@/lib/preferences";
+import type { ModelInfo } from "@/lib/opencode";
 
 interface WorkspaceDialogProps {
   baseUrl: string;
   connected: boolean;
   initialSection?: SectionID;
+  models: ModelInfo[];
   onConfigurationChanged: () => void;
   onOpenChange: (open: boolean) => void;
   onPreferencesChanged?: (preferences: WorkspacePreferences) => void;
@@ -40,6 +42,7 @@ export function WorkspaceDialog({
   baseUrl,
   connected,
   initialSection = "connection",
+  models,
   onConfigurationChanged,
   onOpenChange,
   onPreferencesChanged,
@@ -61,6 +64,7 @@ export function WorkspaceDialog({
     const saved = saveWorkspacePreferences(projectPath, next);
     setPreferences(saved);
     onPreferencesChanged?.(saved);
+    return saved;
   };
 
   if (!open) return null;
@@ -90,7 +94,7 @@ export function WorkspaceDialog({
           {activeSection === "connection" && <section className="flex max-w-3xl flex-col gap-5"><header><h2 className="text-lg font-semibold">连接</h2><p className="mt-1 text-sm text-muted-foreground">当前插件直接连接 OpenCode；IDEA 仅提供服务发现和编辑器上下文。</p></header><div className="overflow-hidden rounded-lg border border-border bg-card"><div className="flex items-center gap-3 border-b border-border px-4 py-4"><span className={cn("size-2 rounded-full", connected ? "bg-emerald-500" : "bg-destructive")} /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{connected ? "OpenCode 已连接" : "OpenCode 未连接"}</p><p className="mt-0.5 text-xs text-muted-foreground">{connected ? "服务响应正常" : "请在对话页刷新或检查服务状态"}</p></div></div><dl className="grid gap-4 px-4 py-4 sm:grid-cols-2"><div><dt className="text-xs text-muted-foreground">服务地址</dt><dd className="mt-1 break-all font-mono text-xs">{baseUrl}</dd></div><div><dt className="text-xs text-muted-foreground">工作区</dt><dd className="mt-1 break-all font-mono text-xs">{projectPath ?? "未获取到项目路径"}</dd></div></dl></div></section>}
           {activeSection === "models" && <ModelSettings onChanged={onConfigurationChanged} projectPath={projectPath} />}
           {activeSection === "persona" && <PersonaSettings onSave={updatePreferences} preferences={preferences} />}
-          {activeSection === "memory" && <MemorySettings onChanged={onConfigurationChanged} />}
+          {activeSection === "memory" && <MemorySettings models={models} onChanged={onConfigurationChanged} />}
           {activeSection === "skills" && <SkillSettings disabledSkillNames={preferences.disabledSkillNames} onDisabledSkillNamesChange={(disabledSkillNames) => updatePreferences({ ...preferences, disabledSkillNames })} projectPath={projectPath} />}
           {activeSection === "mcp" && <McpSettings onChanged={onConfigurationChanged} projectPath={projectPath} />}
           {activeSection === "permissions" && <PermissionSettings onChanged={onConfigurationChanged} projectPath={projectPath} />}
