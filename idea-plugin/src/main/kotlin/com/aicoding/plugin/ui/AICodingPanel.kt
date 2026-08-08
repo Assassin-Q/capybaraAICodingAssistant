@@ -5,6 +5,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.ex.ToolWindowEx
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import org.cef.browser.CefBrowser
@@ -16,15 +17,20 @@ import java.awt.CardLayout
 import java.awt.Color
 import java.awt.Dimension
 import java.awt.Font
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import javax.swing.BorderFactory
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 
+private const val MIN_PANEL_WIDTH = 560
+private const val MIN_PANEL_HEIGHT = 480
+
 class AICodingPanel(
     private val project: Project,
-    @Suppress("UNUSED_PARAMETER") private val toolWindow: ToolWindow,
+    private val toolWindow: ToolWindow,
 ) : JPanel(BorderLayout()), Disposable {
     private val browser = JBCefBrowser.createBuilder()
         .setOffScreenRendering(false)
@@ -35,7 +41,7 @@ class AICodingPanel(
     private var frontendUrl = ""
 
     init {
-        val minimumPanelSize = Dimension(560, 480)
+        val minimumPanelSize = Dimension(MIN_PANEL_WIDTH, MIN_PANEL_HEIGHT)
         minimumSize = minimumPanelSize
         preferredSize = Dimension(640, 720)
         browser.component.minimumSize = minimumPanelSize
@@ -50,6 +56,7 @@ class AICodingPanel(
         cards.add(statusLabel, "status")
         add(cards, BorderLayout.CENTER)
         installLoadHandler()
+        enforceMinimumWidth()
         startFrontend()
         Disposer.register(project, this)
     }
@@ -69,6 +76,24 @@ class AICodingPanel(
         } catch (error: Exception) {
             showStatus("Capybara 前端服务启动失败: ${error.message ?: error.javaClass.simpleName}")
         }
+    }
+
+    /**
+     * Swing's `minimumSize` is only advisory for tool windows — the user can still drag the
+     * splitter past it. `ToolWindowEx.stretchWidth` is the only API that actually moves the
+     * splitter, so the width is pushed back whenever it drops below the minimum.
+     */
+    private fun enforceMinimumWidth() {
+        val stretchable = toolWindow as? ToolWindowEx ?: return
+        toolWindow.component.addComponentListener(object : ComponentAdapter() {
+            override fun componentResized(event: ComponentEvent) {
+                val current = toolWindow.component.width
+                if (current <= 0 || current >= MIN_PANEL_WIDTH) return
+                // Guard against fighting the layout while the window is still being created.
+                if (!toolWindow.isVisible) return
+                SwingUtilities.invokeLater { stretchable.stretchWidth(MIN_PANEL_WIDTH - current) }
+            }
+        })
     }
 
     private fun installLoadHandler() {

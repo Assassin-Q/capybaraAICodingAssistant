@@ -8,16 +8,19 @@ const VARIANT_LABELS: Record<string, string> = {
   medium: "中",
   minimal: "极低",
   none: "关闭",
+  thinking: "思考",
   xhigh: "超高",
 };
 
 export const variantLabel = (value?: string): string => {
-  if (!value) return VARIANT_LABELS.default;
+  if (!value || value === "default") return VARIANT_LABELS.default;
   return VARIANT_LABELS[value.toLowerCase()] ?? value;
 };
 
 export const modelVariantIDs = (model?: ModelInfo): string[] =>
-  model?.variants ? Object.keys(model.variants) : [];
+  model?.variants
+    ? [...new Set(Object.keys(model.variants).filter((variant) => variant !== "default"))]
+    : [];
 
 export const modelSupportsVariant = (model: ModelInfo | undefined, variant?: string): boolean =>
   !variant || variant === "default" || modelVariantIDs(model).includes(variant);

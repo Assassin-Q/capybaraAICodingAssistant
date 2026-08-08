@@ -27,41 +27,56 @@ abstract class BaseAICodingAction : AnAction() {
     }
 
     private fun publishContext(e: AnActionEvent, project: Project, type: String) {
+        val selectedFiles = getSelectedFiles(e).take(MAX_FILES)
         val editor = getEditor(e)
         val selectedText = editor?.selectionModel?.selectedText?.takeIf { it.isNotBlank() }
-        val files = getSelectedFiles(e)
-        val file = getCurrentFile(e) ?: files.firstOrNull()
-        val content = selectedText ?: buildFileContext(files.ifEmpty { listOfNotNull(file) })
-        if (content.isBlank()) {
+        val messageService = project.getService(MessageService::class.java)
+        // Project view multi-selection can coexist with a stale editor selection.
+        // In that case the explicitly selected files are the user's intended context.
+        if (selectedText != null && selectedFiles.size <= 1) {
+            val file = getCurrentFile(e)
+            messageService.addMessage(
+                type = type,
+                content = selectedText,
+                kind = "selection",
+                fileName = file?.path,
+                lineRange = getLineRange(e),
+            )
             return
         }
-        project.getService(MessageService::class.java).addMessage(
-            type = type,
-            content = content,
-            fileName = file?.path,
-            lineRange = getLineRange(e),
-        )
-    }
 
-    private fun buildFileContext(files: List<VirtualFile>): String = files
-        .take(MAX_FILES)
-        .joinToString("\n\n") { file ->
-            when {
-                file.isDirectory -> "目录：${file.path}"
-                file.fileType.isBinary -> "二进制文件：${file.path}"
-                file.length > MAX_FILE_BYTES -> "文件：${file.path}\n[文件大于 512 KB，未读取内容]"
-                else -> {
-                    val text = runCatching {
-                        ApplicationManager.getApplication().runReadAction<String> {
-                            val bytes = file.contentsToByteArray()
-                            val charset = runCatching { file.charset }.getOrDefault(StandardCharsets.UTF_8)
-                            String(bytes, charset)
-                        }
-                    }.getOrElse { "[无法读取文件：${it.message.orEmpty()}]" }
-                    "文件：${file.path}\n\n$text"
+        selectedFiles.forEach { file ->
+                val content = buildFileContext(file)
+                if (content.isNotBlank()) {
+                    messageService.addMessage(
+                        type = type,
+                        content = content,
+                        kind = when {
+                            file.isDirectory -> "directory"
+                            file.fileType.isBinary -> "binary"
+                            else -> "file"
+                        },
+                        fileName = file.path,
+                    )
                 }
             }
+    }
+
+    private fun buildFileContext(file: VirtualFile): String = when {
+        file.isDirectory -> "目录：${file.path}"
+        file.fileType.isBinary -> "二进制文件：${file.path}"
+        file.length > MAX_FILE_BYTES -> "文件：${file.path}\n[文件大于 512 KB，未读取内容]"
+        else -> {
+            val text = runCatching {
+                ApplicationManager.getApplication().runReadAction<String> {
+                    val bytes = file.contentsToByteArray()
+                    val charset = runCatching { file.charset }.getOrDefault(StandardCharsets.UTF_8)
+                    String(bytes, charset)
+                }
+            }.getOrElse { "[无法读取文件：${it.message.orEmpty()}]" }
+            text
         }
+    }
 
     protected fun getCurrentFile(e: AnActionEvent): VirtualFile? =
         e.getData(CommonDataKeys.VIRTUAL_FILE)

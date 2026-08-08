@@ -1,7 +1,9 @@
 import type {
   AssistantMessage,
+  AssistantSnapshot,
   SessionMessage,
 } from "@/lib/opencode";
+import { addTokenUsage, hasTokenUsage } from "@/lib/tokenUsage";
 
 export interface AssistantTurn extends AssistantMessage {
   sourceIDs: string[];
@@ -65,6 +67,19 @@ export const hasVisibleAssistantContent = (message: AssistantMessage): boolean =
     return Boolean(part.text.trim());
   });
 
+const mergeSnapshot = (
+  current?: AssistantSnapshot,
+  incoming?: AssistantSnapshot
+): AssistantSnapshot | undefined => {
+  const start = current?.start ?? incoming?.start;
+  if (!start) return undefined;
+  return {
+    end: incoming?.end ?? current?.end,
+    files: [...new Set([...(current?.files ?? []), ...(incoming?.files ?? [])])],
+    start,
+  };
+};
+
 const mergeAssistantTurn = (current: AssistantTurn | undefined, message: AssistantMessage): AssistantTurn => {
   // Every V2 assistant step starts its local part ordinals at zero. Prefixing
   // with the owning message keeps reasoning-0/text-0 from different steps
@@ -82,7 +97,9 @@ const mergeAssistantTurn = (current: AssistantTurn | undefined, message: Assista
     finish: message.finish || current.finish,
     model: message.model.id ? message.model : current.model,
     parentID: message.parentID ?? current.parentID,
+    snapshot: mergeSnapshot(current.snapshot, message.snapshot),
     sourceIDs: [...new Set([...current.sourceIDs, message.id])],
+    tokens: addTokenUsage(current.tokens, message.tokens),
     time: {
       completed: message.time.completed ?? current.time.completed,
       created: current.time.created,
@@ -94,7 +111,7 @@ export const groupConversationTurns = (messages: SessionMessage[]): Conversation
   const assistantsByParent = new Map<string, AssistantTurn>();
   const unparentedAssistantIDs = new Set<string>();
   messages.forEach((message) => {
-    if (message.type !== "assistant" || !hasVisibleAssistantContent(message)) return;
+    if (message.type !== "assistant" || (!hasVisibleAssistantContent(message) && !hasTokenUsage(message.tokens))) return;
     if (!message.parentID) {
       unparentedAssistantIDs.add(message.id);
       return;
@@ -115,7 +132,7 @@ export const groupConversationTurns = (messages: SessionMessage[]): Conversation
       }
       return;
     }
-    if (!hasVisibleAssistantContent(message) || !unparentedAssistantIDs.has(message.id)) return;
+    if ((!hasVisibleAssistantContent(message) && !hasTokenUsage(message.tokens)) || !unparentedAssistantIDs.has(message.id)) return;
 
     const previous = turns[turns.length - 1];
     if (previous?.type !== "assistant") {

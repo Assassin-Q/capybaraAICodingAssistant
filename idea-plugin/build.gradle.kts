@@ -44,6 +44,9 @@ intellij {
         localPath.set(intellijLocalPath)
     }
     pluginName.set("capybaraAICodingAssistant")
+    // Bundled plugin, referenced only for the IDEA Maven runner bridge. It is declared as an
+    // optional dependency in plugin.xml so the plugin still loads when Maven support is absent.
+    plugins.set(listOf("org.jetbrains.idea.maven"))
 }
 
 kotlin {

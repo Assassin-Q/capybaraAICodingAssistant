@@ -1,11 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, Cable, ChevronLeft, Cpu, Database, PlugZap, ShieldCheck, Sparkles, Wifi, X } from "lucide-react";
+import {
+  BrainCircuit,
+  Cable,
+  ChevronLeft,
+  Cpu,
+  Database,
+  PlugZap,
+  Puzzle,
+  Sparkles,
+  TerminalSquare,
+  Wifi,
+  X,
+} from "lucide-react";
 
+import { ConnectionSettings } from "@/components/assistant/ConnectionSettings";
+import { IdeaExecutionSettings } from "@/components/assistant/IdeaExecutionSettings";
 import { MemorySettings } from "@/components/assistant/MemorySettings";
 import { McpSettings } from "@/components/assistant/McpSettings";
 import { ModelSettings } from "@/components/assistant/ModelSettings";
-import { PermissionSettings } from "@/components/assistant/PermissionSettings";
 import { PersonaSettings } from "@/components/assistant/PersonaSettings";
+import { PluginSettings } from "@/components/assistant/PluginSettings";
 import { SkillSettings } from "@/components/assistant/SkillSettings";
 import { Button } from "@/components/ui/button";
 import { loadWorkspacePreferences, saveWorkspacePreferences } from "@/lib/preferences";
@@ -32,11 +46,15 @@ const sections = [
   { icon: BrainCircuit, id: "persona", label: "人格" },
   { icon: Database, id: "memory", label: "记忆" },
   { icon: Sparkles, id: "skills", label: "技能" },
+  { icon: Puzzle, id: "plugins", label: "插件" },
   { icon: PlugZap, id: "mcp", label: "MCP" },
-  { icon: ShieldCheck, id: "permissions", label: "权限" },
+  { icon: TerminalSquare, id: "idea", label: "IDEA" },
 ] as const;
 
-type SectionID = typeof sections[number]["id"];
+/** Sections that manage their own scrolling instead of scrolling the whole page. */
+const containedSections = new Set(["models", "skills", "plugins", "mcp"]);
+
+export type SectionID = typeof sections[number]["id"];
 
 export function WorkspaceDialog({
   baseUrl,
@@ -87,17 +105,33 @@ export function WorkspaceDialog({
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-3 sm:px-5"><div className="min-w-0 flex-1"><h1 className="truncate text-sm font-semibold sm:text-base">{pageTitle}</h1></div><Button aria-label="关闭设置" onClick={() => onOpenChange(false)} size="icon-sm" title="关闭设置" type="button" variant="ghost"><X className="size-4" /></Button></header>
         <main className={cn(
           "flex min-h-0 flex-1 flex-col px-3 py-4 sm:px-6 sm:py-6",
-          activeSection === "models" || activeSection === "skills" || activeSection === "mcp"
-            ? "overflow-hidden"
-            : "overflow-y-auto"
+          containedSections.has(activeSection) ? "overflow-hidden" : "overflow-y-auto"
         )}>
-          {activeSection === "connection" && <section className="flex max-w-3xl flex-col gap-5"><header><h2 className="text-lg font-semibold">连接</h2><p className="mt-1 text-sm text-muted-foreground">当前插件直接连接 OpenCode；IDEA 仅提供服务发现和编辑器上下文。</p></header><div className="overflow-hidden rounded-lg border border-border bg-card"><div className="flex items-center gap-3 border-b border-border px-4 py-4"><span className={cn("size-2 rounded-full", connected ? "bg-emerald-500" : "bg-destructive")} /><div className="min-w-0 flex-1"><p className="text-sm font-medium">{connected ? "OpenCode 已连接" : "OpenCode 未连接"}</p><p className="mt-0.5 text-xs text-muted-foreground">{connected ? "服务响应正常" : "请在对话页刷新或检查服务状态"}</p></div></div><dl className="grid gap-4 px-4 py-4 sm:grid-cols-2"><div><dt className="text-xs text-muted-foreground">服务地址</dt><dd className="mt-1 break-all font-mono text-xs">{baseUrl}</dd></div><div><dt className="text-xs text-muted-foreground">工作区</dt><dd className="mt-1 break-all font-mono text-xs">{projectPath ?? "未获取到项目路径"}</dd></div></dl></div></section>}
-          {activeSection === "models" && <ModelSettings onChanged={onConfigurationChanged} projectPath={projectPath} />}
+          {activeSection === "connection" && (
+            <ConnectionSettings
+              baseUrl={baseUrl}
+              connected={connected}
+              onChanged={onConfigurationChanged}
+              projectPath={projectPath}
+            />
+          )}
+          {activeSection === "models" && (
+            <ModelSettings
+              modelVariantLabels={preferences.modelVariantLabels}
+              onChanged={onConfigurationChanged}
+              onModelVariantLabelsChange={(modelVariantLabels) => updatePreferences({
+                ...preferences,
+                modelVariantLabels,
+              })}
+              projectPath={projectPath}
+            />
+          )}
           {activeSection === "persona" && <PersonaSettings onSave={updatePreferences} preferences={preferences} />}
           {activeSection === "memory" && <MemorySettings models={models} onChanged={onConfigurationChanged} />}
           {activeSection === "skills" && <SkillSettings disabledSkillNames={preferences.disabledSkillNames} onDisabledSkillNamesChange={(disabledSkillNames) => updatePreferences({ ...preferences, disabledSkillNames })} projectPath={projectPath} />}
+          {activeSection === "plugins" && <PluginSettings />}
           {activeSection === "mcp" && <McpSettings onChanged={onConfigurationChanged} projectPath={projectPath} />}
-          {activeSection === "permissions" && <PermissionSettings onChanged={onConfigurationChanged} projectPath={projectPath} />}
+          {activeSection === "idea" && <IdeaExecutionSettings />}
         </main>
       </div>
     </div>

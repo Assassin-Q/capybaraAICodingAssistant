@@ -8,7 +8,6 @@ import type {
   CommandInfo,
   McpStatus,
   ModelInfo,
-  ModelModality,
   ModelRef,
   OpenCodeConfig,
   OpenCodeEvent,
@@ -17,7 +16,6 @@ import type {
   PermissionRule,
   PromptAttachment,
   ProviderCatalog,
-  ProviderInfo,
   QuestionRequest,
   SendPromptInput,
   SessionInfo,
@@ -28,8 +26,23 @@ import type {
   TodoInfo,
   UserMessage,
 } from "@/lib/opencodeTypes";
+import {
+  inferApprovalMode,
+  legacySessionRules,
+  normalizePermissionRules,
+  rulesForApprovalMode,
+  type ApprovalMode,
+} from "@/lib/approvalMode";
 import { attachPersonaContext, stripPersonaContext } from "@/lib/personaContext";
+import {
+  connectedModels,
+  mergeProviderCatalogs,
+  parseModelList,
+  parseProviderCatalog,
+  parseV2ProviderCatalog,
+} from "@/lib/providerCatalog";
 import { extractTextAttachments } from "@/lib/textAttachments";
+import { EMPTY_TOKEN_USAGE, parseTokenUsage } from "@/lib/tokenUsage";
 
 export type * from "@/lib/opencodeTypes";
 
@@ -53,21 +66,7 @@ const numberValue = (value: unknown, fallback = 0): number =>
 const stringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
-const permissionRules = (value: unknown): PermissionRule[] => recordArray(value).flatMap((item) => {
-  const action = stringValue(item.action);
-  const pattern = stringValue(item.pattern);
-  const permission = stringValue(item.permission);
-  return action === "allow" || action === "ask" || action === "deny"
-    ? [{ action, pattern, permission }]
-    : [];
-});
-
-const networkEnabledFromRules = (rules: PermissionRule[]): boolean => {
-  const actionFor = (permission: string) => [...rules].reverse().find((rule) =>
-    (rule.permission === permission || rule.permission === "*") && rule.pattern === "*"
-  )?.action;
-  return actionFor("websearch") !== "deny" && actionFor("webfetch") !== "deny";
-};
+const permissionRules = (value: unknown): PermissionRule[] => normalizePermissionRules(value);
 
 const errorMessage = (value: unknown): string => {
   const message = stringValue(value);
@@ -93,69 +92,6 @@ const recordArray = (value: unknown): Record<string, unknown>[] =>
   arrayValue(value)
     .map(asRecord)
     .filter((item): item is Record<string, unknown> => Boolean(item));
-
-const recordStringMap = (value: unknown): Record<string, string> => {
-  const record = asRecord(value);
-  if (!record) return {};
-  return Object.fromEntries(
-    Object.entries(record)
-      .map(([key, item]) => [key, stringValue(item)] as const)
-      .filter(([, item]) => Boolean(item))
-  );
-};
-
-const normalizeModelVariants = (value: unknown): Record<string, Record<string, unknown>> | undefined => {
-  if (Array.isArray(value)) {
-    const variants = Object.fromEntries(
-      value
-        .map(asRecord)
-        .filter((item): item is Record<string, unknown> => Boolean(item))
-        .map((item) => {
-          const id = stringValue(item.id);
-          if (!id) return undefined;
-          const body = asRecord(item.body) ?? {};
-          const headers = asRecord(item.headers);
-          return [id, headers ? { ...body, headers } : body] as const;
-        })
-        .filter((item): item is readonly [string, Record<string, unknown>] => Boolean(item))
-    );
-    // `/api/model` uses an empty array to explicitly state that the runtime
-    // model has no selectable variants. Preserve that signal so stale catalog
-    // variants cannot be merged back into the active model.
-    return variants;
-  }
-
-  const record = asRecord(value);
-  if (!record) return undefined;
-  const variants = Object.fromEntries(
-    Object.entries(record).filter(([, variant]) => Boolean(asRecord(variant)))
-  ) as Record<string, Record<string, unknown>>;
-  return variants;
-};
-
-const mergeModelInfo = (base: ModelInfo, incoming: ModelInfo): ModelInfo => ({
-  ...base,
-  ...incoming,
-  api: incoming.api ?? base.api,
-  capabilities: {
-    ...base.capabilities,
-    ...incoming.capabilities,
-    input: { ...base.capabilities?.input, ...incoming.capabilities?.input },
-    output: { ...base.capabilities?.output, ...incoming.capabilities?.output },
-  },
-  variants: incoming.variants ?? base.variants,
-});
-
-const mergeModelMaps = (
-  base: Record<string, ModelInfo>,
-  incoming: Record<string, ModelInfo>
-): Record<string, ModelInfo> => {
-  const merged = { ...base };
-  Object.entries(incoming).forEach(([id, model]) => {
-    merged[id] = merged[id] ? mergeModelInfo(merged[id], model) : model;
-  });
-  return merged;
-};
 
 type QueryValue = string | number | boolean | { [key: string]: QueryValue } | QueryValue[] | undefined;
 
@@ -248,100 +184,7 @@ const toModelRef = (value: unknown): ModelRef | undefined => {
   const providerID = stringValue(record?.providerID);
   if (!id || !providerID) return undefined;
   const variant = stringValue(record?.variant);
-  return { id, providerID, ...(variant ? { variant } : {}) };
-};
-
-const toModelInfo = (
-  value: unknown,
-  providerID?: string,
-  fallbackID?: string
-): ModelInfo | undefined => {
-  const record = asRecord(value);
-  const id = stringValue(record?.id)
-    || stringValue(record?.modelID)
-    || fallbackID
-    || "";
-  const resolvedProviderID = stringValue(record?.providerID, providerID);
-  if (!id || !resolvedProviderID) return undefined;
-  const capabilities = asRecord(record?.capabilities);
-  const input = Array.isArray(capabilities?.input)
-    ? Object.fromEntries(capabilities.input.filter((item): item is string => typeof item === "string").map((item) => [item, true]))
-    : asRecord(capabilities?.input);
-  const output = Array.isArray(capabilities?.output)
-    ? Object.fromEntries(capabilities.output.filter((item): item is string => typeof item === "string").map((item) => [item, true]))
-    : asRecord(capabilities?.output);
-  const limit = asRecord(record?.limit);
-  const api = asRecord(record?.api);
-  const variants = normalizeModelVariants(record?.variants);
-  const hasVariants = Boolean(variants && Object.keys(variants).length > 0);
-  const status = stringValue(record?.status, "active");
-  return {
-      api: api ? {
-        id: stringValue(api.id) || undefined,
-        type: stringValue(api.type) || undefined,
-        npm: stringValue(api.npm) || stringValue(api.package) || undefined,
-        url: stringValue(api.url) || undefined,
-      } : undefined,
-    capabilities: capabilities ? {
-      attachment: Boolean(capabilities.attachment) || Boolean(input?.image),
-      input: input as Partial<Record<ModelModality, boolean>>,
-      interleaved: typeof capabilities.interleaved === "boolean"
-        ? capabilities.interleaved
-        : asRecord(capabilities.interleaved) as { field?: string } | undefined,
-      output: output as Partial<Record<ModelModality, boolean>>,
-      reasoning: Boolean(capabilities.reasoning) || hasVariants,
-      temperature: Boolean(capabilities.temperature),
-      toolcall: Boolean(capabilities.toolcall) || Boolean(capabilities.tools),
-    } : undefined,
-    enabled: typeof record?.enabled === "boolean" ? record.enabled : undefined,
-    family: stringValue(record?.family) || undefined,
-    id,
-    limit: limit ? {
-      context: numberValue(limit.context) || undefined,
-      input: numberValue(limit.input) || undefined,
-      output: numberValue(limit.output) || undefined,
-    } : undefined,
-    name: stringValue(record?.name, id),
-    providerID: resolvedProviderID,
-    status: status === "alpha" || status === "beta" || status === "deprecated" || status === "active"
-      ? status
-      : "active",
-    variants,
-  };
-};
-
-const toProvider = (value: unknown, sourceOverride?: ProviderInfo["source"]): ProviderInfo | undefined => {
-  const record = asRecord(value);
-  const id = stringValue(record?.id);
-  if (!id) return undefined;
-  const models = asRecord(record?.models);
-  const normalizedModels = Object.fromEntries(
-    Object.entries(models ?? {})
-      .map(([modelID, model]) => [modelID, toModelInfo(model, id, modelID)] as const)
-      .filter((entry): entry is [string, ModelInfo] => Boolean(entry[1]))
-  );
-  const source = stringValue(record?.source, sourceOverride ?? "custom");
-  const api = asRecord(record?.api);
-  const firstModel = normalizedModels[Object.keys(normalizedModels)[0] ?? ""];
-  const providerApi = api || firstModel?.api
-    ? {
-        package: stringValue(api?.package) || firstModel?.api?.npm,
-        type: stringValue(api?.type) || firstModel?.api?.type,
-        url: stringValue(api?.url) || firstModel?.api?.url,
-      }
-    : undefined;
-  return {
-    api: providerApi,
-    env: stringArray(record?.env),
-    id,
-    key: stringValue(record?.key) || undefined,
-    models: normalizedModels,
-    name: stringValue(record?.name, id),
-    options: asRecord(record?.options) ?? {},
-    source: source === "env" || source === "config" || source === "api" || source === "custom"
-      ? source
-      : "custom",
-  };
+  return { id, providerID, ...(variant && variant !== "default" ? { variant } : {}) };
 };
 
 const toSession = (value: unknown, directory?: string): SessionInfo | undefined => {
@@ -471,6 +314,8 @@ const toSessionMessage = (value: unknown): SessionMessage | undefined => {
     const content = parts
       .map(toAssistantPart)
       .filter((part): part is AssistantTextPart | AssistantReasoningPart | AssistantToolPart => Boolean(part));
+    const rawSnapshot = asRecord(info.snapshot);
+    const snapshotStart = stringValue(rawSnapshot?.start);
     return {
       agent: stringValue(info.agent),
       content,
@@ -483,8 +328,16 @@ const toSessionMessage = (value: unknown): SessionMessage | undefined => {
       model: toModelRef(info.model) ?? {
         id: stringValue(info.modelID),
         providerID: stringValue(info.providerID),
-        variant: stringValue(info.variant) || undefined,
+        variant: stringValue(info.variant) && stringValue(info.variant) !== "default"
+          ? stringValue(info.variant)
+          : undefined,
       },
+      tokens: parseTokenUsage(record.tokens ?? info.tokens) ?? EMPTY_TOKEN_USAGE,
+      snapshot: snapshotStart ? {
+        end: stringValue(rawSnapshot?.end) || undefined,
+        files: stringArray(rawSnapshot?.files),
+        start: snapshotStart,
+      } : undefined,
       time: {
         completed: numberValue(time?.completed) || undefined,
         created: numberValue(time?.created, Date.now()),
@@ -548,15 +401,27 @@ const toCommand = (value: unknown): CommandInfo | undefined => {
 };
 
 const toPermission = (value: unknown): PermissionRequest | undefined => {
-  const record = asRecord(value);
-  const id = stringValue(record?.id);
-  const sessionID = stringValue(record?.sessionID);
+  const raw = asRecord(value);
+  const record = asRecord(raw?.request) ?? asRecord(raw?.info) ?? raw;
+  const id = stringValue(record?.id)
+    || stringValue(record?.requestID)
+    || stringValue(record?.permissionID)
+    || stringValue(raw?.requestID)
+    || stringValue(raw?.permissionID);
+  const sessionID = stringValue(record?.sessionID) || stringValue(raw?.sessionID);
   if (!id || !sessionID) return undefined;
   return {
-    action: stringValue(record?.permission) || stringValue(record?.action, "permission"),
+    action: stringValue(record?.permission)
+      || stringValue(record?.action)
+      || stringValue(record?.tool)
+      || "permission",
     id,
     metadata: asRecord(record?.metadata),
-    resources: stringArray(record?.patterns).length > 0 ? stringArray(record?.patterns) : stringArray(record?.resources),
+    resources: stringArray(record?.patterns).length > 0
+      ? stringArray(record?.patterns)
+      : stringArray(record?.resources).length > 0
+        ? stringArray(record?.resources)
+        : stringArray(record?.paths),
     save: stringArray(record?.always).length > 0 ? stringArray(record?.always) : stringArray(record?.save),
     sessionID,
   };
@@ -636,88 +501,37 @@ export const openCodeApi = {
   health: () => request<{ healthy: boolean; version?: string }>("/api/health"),
 
   listModels: async (directory?: string): Promise<ModelInfo[]> => {
-    const catalog = await openCodeApi.listProviderCatalog(directory);
-    const enabledProviders = new Set(catalog.connected);
-    return catalog.all
-      .filter((provider) => enabledProviders.has(provider.id))
-      .flatMap((provider) => Object.values(provider.models).filter((model) => model.enabled !== false));
+    const [v2Response, legacyResponse] = await Promise.all([
+      request<unknown>("/api/model", undefined, locationParams(directory)).catch(() => undefined),
+      request<unknown>("/provider", undefined, directoryParams(directory)).catch(() => undefined),
+    ]);
+    const v2Models = parseModelList(v2Response);
+    const legacyModels = connectedModels(parseProviderCatalog(legacyResponse));
+    if (v2Models.length === 0) return legacyModels;
+    const legacyByKey = new Map(legacyModels.map((model) => [`${model.providerID}/${model.id}`, model]));
+    return v2Models
+      .map((model) => {
+        const legacy = legacyByKey.get(`${model.providerID}/${model.id}`);
+        return {
+          ...legacy,
+          ...model,
+          variants: Object.keys(model.variants ?? {}).length > 0
+            ? model.variants
+            : legacy?.variants,
+        };
+      })
+      .filter((model) => model.enabled !== false && model.status !== "deprecated");
   },
 
   listProviderCatalog: async (directory?: string): Promise<ProviderCatalog> => {
-    const [catalogResponse, providerResponse, modelResponse, integrationResponse] = await Promise.all([
-      request<unknown>("/config/providers", undefined, directoryParams(directory)),
-      request<unknown>("/api/provider", undefined, locationParams(directory)),
-      request<unknown>("/api/model", undefined, locationParams(directory)),
-      request<unknown>("/api/integration", undefined, locationParams(directory)),
+    const [legacyResponse, v2ProviderResponse, v2ModelResponse] = await Promise.all([
+      request<unknown>("/provider", undefined, directoryParams(directory)).catch(() => undefined),
+      request<unknown>("/api/provider", undefined, locationParams(directory)).catch(() => undefined),
+      request<unknown>("/api/model", undefined, locationParams(directory)).catch(() => undefined),
     ]);
-    const catalogPayload = asRecord(unwrapData<unknown>(catalogResponse)) ?? {};
-    const catalogProviders = recordArray(catalogPayload.providers)
-      .map((item) => toProvider(item))
-      .filter((item): item is ProviderInfo => Boolean(item));
-    const connectedProviderItems = recordArray(unwrapData<unknown>(providerResponse));
-    const connectedProviders = connectedProviderItems
-      .map((item) => toProvider(item, "api"))
-      .filter((item): item is ProviderInfo => Boolean(item));
-    const providers = new Map(catalogProviders.map((provider) => [provider.id, provider]));
-    connectedProviders.forEach((provider) => {
-      const existing = providers.get(provider.id);
-      providers.set(provider.id, {
-        ...provider,
-        ...(existing?.name ? { name: existing.name } : {}),
-        models: mergeModelMaps(existing?.models ?? {}, provider.models),
-        source: existing?.source ?? provider.source,
-      });
-    });
-    recordArray(unwrapData<unknown>(modelResponse)).forEach((item) => {
-      const model = toModelInfo(item);
-      if (!model) return;
-      const provider = providers.get(model.providerID) ?? {
-        api: model.api ? {
-          package: model.api.npm,
-          type: model.api.type,
-          url: model.api.url,
-        } : undefined,
-        env: [],
-        id: model.providerID,
-        models: {},
-        name: model.providerID,
-        options: {},
-        source: "api" as const,
-      };
-      providers.set(model.providerID, {
-        ...provider,
-        models: mergeModelMaps(provider.models, { [model.id]: model }),
-      });
-    });
-    recordArray(unwrapData<unknown>(integrationResponse)).forEach((item) => {
-      const id = stringValue(item.id);
-      if (!id || providers.has(id)) return;
-      const methods = recordArray(item.methods);
-      const env = methods.flatMap((method) => stringArray(method.names));
-      providers.set(id, {
-        api: undefined,
-        env,
-        id,
-        models: {},
-        name: stringValue(item.name, id),
-        options: {},
-        source: "api",
-      });
-    });
-    const all = [...providers.values()];
-    // OpenCode can report configured credentials through /config/providers and
-    // runtime-loaded providers through /api/provider. They are complementary:
-    // using only one response hides valid built-in providers as soon as any
-    // other provider is active.
-    const connected = [...new Set([
-      ...connectedProviders.map((provider) => provider.id),
-      ...catalogProviders.filter((provider) => Boolean(provider.key)).map((provider) => provider.id),
-    ])];
-    return {
-      all,
-      connected,
-      default: recordStringMap(catalogPayload.default),
-    };
+    const legacy = parseProviderCatalog(legacyResponse);
+    if (v2ProviderResponse === undefined) return legacy;
+    return mergeProviderCatalogs(legacy, parseV2ProviderCatalog(v2ProviderResponse, v2ModelResponse));
   },
 
   getConfig: (directory?: string) =>
@@ -792,20 +606,30 @@ export const openCodeApi = {
       method: "POST",
     }, directoryParams(directory)),
 
-  getSessionNetwork: async (sessionID: string, directory?: string): Promise<boolean> => {
+  getSessionPermissionRules: async (sessionID: string, directory?: string): Promise<PermissionRule[]> => {
     const response = await request<unknown>(`/session/${encodeURIComponent(sessionID)}`, undefined, directoryParams(directory));
-    return networkEnabledFromRules(permissionRules(asRecord(unwrapData(response))?.permission));
+    return permissionRules(asRecord(unwrapData(response))?.permission);
   },
 
-  setSessionNetwork: async (sessionID: string, enabled: boolean, directory?: string): Promise<void> => {
-    const action = enabled ? "allow" : "deny";
-    await request<unknown>(`/session/${encodeURIComponent(sessionID)}`, {
-      // Session permission updates are append-only in OpenCode. Appending only
-      // the two latest network rules keeps the final rule authoritative without
-      // duplicating the rest of the session permission set on every toggle.
-      body: JSON.stringify({ permission: [{ action, pattern: "*", permission: "websearch" }, { action, pattern: "*", permission: "webfetch" }] }),
-      method: "PATCH",
-    }, directoryParams(directory));
+  getSessionApprovalMode: async (sessionID: string, directory?: string): Promise<ApprovalMode> => {
+    const rules = await openCodeApi.getSessionPermissionRules(sessionID, directory);
+    return inferApprovalMode(rules);
+  },
+
+  setSessionApprovalMode: async (sessionID: string, mode: ApprovalMode, directory?: string): Promise<void> => {
+    const sessionResponse = await request<unknown>(
+      `/session/${encodeURIComponent(sessionID)}`,
+      undefined,
+      directoryParams(directory)
+    );
+    const session = asRecord(unwrapData(sessionResponse));
+    const currentRules = permissionRules(session?.permission);
+    if (inferApprovalMode(currentRules) !== mode) {
+      await request<unknown>(`/session/${encodeURIComponent(sessionID)}`, {
+        body: JSON.stringify({ permission: legacySessionRules(rulesForApprovalMode(mode)) }),
+        method: "PATCH",
+      }, directoryParams(directory));
+    }
   },
 
   sendPrompt: async (sessionID: string, input: SendPromptInput) => {
@@ -970,11 +794,11 @@ export const openCodeApi = {
 };
 
 export const subscribeOpenCodeEvents = (
-  _directory: string | undefined,
+  directory: string | undefined,
   onEvent: (event: OpenCodeEvent) => void,
   onError?: () => void
 ) => {
-  const source = new EventSource(buildUrl("/api/event"));
+  const source = new EventSource(buildUrl("/api/event", locationParams(directory)));
   const handleEvent = (message: MessageEvent<string>) => {
     if (!message.data) return;
     try {

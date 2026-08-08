@@ -1,4 +1,4 @@
-import type { AgentInfo } from "@/lib/opencode";
+import type { AgentInfo, OpenCodeEvent } from "@/lib/opencode";
 
 export const normalizeEventType = (type?: string): string => type?.replace(/\.\d+$/, "") ?? "";
 
@@ -23,6 +23,17 @@ export const isFinishedEvent = (type: string): boolean =>
   type === "session.execution.succeeded" ||
   type === "session.execution.failed" ||
   type === "session.execution.interrupted";
+
+export const eventChangesFiles = (event: OpenCodeEvent): boolean => {
+  const type = normalizeEventType(event.type);
+  if (type === "file.edited") return true;
+  if (type !== "session.tool.success") return false;
+  const properties = event.properties ?? event.data ?? {};
+  const tool = typeof properties.tool === "string" ? properties.tool.toLowerCase() : "";
+  if (["edit", "write", "apply_patch", "patch"].includes(tool)) return true;
+  const structured = properties.structured;
+  return Boolean(structured && typeof structured === "object" && Array.isArray((structured as { files?: unknown }).files));
+};
 
 export const localSlashCommands = new Set(["init", "mcp"]);
 

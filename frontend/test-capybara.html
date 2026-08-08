@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Capybara 测试页面</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 640px;
+      margin: 40px auto;
+      padding: 0 20px;
+      background: #fafafa;
+      color: #1f2937;
+    }
+    h1 { color: #b45309; }
+    .card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 12px 0;
+      background: #fff;
+    }
+    .ok { color: #16a34a; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Capybara 测试页 🐹</h1>
+  <p>这是哈基米大人随手写的静态测试 HTML，验证文件新建与内容写入。</p>
+
+  <div class="card">
+    <strong>测试项 1：</strong><span class="ok">✓</span> 标题/正文渲染
+  </div>
+  <div class="card">
+    <strong>测试项 2：</strong><span class="ok">✓</span> CSS 生效
+  </div>
+  <div class="card">
+    <strong>测试项 3：</strong><span class="ok">✓</span> 语义化标签
+  </div>
+
+  <footer>署名测试：由哈基米大人于 2026-08-07 编辑</footer>
+
+
+  <!-- Additional test content for Capybara -->
+  <div class="card">
+    <strong>测试项 4：</strong><span class="ok">✓</span> 可访问性语义
+  </div>
+  <div class="card">
+    <strong>测试项 5：</strong><span class="ok">✓</span> 响应式布局
+  </div>
+  <div class="card">
+    <strong>测试项 6：</strong><span class="ok">✓</span> 文件读写能力
+  </div>
+  <div class="card">
+    <strong>测试项 7：</strong><span class="ok">✓</span> 数据可视化
+  </div>
+  <script>
+    // 页面加载后运行测试断言
+    window.addEventListener('load', function() {
+      var testItems = document.querySelectorAll('.card');
+      console.log('capybara-test: 共 ' + testItems.length + ' 项测试');
+    });
+  </script>
+</body>
+</html>

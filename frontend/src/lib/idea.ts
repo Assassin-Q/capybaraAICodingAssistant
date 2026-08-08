@@ -7,6 +7,7 @@ export interface IdeContextEvent {
   id: string;
   action: "add_to_chat" | "explain_code" | "optimize_code" | "generate_test";
   content: string;
+  kind?: "file" | "directory" | "selection" | "binary";
   fileName?: string;
   lineRange?: IdeLineRange;
   timestamp: number;
@@ -123,11 +124,37 @@ export interface MemoryApiResult<T> {
   message?: string;
 }
 
-const localApiBaseUrl = (
+export interface IdeaDiffFile {
+  file: string;
+  patch: string;
+  title?: string;
+}
+
+export interface IdeaDiffResponse {
+  success: boolean;
+  message?: string;
+}
+
+export interface IdeaSnapshotDiffRequest {
+  start: string;
+  end: string;
+  files?: string[];
+}
+
+export interface IdeaSnapshotFileDiff {
+  additions: number;
+  deletions: number;
+  file: string;
+  patch: string;
+  status: "added" | "deleted" | "modified";
+}
+
+export const localApiBaseUrl = (
   import.meta.env.VITE_IDEA_API_BASE || `${window.location.origin}/api`
 ).replace(/\/$/, "");
 
-const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+/** Shared IDEA bridge fetch helper. Also used by `lib/ideaIntegrations.ts`. */
+export const ideaRequest = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`${localApiBaseUrl}${path}`, {
     ...init,
     headers: {
@@ -144,7 +171,9 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return (await response.json()) as T;
 };
 
-const normalizeLineRange = (value: unknown): IdeLineRange | undefined => {
+const request = ideaRequest;
+
+const normalizeLineRange =(value: unknown): IdeLineRange | undefined => {
   if (!value || typeof value !== "object") {
     return undefined;
   }
@@ -182,6 +211,9 @@ const normalizeContextEvent = (raw: unknown): IdeContextEvent | null => {
   return {
     action,
     content,
+    kind: data.kind === "directory" || data.kind === "selection" || data.kind === "binary" || data.kind === "file"
+      ? data.kind
+      : undefined,
     fileName: typeof data.fileName === "string" ? data.fileName : undefined,
     id:
       typeof data.id === "number" || typeof data.id === "string"
@@ -196,6 +228,32 @@ const normalizeContextEvent = (raw: unknown): IdeContextEvent | null => {
 export const ideaApi = {
   getRuntimeConfig: () => request<IdeaRuntimeConfig>("/opencode-info"),
 
+  /** Re-discovers (and, if plugin-managed, relaunches) the local OpenCode server. */
+  restartOpenCode: () =>
+    request<IdeaRuntimeConfig>("/opencode/restart", { body: "{}", method: "POST" }),
+
+  /**
+   * Approval mode lives in the plugin, not in OpenCode: `PATCH /session` and `PATCH /config`
+   * both accept a `permission` payload, return 200 and discard it. The plugin's bridge enforces
+   * the mode through OpenCode's `permission.ask` hook instead.
+   */
+  getApprovalMode: (sessionID: string) =>
+    request<{ sessionID: string; mode: string }>(
+      `/approval-mode?sessionID=${encodeURIComponent(sessionID)}`
+    ),
+
+  setApprovalMode: (sessionID: string, mode: string) =>
+    request<{ sessionID: string; mode: string }>("/approval-mode", {
+      body: JSON.stringify({ mode, sessionID }),
+      method: "POST",
+    }),
+
+  /** Mode → operation labels, so the picker renders exactly what the plugin enforces. */
+  getApprovalModeRules: () =>
+    request<{
+      modes: Array<{ id: string; label: string; allow: string[]; ask: string[] }>;
+    }>("/approval-mode/rules"),
+
   getProjectPath: async () => {
     const response = await request<{ path?: string }>("/project-path");
     return response.path;
@@ -209,6 +267,27 @@ export const ideaApi = {
       body: JSON.stringify({ content, filename }),
       method: "POST",
     }),
+
+  openDiff: (file: IdeaDiffFile) =>
+    request<IdeaDiffResponse>("/diff/open", {
+      body: JSON.stringify(file),
+      method: "POST",
+    }),
+
+  getSnapshotDiff: (snapshot: IdeaSnapshotDiffRequest) =>
+    request<IdeaSnapshotFileDiff[]>("/diff/snapshot", {
+      body: JSON.stringify(snapshot),
+      method: "POST",
+    }),
+
+  applyInlineDiffs: (files: IdeaDiffFile[]) =>
+    request<IdeaDiffResponse>("/diff/inline", {
+      body: JSON.stringify({ files }),
+      method: "POST",
+    }),
+
+  clearInlineDiffs: () =>
+    request<IdeaDiffResponse>("/diff/inline", { method: "DELETE" }),
 
   getMemoryStatus: () => request<MemorySystemStatus>("/memory/status"),
 

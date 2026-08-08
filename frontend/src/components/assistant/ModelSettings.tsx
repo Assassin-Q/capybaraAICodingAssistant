@@ -7,15 +7,19 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ModelVariantSummary } from "@/components/assistant/ModelVariantSummary";
-import { modelVariantIDs } from "@/components/assistant/modelVariants";
+import { ModelVariantEditor } from "@/components/assistant/ModelVariantEditor";
+import { normalizedVariantOverrides } from "@/components/assistant/modelVariantConfig";
+import type { ModelVariantMap } from "@/components/assistant/modelVariantConfig";
 import { errorMessage } from "@/components/assistant/shared";
 import { openCodeApi } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
+import type { ModelVariantLabels } from "@/lib/preferences";
 import type { CustomModelConfig, ModelInfo, ModelModality, OpenCodeConfig, ProviderCatalog, ProviderConfig } from "@/lib/opencode";
 
 interface ModelSettingsProps {
+  modelVariantLabels: ModelVariantLabels;
   onChanged: () => void;
+  onModelVariantLabelsChange: (labels: ModelVariantLabels) => void;
   projectPath?: string;
 }
 
@@ -28,6 +32,7 @@ interface ModelDraft {
   outputModalities: ModelModality[];
   reasoning: boolean;
   toolCall: boolean;
+  variants: ModelVariantMap;
 }
 
 interface ProviderDraft {
@@ -76,6 +81,7 @@ const emptyModel = (): ModelDraft => ({
   outputModalities: ["text"],
   reasoning: false,
   toolCall: true,
+  variants: {},
 });
 
 const providerName = (providerID: string, catalog: ProviderCatalog): string =>
@@ -117,15 +123,33 @@ const draftFromCatalogProvider = (provider: ProviderCatalog["all"][number]): Pro
 const normalizeModalities = (value: ModelModality[] | undefined, fallback: ModelModality[]): ModelModality[] =>
   value && value.length > 0 ? value : fallback;
 
-const modelDraftFromConfig = (id: string, model: CustomModelConfig | undefined, enabled: boolean): ModelDraft => ({
-  context: model?.limit?.context ? String(model.limit.context) : "",
+const modelDraftFromConfig = (
+  id: string,
+  model: CustomModelConfig,
+  catalogModel: ModelInfo | undefined,
+  enabled: boolean
+): ModelDraft => ({
+  context: model.limit?.context || catalogModel?.limit?.context
+    ? String(model.limit?.context ?? catalogModel?.limit?.context)
+    : "",
   enabled,
   id,
-  inputModalities: normalizeModalities(model?.modalities?.input, model?.attachment ? ["text", "image"] : ["text"]),
-  name: model?.name ?? id,
-  outputModalities: normalizeModalities(model?.modalities?.output, ["text"]),
-  reasoning: model?.reasoning === true,
-  toolCall: model?.tool_call !== false,
+  inputModalities: normalizeModalities(
+    model.modalities?.input,
+    Object.entries(catalogModel?.capabilities?.input ?? {}).filter(([, active]) => active).map(([key]) => key as ModelModality).length > 0
+      ? Object.entries(catalogModel?.capabilities?.input ?? {}).filter(([, active]) => active).map(([key]) => key as ModelModality)
+      : model.attachment ? ["text", "image"] : ["text"]
+  ),
+  name: model.name ?? catalogModel?.name ?? id,
+  outputModalities: normalizeModalities(
+    model.modalities?.output,
+    Object.entries(catalogModel?.capabilities?.output ?? {}).filter(([, active]) => active).map(([key]) => key as ModelModality).length > 0
+      ? Object.entries(catalogModel?.capabilities?.output ?? {}).filter(([, active]) => active).map(([key]) => key as ModelModality)
+      : ["text"]
+  ),
+  reasoning: model.reasoning ?? catalogModel?.capabilities?.reasoning ?? false,
+  toolCall: model.tool_call ?? catalogModel?.capabilities?.toolcall ?? true,
+  variants: model.variants ?? {},
 });
 
 const modelDraftFromCatalog = (model: ModelInfo, enabled: boolean): ModelDraft => ({
@@ -143,6 +167,7 @@ const modelDraftFromCatalog = (model: ModelInfo, enabled: boolean): ModelDraft =
   ),
   reasoning: model.capabilities?.reasoning === true,
   toolCall: model.capabilities?.toolcall !== false,
+  variants: {},
 });
 const toModelConfig = (draft: ModelDraft, existing?: CustomModelConfig): CustomModelConfig => ({
   ...existing,
@@ -153,6 +178,7 @@ const toModelConfig = (draft: ModelDraft, existing?: CustomModelConfig): CustomM
   reasoning: draft.reasoning,
   status: "active",
   tool_call: draft.toolCall,
+  variants: normalizedVariantOverrides(draft.variants),
 });
 
 function SettingField({ children, label }: { children: React.ReactNode; label: string }) {
@@ -175,12 +201,28 @@ const outputModalities: Array<{ id: ModelModality; label: string }> = [
 const toggleModality = (items: ModelModality[], item: ModelModality, enabled: boolean): ModelModality[] =>
   enabled ? [...new Set([...items, item])] : items.filter((value) => value !== item);
 
-export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
+const modelVariantLabelKey = (providerID: string, modelID: string): string =>
+  `${providerID}/${modelID}`;
+
+const cleanVariantLabels = (labels: Record<string, string>): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(labels)
+      .map(([id, label]) => [id.trim(), label.trim()])
+      .filter(([id, label]) => id && id !== "default" && label)
+  );
+
+export function ModelSettings({
+  modelVariantLabels,
+  onChanged,
+  onModelVariantLabelsChange,
+  projectPath,
+}: ModelSettingsProps) {
   const [catalog, setCatalog] = useState<ProviderCatalog>({ all: [], connected: [], default: {} });
   const [config, setConfig] = useState<OpenCodeConfig>({});
   const [selectedID, setSelectedID] = useState("");
   const [providerDraft, setProviderDraft] = useState<ProviderDraft>(emptyProvider);
   const [modelDraft, setModelDraft] = useState<ModelDraft>(emptyModel);
+  const [modelVariantLabelDraft, setModelVariantLabelDraft] = useState<Record<string, string>>({});
   const [editingModelID, setEditingModelID] = useState<string>();
   const [isNewProvider, setIsNewProvider] = useState(false);
   const [newProviderStep, setNewProviderStep] = useState<"choose" | "details">("choose");
@@ -190,6 +232,7 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
   const [error, setError] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [pendingDeleteModelID, setPendingDeleteModelID] = useState<string>();
+  const [pendingDeleteProviderID, setPendingDeleteProviderID] = useState<string>();
 
   const load = async (preferredID?: string) => {
     if (!projectPath) return;
@@ -211,6 +254,7 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
       setProviderDraft(nextID ? toProviderDraft(nextID, nextConfig, nextCatalog) : emptyProvider());
       setEditingModelID(undefined);
       setModelDraft(emptyModel());
+      setModelVariantLabelDraft({});
     } catch (loadError) {
       setError(errorMessage(loadError));
     } finally {
@@ -252,7 +296,7 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
 
   const draftForModel = (modelID: string): ModelDraft => {
     const enabled = !disabledModelIDs.has(modelID);
-    if (configuredModels[modelID]) return modelDraftFromConfig(modelID, configuredModels[modelID], enabled);
+    if (configuredModels[modelID]) return modelDraftFromConfig(modelID, configuredModels[modelID], catalogModels[modelID], enabled);
     if (catalogModels[modelID]) return modelDraftFromCatalog(catalogModels[modelID], enabled);
     return { ...emptyModel(), enabled, id: modelID, name: modelID };
   };
@@ -263,6 +307,7 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
     setProviderDraft(toProviderDraft(id, config, catalog));
     setEditingModelID(undefined);
     setModelDraft(emptyModel());
+    setModelVariantLabelDraft({});
     setError("");
   };
 
@@ -274,6 +319,7 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
     setProviderDraft(emptyProvider());
     setEditingModelID(undefined);
     setModelDraft(emptyModel());
+    setModelVariantLabelDraft({});
     setError("");
   };
 
@@ -294,10 +340,14 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
   const toggleModelEditor = (modelID: string) => {
     if (editingModelID === modelID) {
       setEditingModelID(undefined);
+      setModelVariantLabelDraft({});
       return;
     }
     setEditingModelID(modelID);
     setModelDraft(draftForModel(modelID));
+    setModelVariantLabelDraft({
+      ...(modelVariantLabels[modelVariantLabelKey(providerDraft.id || selectedID, modelID)] ?? {}),
+    });
   };
 
   const saveProvider = async () => {
@@ -367,6 +417,12 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
       applyLocalConfig({ ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } }, providerID);
       setEditingModelID(modelID);
       setModelDraft({ ...modelDraft, id: modelID });
+      const labelKey = modelVariantLabelKey(providerID, modelID);
+      const cleanedLabels = cleanVariantLabels(modelVariantLabelDraft);
+      const nextVariantLabels = { ...modelVariantLabels };
+      if (Object.keys(cleanedLabels).length > 0) nextVariantLabels[labelKey] = cleanedLabels;
+      else delete nextVariantLabels[labelKey];
+      onModelVariantLabelsChange(nextVariantLabels);
       onChanged();
     } catch (saveError) {
       setError(errorMessage(saveError));
@@ -395,6 +451,42 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
     }
   };
 
+  /**
+   * OpenCode's `PATCH /config` has no delete primitive, so the whole provider map minus this
+   * entry is sent and the result is read back. If the server merged instead of replacing, the
+   * provider is only disabled and the user is told the entry is still in opencode.jsonc rather
+   * than being shown a success that did not happen.
+   */
+  const deleteProvider = async () => {
+    const providerID = pendingDeleteProviderID;
+    if (!projectPath || !providerID) return;
+    setSaving(true);
+    setError("");
+    try {
+      const remaining = Object.fromEntries(
+        Object.entries(config.provider ?? {}).filter(([id]) => id !== providerID)
+      );
+      const disabledProviders = [...new Set([...(config.disabled_providers ?? []), providerID])];
+      await openCodeApi.updateConfig({ disabled_providers: disabledProviders, provider: remaining }, projectPath);
+
+      const verified = await openCodeApi.getConfig(projectPath);
+      const stillPresent = Object.keys(verified.provider ?? {}).includes(providerID);
+      setPendingDeleteProviderID(undefined);
+      applyLocalConfig(verified, Object.keys(verified.provider ?? {})[0] ?? "");
+      setSelectedID(configuredProviderIDs(verified)[0] ?? catalog.connected[0] ?? "");
+      onChanged();
+      if (stillPresent) {
+        setError(
+          `OpenCode 未删除 ${providerID}，已改为停用。该条目仍在 opencode.jsonc 中，可手动删除后重启服务。`
+        );
+      }
+    } catch (deleteError) {
+      setError(errorMessage(deleteError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const deleteModel = async () => {
     const providerID = providerDraft.id.trim();
     const modelID = pendingDeleteModelID;
@@ -415,6 +507,9 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
         },
       }, projectPath);
       const nextConfig: OpenCodeConfig = { ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } };
+      const nextVariantLabels = { ...modelVariantLabels };
+      delete nextVariantLabels[modelVariantLabelKey(providerID, modelID)];
+      onModelVariantLabelsChange(nextVariantLabels);
       setPendingDeleteModelID(undefined);
       setEditingModelID(undefined);
       applyLocalConfig(nextConfig, providerID);
@@ -486,8 +581,14 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
           </div>
         </div>
       </div>
-      <ModelVariantSummary variants={modelVariantIDs(editingModelID && editingModelID !== "new" ? catalogModels[editingModelID] : undefined)} />
-      <div className="flex justify-end gap-2"><Button onClick={() => setEditingModelID(undefined)} size="sm" type="button" variant="ghost">取消</Button><Button disabled={saving} onClick={() => void saveModel()} size="sm" type="button"><Check className="size-3.5" />保存模型</Button></div>
+      <ModelVariantEditor
+        effective={editingModelID && editingModelID !== "new" ? catalogModels[editingModelID]?.variants ?? {} : {}}
+        labels={modelVariantLabelDraft}
+        onChange={(variants) => setModelDraft((current) => ({ ...current, variants }))}
+        onLabelsChange={setModelVariantLabelDraft}
+        overrides={modelDraft.variants}
+      />
+      <div className="flex justify-end gap-2"><Button onClick={() => { setEditingModelID(undefined); setModelVariantLabelDraft({}); }} size="sm" type="button" variant="ghost">取消</Button><Button disabled={saving} onClick={() => void saveModel()} size="sm" type="button"><Check className="size-3.5" />保存模型</Button></div>
     </div>
   );
 
@@ -525,11 +626,23 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
         {!isNewProvider && providerDraft.catalogProvider && <Button disabled={saving} onClick={() => void removeProviderCredential()} size="sm" type="button" variant="ghost">移除凭据</Button>}
+        {!isNewProvider && !providerDraft.catalogProvider && (
+          <Button
+            disabled={saving}
+            onClick={() => setPendingDeleteProviderID(providerDraft.id || selectedID)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <Trash2 className="size-3.5 text-destructive" />
+            移除供应商
+          </Button>
+        )}
         <Button disabled={saving} onClick={() => void saveProvider()} size="sm" type="button"><Save className="size-3.5" />保存供应商</Button>
       </div>
 
       {!isNewProvider && <div className="mt-7 border-t border-border/50 pt-5">
-        <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold">模型列表</h3><p className="mt-1 text-xs text-muted-foreground">展开后直接在当前模型下面编辑。</p></div><Button onClick={() => { setEditingModelID("new"); setModelDraft(emptyModel()); }} size="sm" type="button" variant="ghost"><Plus className="size-3.5" />添加模型</Button></div>
+        <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold">模型列表</h3><p className="mt-1 text-xs text-muted-foreground">展开后直接在当前模型下面编辑。</p></div><Button onClick={() => { setEditingModelID("new"); setModelDraft(emptyModel()); setModelVariantLabelDraft({}); }} size="sm" type="button" variant="ghost"><Plus className="size-3.5" />添加模型</Button></div>
         <div className="mt-3 divide-y divide-border/50 bg-muted/20">
           {editingModelID === "new" && modelEditor}
           {modelIDs.length === 0 && editingModelID !== "new" ? <p className="p-4 text-sm text-muted-foreground">尚未配置模型</p> : modelIDs.map((id) => {
@@ -581,6 +694,12 @@ export function ModelSettings({ onChanged, projectPath }: ModelSettingsProps) {
         </div>
       </div>
     </section>
+    <Dialog onOpenChange={(open) => { if (!open) setPendingDeleteProviderID(undefined); }} open={Boolean(pendingDeleteProviderID)}>
+      <DialogContent className="max-w-[calc(100vw-1.5rem)] gap-3 p-4 sm:max-w-sm">
+        <DialogHeader><DialogTitle className="text-base">移除这个供应商？</DialogTitle><DialogDescription>将从配置中删除 {pendingDeleteProviderID} 及其模型。若 OpenCode 不支持删除配置项，会退回为停用并提示你手动清理。</DialogDescription></DialogHeader>
+        <DialogFooter><Button onClick={() => setPendingDeleteProviderID(undefined)} size="sm" type="button" variant="ghost">取消</Button><Button disabled={saving} onClick={() => void deleteProvider()} size="sm" type="button" variant="destructive"><Trash2 className="size-3.5" />移除供应商</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
     <Dialog onOpenChange={(open) => { if (!open) setPendingDeleteModelID(undefined); }} open={Boolean(pendingDeleteModelID)}>
       <DialogContent className="max-w-[calc(100vw-1.5rem)] gap-3 p-4 sm:max-w-sm">
         <DialogHeader><DialogTitle className="text-base">移除这个模型？</DialogTitle><DialogDescription>将从当前供应商的可用模型中隐藏 {pendingDeleteModelID}，OpenCode 后续不会再加载它。</DialogDescription></DialogHeader>

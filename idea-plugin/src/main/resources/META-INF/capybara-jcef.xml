@@ -1,0 +1,8 @@
+<idea-plugin>
+    <!--
+      Loaded only on IDEs that expose com.intellij.modules.jcef (2025.3.1+). It adds no
+      extensions; declaring the dependency is what satisfies the newer platform check for
+      plugins that touch com.intellij.ui.jcef. Older IDEs skip this file entirely, which is
+      why the <depends> entry in plugin.xml is optional.
+    -->
+</idea-plugin>

@@ -1,5 +1,6 @@
 import type { ActivePrompt } from "@/hooks/useRunLifecycle";
 import type { AssistantMessage, SessionMessage } from "@/lib/opencode";
+import { EMPTY_TOKEN_USAGE } from "@/lib/tokenUsage";
 
 export const DEFAULT_EMPTY_RUN_ERROR = "OpenCode 未生成回复，当前模型或思考档位可能不可用。";
 
@@ -28,6 +29,7 @@ export const appendRunFailure = (
     id,
     model: { id: "", providerID: "" },
     parentID: prompt.messageID,
+    tokens: EMPTY_TOKEN_USAGE,
     time: { completed: Date.now(), created: prompt.startedAt },
     type: "assistant",
   };

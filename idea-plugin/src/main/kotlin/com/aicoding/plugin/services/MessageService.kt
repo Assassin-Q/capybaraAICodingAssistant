@@ -16,6 +16,7 @@ data class ChatMessage(
     val id: Long,
     val type: String,
     val content: String,
+    val kind: String? = null,
     val fileName: String? = null,
     val lineRange: LineRange? = null,
     val timestamp: Long = System.currentTimeMillis(),
@@ -30,6 +31,7 @@ class MessageService {
     fun addMessage(
         type: String,
         content: String,
+        kind: String? = null,
         fileName: String? = null,
         lineRange: Pair<Int, Int>? = null,
     ): Long {
@@ -37,6 +39,7 @@ class MessageService {
             id = idGenerator.incrementAndGet(),
             type = type,
             content = content,
+            kind = kind,
             fileName = fileName,
             lineRange = lineRange?.let { LineRange(it.first, it.second) },
         )

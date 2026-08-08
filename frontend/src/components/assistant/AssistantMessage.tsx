@@ -5,6 +5,7 @@ import { Message, MessageContent } from "@/components/ai-elements/message";
 import { AssistantProcess } from "@/components/assistant/AssistantProcess";
 import { MarkdownResponse } from "@/components/assistant/MarkdownResponse";
 import { SessionDiffSummary } from "@/components/assistant/SessionDiffSummary";
+import { TokenUsageSummary } from "@/components/assistant/TokenUsage";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import type {
   AssistantMessage as AssistantMessageData,
@@ -19,6 +20,25 @@ function ThinkingLine() {
   );
 }
 
+/**
+ * Turns known provider failures into something actionable. The raw payloads are long JSON
+ * blobs whose meaning is not obvious — the reasoning_content one in particular just means the
+ * gateway cannot round-trip thinking output, which the user fixes by changing the variant.
+ */
+const explainProviderError = (value: string): string | undefined => {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("reasoning_content") && normalized.includes("thinking mode")) {
+    return "当前中转站要求把思考内容原样回传，但它与 OpenCode 的请求格式不兼容。把思考档位切回「默认」，或换一个模型即可继续。";
+  }
+  if (normalized.includes("context") && normalized.includes("maximum") && normalized.includes("token")) {
+    return "对话已超出该模型的上下文窗口。可以新开会话，或换一个上下文更大的模型。";
+  }
+  if (normalized.includes("insufficient_quota") || normalized.includes("exceeded your current quota")) {
+    return "供应商返回额度不足，请检查该 API Key 的余额或配额。";
+  }
+  return undefined;
+};
+
 const visibleMessageError = (error?: string): string => {
   const value = error?.trim() ?? "";
   const normalized = value.toLowerCase();
@@ -29,7 +49,7 @@ const visibleMessageError = (error?: string): string => {
   ) {
     return "";
   }
-  return value;
+  return explainProviderError(value) ?? value;
 };
 
 export const AssistantMessage = memo(function AssistantMessage({
@@ -67,6 +87,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         <AssistantProcess conclusionPartID={conclusionPart?.id} isStreaming={isStreaming} message={message} />
         {conclusion.trim() && <MarkdownResponse isAnimating={false} mode={isStreaming ? "streaming" : "static"}>{conclusion}</MarkdownResponse>}
         {!isStreaming && <SessionDiffSummary diffs={diffs} />}
+        {!isStreaming && <TokenUsageSummary model={message.model} usage={message.tokens} />}
       </MessageContent>
     </Message>
   );

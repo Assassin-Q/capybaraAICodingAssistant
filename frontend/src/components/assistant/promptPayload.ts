@@ -1,4 +1,5 @@
 import type { ContextChip } from "@/components/assistant/shared";
+import type { PromptInputFile } from "@/components/ai-elements/prompt-input";
 import type { PromptAttachment } from "@/lib/opencode";
 import type { EmbeddedTextAttachment } from "@/lib/textAttachments";
 
@@ -16,6 +17,41 @@ const contextInstructions: Record<ContextChip["action"], string> = {
   explain_code: "解释下面代码的作用、关键流程和潜在问题。",
   generate_test: "为下面代码生成高质量的单元测试。",
   optimize_code: "分析并优化下面代码，说明修改理由。",
+};
+
+const contextMime = (context: ContextChip): string => {
+  if (context.kind === "directory") return "text/x-idea-directory";
+  if (context.kind === "selection") return "text/x-idea-selection";
+  if (context.kind === "binary") return "application/x-idea-binary";
+  return "text/x-idea-file";
+};
+
+const contextName = (context: ContextChip, index: number): string => {
+  const location = context.fileName?.split(/[\\/]/).filter(Boolean).pop();
+  if (context.kind === "directory") return location || `文件夹-${index + 1}`;
+  if (context.kind === "selection") return location ? `${location} · 代码片段` : `代码片段-${index + 1}.txt`;
+  return location || `IDE 文件-${index + 1}.txt`;
+};
+
+const contextContent = (context: ContextChip): string => {
+  const location = context.fileName
+    ? `位置：${context.fileName}${context.lineRange ? `（第 ${context.lineRange.start}-${context.lineRange.end} 行）` : ""}`
+    : "IDEA 代码片段";
+  return [contextInstructions[context.action], location, "", context.content].join("\n");
+};
+
+export const contextToPromptInputFile = (context: ContextChip, index: number): PromptInputFile => {
+  const mime = contextMime(context);
+  const name = contextName(context, index);
+  const file = new File([contextContent(context)], name, { type: mime });
+  return {
+    file,
+    filename: name,
+    id: `idea-context-${context.id}`,
+    mediaType: mime,
+    type: "file",
+    url: URL.createObjectURL(file),
+  };
 };
 
 export const fileToPromptAttachment = (file: File, name: string): Promise<PromptAttachment> =>

@@ -93,6 +93,18 @@ class OpenCodeServerManager(private val projectPath: String?) {
         endpoint = OpenCodeEndpoint(projectPath = projectPath)
     }
 
+    /**
+     * Drops the cached endpoint and rediscovers OpenCode. A server the plugin started is
+     * terminated first; a server the user runs themselves is left alone and simply re-probed.
+     */
+    @Synchronized
+    fun restart(frontendPort: Int): OpenCodeEndpoint {
+        if (endpoint.managed) terminateFailedProcess()
+        process = null
+        endpoint = OpenCodeEndpoint(projectPath = projectPath)
+        return start(frontendPort)
+    }
+
     private fun terminateFailedProcess() {
         process?.let { child ->
             child.destroy()

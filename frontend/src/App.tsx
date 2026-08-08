@@ -1,28 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AssistantShell } from "@/components/assistant/AssistantShell";
+import type { SectionID as WorkspaceSectionID } from "@/components/assistant/WorkspaceDialog";
 import {
   groupConversationTurns,
   resolveStreamingAssistantState,
 } from "@/components/assistant/conversationTurns";
-import { contextPrompt, fileToEmbeddedTextAttachment, fileToPromptAttachment, isTextFile } from "@/components/assistant/promptPayload";
+import { contextToPromptInputFile, fileToEmbeddedTextAttachment, fileToPromptAttachment, isTextFile } from "@/components/assistant/promptPayload";
 import type { QueuedPrompt } from "@/components/assistant/PromptQueue";
 import { errorMessage, modelKey } from "@/components/assistant/shared";
 import type { ContextChip as ContextChipData, RunStatus } from "@/components/assistant/shared";
 import { modelRefWithAvailableVariant, modelSupportsVariant } from "@/components/assistant/modelVariants";
 import {
-  eventAssistantParentID,
-  eventMessageID,
-  eventSessionID,
-} from "@/components/assistant/liveEvents";
-import {
-  isAssistantStreamEvent,
-  isFinishedEvent,
-  isStreamEvent,
   localSlashCommands,
   mentionedSubagents,
-  normalizeEventType,
 } from "@/components/assistant/appRuntime";
-import { ideaApi, subscribeIdeaEvents } from "@/lib/idea";
+import { ideaApi } from "@/lib/idea";
 import { loadWorkspacePreferences } from "@/lib/preferences";
 import { useRunLifecycle, type ActivePrompt } from "@/hooks/useRunLifecycle";
 import { useBatchedOpenCodeEvents } from "@/hooks/useBatchedOpenCodeEvents";
@@ -30,14 +22,12 @@ import { useInteractiveStatePolling } from "@/hooks/useInteractiveStatePolling";
 import { useIdeaTheme } from "@/hooks/useIdeaTheme";
 import { useSessionDiffs } from "@/hooks/useSessionDiffs";
 import { useModelVariantGuard } from "@/hooks/useModelVariantGuard";
+import { useOpenCodeEventStream } from "@/hooks/useOpenCodeEventStream";
 import {
   createMessageID,
   createOptimisticUserMessage,
   openCodeApi,
   setOpenCodeBaseUrl,
-  subscribeOpenCodeEvents,
-  toQuestionRequest,
-  toTodoList,
 } from "@/lib/opencode";
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import type {
@@ -55,6 +45,8 @@ import type {
 import type { WorkspacePreferences } from "@/lib/preferences";
 import { appendTextAttachments } from "@/lib/textAttachments";
 import { restoreActiveRun } from "@/components/assistant/runRestoration";
+import { getContextUsage } from "@/lib/tokenUsage";
+import type { ApprovalMode } from "@/lib/approvalMode";
 interface QuestionAnswers { [requestID: string]: string[][]; }
 
 function App() {
@@ -71,7 +63,7 @@ function App() {
   const [selectedModelKey, setSelectedModelKey] = useState("");
   const [selectedAgentID, setSelectedAgentID] = useState("");
   const [selectedVariant, setSelectedVariant] = useState<string>();
-  const [networkEnabled, setNetworkEnabled] = useState(true);
+  const [approvalMode, setApprovalMode] = useState<ApprovalMode>("ask");
   const [permissions, setPermissions] = useState<PermissionRequest[]>([]);
   const [questions, setQuestions] = useState<QuestionRequest[]>([]);
   const [todos, setTodos] = useState<TodoInfo[]>([]);
@@ -84,7 +76,7 @@ function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
-  const [workspaceSection, setWorkspaceSection] = useState<"connection" | "models" | "persona" | "memory" | "skills" | "mcp" | "permissions">("connection");
+  const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSectionID>("connection");
   const [composerText, setComposerText] = useState("");
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const [editingQueuedPrompt, setEditingQueuedPrompt] = useState<QueuedPrompt>();
@@ -109,6 +101,17 @@ function App() {
   const promptGeneration = useRef(0);
   const selectedSessionIDRef = useRef(selectedSessionID);
   const refreshWorkspaceRef = useRef<(includeMessages?: boolean) => Promise<void>>();
+
+  const eventStreamRefs = useMemo(() => ({
+    activeAssistantMessageIDs,
+    activePrompt,
+    activePromptHasActivity,
+    cancelledPromptIDs,
+    refreshTimer,
+    seenEventIDs,
+    selectedSessionIDRef,
+    suppressedStreamingSessionIDs,
+  }), []);
 
   const lifecycleRefs = useMemo(() => ({
     activeAssistantMessageIDs,
@@ -157,6 +160,11 @@ function App() {
   );
   const resolvedModelKey = selectedModelKey || (currentSession?.model ? modelKey(currentSession.model) : "");
   const selectedModel = selectableModels.find((model) => modelKey(model) === resolvedModelKey);
+  const contextFallbackModel = models.find((model) => modelKey(model) === resolvedModelKey) ?? selectedModel;
+  const contextUsage = useMemo(
+    () => getContextUsage(messages, models, contextFallbackModel),
+    [contextFallbackModel, messages, models]
+  );
   const isGenerating = runStatus === "submitted" || runStatus === "streaming";
   const ensureSelectedModelVariant = useModelVariantGuard({ model: selectedModel, projectPath, selectedSessionID, selectedVariant, setError, setSelectedVariant, setSessions });
   const diffsByMessageID = useSessionDiffs({ messages, projectPath, runStatus, sessionID: selectedSessionID });
@@ -261,6 +269,7 @@ function App() {
       setError("");
       const model = selectedModel ? modelRefWithAvailableVariant(selectedModel, selectedVariant) : undefined;
       const session = await openCodeApi.createSession(projectPath, model, selectedAgentID || undefined);
+      await ideaApi.setApprovalMode(session.id, approvalMode);
       setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
       setSelectedSessionID(session.id);
       setMessages([]);
@@ -278,7 +287,7 @@ function App() {
     } catch (createError) {
       setError(errorMessage(createError));
     }
-  }, [projectPath, selectedAgentID, selectedModel, selectedVariant]);
+  }, [approvalMode, projectPath, selectedAgentID, selectedModel, selectedVariant]);
 
   useEffect(() => {
     let cancelled = false;
@@ -368,12 +377,12 @@ function App() {
     let cancelled = false;
     const loadSelectedSession = async () => {
       try {
-        const [nextMessages, pending, nextTodos, status, nextNetworkEnabled] = await Promise.all([
+        const [nextMessages, pending, nextTodos, status, nextApprovalMode] = await Promise.all([
           openCodeApi.getMessages(selectedSessionID, projectPath),
           loadPending(selectedSessionID),
           openCodeApi.getTodos(selectedSessionID, projectPath),
           openCodeApi.getSessionStatus(selectedSessionID, projectPath),
-          openCodeApi.getSessionNetwork(selectedSessionID, projectPath),
+          ideaApi.getApprovalMode(selectedSessionID),
         ]);
         if (cancelled) return;
         if (activePrompt.current?.sessionID !== selectedSessionID) {
@@ -386,7 +395,7 @@ function App() {
         setPermissions(pending.permissions);
         setQuestions(pending.questions);
         setTodos(nextTodos);
-        setNetworkEnabled(nextNetworkEnabled);
+        setApprovalMode(nextApprovalMode.mode as ApprovalMode);
         const busy = status.type === "busy";
         setRunStatus(busy ? "streaming" : "ready");
         if (busy) {
@@ -429,111 +438,25 @@ function App() {
     if (currentSession.agent) setSelectedAgentID(currentSession.agent);
   }, [currentSession]);
 
-  useEffect(() => {
-    if (!projectPath) return;
-    const unsubscribeOpenCode = subscribeOpenCodeEvents(
-      projectPath,
-      (event) => {
-        if (event.id) {
-          if (seenEventIDs.current.has(event.id)) return;
-          seenEventIDs.current.add(event.id);
-          if (seenEventIDs.current.size > 4000) seenEventIDs.current.clear();
-        }
-        const type = normalizeEventType(event.type);
-        const currentPrompt = activePrompt.current;
-        const sourceSessionID = eventSessionID(event);
-        const isCurrentSession = sourceSessionID === selectedSessionIDRef.current
-          || (!sourceSessionID && type === "session.status" && currentPrompt?.sessionID === selectedSessionIDRef.current);
-          const eventID = eventMessageID(event);
-          const assistantParentID = eventAssistantParentID(event);
-          const assistantEventID = typeof event.properties?.assistantMessageID === "string"
-            ? event.properties.assistantMessageID
-            : undefined;
-        const status = event.properties?.status;
-        const statusType = Boolean(status) && typeof status === "object" ? (status as { type?: string }).type : undefined;
-        const isIdleStatus = type === "session.status" && statusType === "idle";
-        const finished = isFinishedEvent(type) || isIdleStatus;
-          if (isCurrentSession) {
-            const suppressed = suppressedStreamingSessionIDs.current.has(sourceSessionID ?? "");
-            if (currentPrompt && assistantEventID && isAssistantStreamEvent(type)) {
-              activeAssistantMessageIDs.current.add(assistantEventID);
-              setStreamingAssistantID(assistantEventID);
-            }
-          if (type === "message.updated" && assistantParentID === currentPrompt?.messageID && eventID) {
-            activeAssistantMessageIDs.current.add(eventID);
-            setStreamingAssistantID(eventID);
-          }
-          const belongsToCurrentPrompt = !currentPrompt || !eventID
-            ? true
-              : eventID === currentPrompt.messageID
-                || activeAssistantMessageIDs.current.has(eventID)
-                || assistantParentID === currentPrompt.messageID;
-          const isCancelledPromptEvent = Boolean(eventID && cancelledPromptIDs.current.has(eventID));
-          const isAssistantActivity = Boolean(
-            currentPrompt && eventID && (
-              activeAssistantMessageIDs.current.has(eventID) ||
-              assistantParentID === currentPrompt.messageID
-            )
-          );
-          if (belongsToCurrentPrompt && !isCancelledPromptEvent && isAssistantActivity) {
-            activePromptHasActivity.current = true;
-          }
-          if (belongsToCurrentPrompt && !isCancelledPromptEvent && !(suppressed && isStreamEvent(type))) {
-            enqueueOpenCodeEvent(event);
-          }
-          if (currentPrompt && belongsToCurrentPrompt && !isCancelledPromptEvent && isStreamEvent(type) && !suppressed) {
-            setRunStatus("streaming");
-          }
-          if (currentPrompt && type === "session.status" && statusType === "busy" && !suppressed) {
-            setRunStatus("streaming");
-          }
-          if (finished) {
-            flushOpenCodeEvents();
-            const failed = type === "session.error" || type === "session.execution.failed";
-            const failureReason = failed ? errorMessage(event.properties) : undefined;
-            if (failureReason) setError(failureReason);
-            if (currentPrompt && (activePromptHasActivity.current || failed)) {
-              void finishRun(sourceSessionID ?? selectedSessionIDRef.current, currentPrompt.generation, failureReason);
-            }
-          }
-        }
-        if (type === "todo.updated" && sourceSessionID === selectedSessionIDRef.current) {
-          const nextTodos = toTodoList(event.properties);
-          if (Array.isArray(event.properties?.todos)) setTodos(nextTodos);
-          else void loadTodos(selectedSessionIDRef.current, projectPath);
-        }
-        if (type === "question.asked") {
-          const request = toQuestionRequest(event.properties);
-          if (request) {
-            setQuestions((current) => [...current.filter((item) => item.id !== request.id), request]);
-            syncQuestionAnswers([request]);
-          } else void loadPending(selectedSessionIDRef.current);
-        } else if (type === "permission.asked" || type === "permission.replied" || type === "question.replied" || type === "question.rejected") {
-          void loadPending(selectedSessionIDRef.current);
-        }
-        if (type === "session.created" || type === "session.deleted" || type === "session.renamed") {
-          scheduleRefresh();
-        }
-        if (isCurrentSession && (finished || type === "file.edited")) {
-          void ideaApi.reloadFileSystem().catch(() => undefined);
-        }
-        setConnected(true);
-      },
-      () => setConnected(false)
-    );
-    const unsubscribeIdea = subscribeIdeaEvents(
-      (event) => setContexts((current) => [
-        ...current.filter((item) => item.id !== event.id),
-        { ...event, addedAt: Date.now() },
-      ]),
-      applyIdeaTheme
-    );
-    return () => {
-      unsubscribeOpenCode();
-      unsubscribeIdea();
-      if (refreshTimer.current !== undefined) window.clearTimeout(refreshTimer.current);
-    };
-  }, [applyIdeaTheme, enqueueOpenCodeEvent, finishRun, flushOpenCodeEvents, loadPending, loadTodos, projectPath, scheduleRefresh, syncQuestionAnswers]);
+  useOpenCodeEventStream({
+    applyIdeaTheme,
+    enqueueOpenCodeEvent,
+    finishRun,
+    flushOpenCodeEvents,
+    loadPending,
+    loadTodos,
+    projectPath,
+    refs: eventStreamRefs,
+    scheduleRefresh,
+    setConnected,
+    setContexts,
+    setError,
+    setQuestions,
+    setRunStatus,
+    setStreamingAssistantID,
+    setTodos,
+    syncQuestionAnswers,
+  });
 
   const sendPromptNow = useCallback(async ({ text, files }: PromptInputMessage): Promise<boolean> => {
     if (!selectedSessionID || !projectPath) return false;
@@ -670,9 +593,10 @@ function App() {
     const typedText = text.trim();
     if (!typedText && contexts.length === 0 && files.length === 0) return false;
     const commandText = typedText.startsWith("$") ? `/${typedText.slice(1)}` : typedText;
+    const contextFiles = contexts.map(contextToPromptInputFile);
     const request: PromptInputMessage = {
-      files: files.length > 0 ? files : editingQueuedPrompt?.files ?? [],
-      text: commandText.startsWith("/") ? commandText : [typedText, contextPrompt(contexts)].filter(Boolean).join("\n\n"),
+      files: [...(files.length > 0 ? files : editingQueuedPrompt?.files ?? []), ...contextFiles],
+      text: commandText,
     };
     setEditingQueuedPrompt(undefined);
     queueDrainPaused.current = false;
@@ -764,32 +688,17 @@ function App() {
     setBootstrapAttempt((current) => current + 1);
   }, [projectPath, refreshWorkspace]);
 
-  const handleNetworkChange = useCallback(async (enabled: boolean) => {
-    const previous = networkEnabled;
-    setNetworkEnabled(enabled);
+  const handleApprovalModeChange = useCallback(async (mode: ApprovalMode) => {
+    const previous = approvalMode;
+    setApprovalMode(mode);
     if (!projectPath || !selectedSessionID) return;
     try {
-      await openCodeApi.setSessionNetwork(selectedSessionID, enabled, projectPath);
-    } catch (networkError) {
-      setNetworkEnabled(previous);
-      setError(errorMessage(networkError));
+      await ideaApi.setApprovalMode(selectedSessionID, mode);
+    } catch (modeError) {
+      setApprovalMode(previous);
+      setError(errorMessage(modeError));
     }
-  }, [networkEnabled, projectPath, selectedSessionID]);
-
-  const handleAgentChange = useCallback(async (agentID: string) => {
-    if (!selectedSessionID || agentID === selectedAgentID) return;
-    const previous = selectedAgentID;
-    setSelectedAgentID(agentID);
-    try {
-      await openCodeApi.switchAgent(selectedSessionID, agentID, projectPath);
-      setSessions((current) => current.map((session) => session.id === selectedSessionID
-        ? { ...session, agent: agentID }
-        : session));
-    } catch (switchError) {
-      setSelectedAgentID(previous);
-      setError(errorMessage(switchError));
-    }
-  }, [projectPath, selectedAgentID, selectedSessionID]);
+  }, [approvalMode, projectPath, selectedSessionID]);
 
   const handleModelChange = useCallback(async (value: string) => {
     if (!selectedSessionID || value === resolvedModelKey) return;
@@ -860,7 +769,7 @@ function App() {
       let nextSession = nextSessions[0];
       if (!nextSession) {
         const model = selectedModel
-          ? { id: selectedModel.id, providerID: selectedModel.providerID, variant: selectedVariant }
+          ? modelRefWithAvailableVariant(selectedModel, selectedVariant)
           : undefined;
         nextSession = await openCodeApi.createSession(projectPath, model, selectedAgentID || undefined);
         nextSessions = [nextSession];
@@ -899,6 +808,7 @@ function App() {
     commands={commands}
     mcpNames={mcpNames}
     connected={connected}
+    contextUsage={contextUsage}
     contexts={contexts}
     composerText={composerText}
     conversationTurns={conversationTurns}
@@ -912,15 +822,14 @@ function App() {
     error={error}
     hasStreamingAssistantContent={streamingAssistantState.hasVisibleContent}
     isGenerating={isGenerating}
-    networkEnabled={networkEnabled}
-    onAgentChange={(value) => void handleAgentChange(value)}
+    approvalMode={approvalMode}
     onClearError={() => setError("")}
     onConfigurationChanged={() => void refreshWorkspace(false)}
     onContextsChange={setContexts}
     onCreateSession={() => void createSession()}
     onDeleteSession={(session) => void deleteSession(session)}
     onModelChange={(value) => void handleModelChange(value)}
-    onNetworkChange={(enabled) => void handleNetworkChange(enabled)}
+    onApprovalModeChange={(mode) => void handleApprovalModeChange(mode)}
     onOpenModelSettings={openModelSettings}
     onPermissionReply={(request, reply) => void handlePermissionReply(request, reply)}
     onPreferencesChanged={setPreferences}
@@ -964,7 +873,6 @@ function App() {
     resolvedModelKey={resolvedModelKey}
     runStatus={runStatus}
     selectableModels={selectableModels}
-    selectedAgentID={selectedAgentID}
     selectedModel={selectedModel}
     selectedSessionID={selectedSessionID}
     selectedVariant={selectedVariant}

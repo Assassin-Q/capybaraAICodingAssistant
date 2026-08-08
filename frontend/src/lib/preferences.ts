@@ -7,13 +7,17 @@ export interface PersonaPreferences {
   instructions: string;
 }
 
+export type ModelVariantLabels = Record<string, Record<string, string>>;
+
 export interface WorkspacePreferences {
   disabledSkillNames: string[];
+  modelVariantLabels: ModelVariantLabels;
   persona: PersonaPreferences;
 }
 
 const DEFAULT_PREFERENCES: WorkspacePreferences = {
   disabledSkillNames: [],
+  modelVariantLabels: {},
   persona: {
     enabled: false,
     name: PERSONA_PRESETS[0].name,
@@ -26,6 +30,22 @@ const preferenceKey = (projectPath?: string): string =>
   `capybara-ai:workspace-preferences:${projectPath ?? "default"}`;
 
 const REMOVED_PERSONA_IDS = new Set(["balanced", "analyst", "empathetic", "reviewer", "pair-programmer"]);
+
+const normalizeModelVariantLabels = (value: unknown): ModelVariantLabels => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).flatMap(([modelID, labels]) => {
+      if (!labels || typeof labels !== "object" || Array.isArray(labels)) return [];
+      const normalizedLabels = Object.fromEntries(
+        Object.entries(labels as Record<string, unknown>)
+          .filter(([variantID, label]) => variantID.trim() && typeof label === "string")
+          .map(([variantID, label]) => [variantID, (label as string).trim()])
+          .filter(([, label]) => label)
+      );
+      return Object.keys(normalizedLabels).length > 0 ? [[modelID, normalizedLabels]] : [];
+    })
+  );
+};
 
 const normalize = (value: unknown): WorkspacePreferences => {
   if (!value || typeof value !== "object") return DEFAULT_PREFERENCES;
@@ -48,6 +68,7 @@ const normalize = (value: unknown): WorkspacePreferences => {
     disabledSkillNames: Array.isArray(raw.disabledSkillNames)
       ? raw.disabledSkillNames.filter((name): name is string => typeof name === "string")
       : [],
+    modelVariantLabels: normalizeModelVariantLabels(raw.modelVariantLabels),
     persona: normalizedPersona,
   };
 };

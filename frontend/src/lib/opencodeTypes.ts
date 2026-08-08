@@ -161,15 +161,22 @@ export interface OpenCodeConfig {
   command?: Record<string, CommandConfig>;
   disabled_providers?: string[];
   mcp?: Record<string, McpConfig>;
+  /** The public /config endpoint still accepts the V1 object shape. */
+  permission?: LegacyPermissionConfig;
   provider?: Record<string, ProviderConfig>;
   [key: string]: unknown;
 }
 
+export type PermissionEffect = "allow" | "ask" | "deny";
+
 export interface PermissionRule {
-  action: "allow" | "ask" | "deny";
-  pattern: string;
-  permission: string;
+  action: string;
+  resource: string;
+  effect: PermissionEffect;
 }
+
+export type LegacyPermissionValue = PermissionEffect | Record<string, PermissionEffect>;
+export type LegacyPermissionConfig = Record<string, LegacyPermissionValue>;
 
 export interface SkillInfo {
   name: string;
@@ -283,6 +290,27 @@ export interface AssistantToolPart {
   };
 }
 
+export interface TokenUsage {
+  input: number;
+  output: number;
+  reasoning: number;
+  cache: {
+    read: number;
+    write: number;
+    /**
+     * False when OpenCode/the provider did not report cache counters at all, so the
+     * UI can show "unavailable" instead of a misleading 0.
+     */
+    reported: boolean;
+  };
+}
+
+export interface AssistantSnapshot {
+  start: string;
+  end?: string;
+  files: string[];
+}
+
 export interface AssistantMessage {
   id: string;
   type: "assistant";
@@ -290,6 +318,8 @@ export interface AssistantMessage {
   agent: string;
   model: ModelRef;
   content: Array<AssistantTextPart | AssistantReasoningPart | AssistantToolPart>;
+  tokens: TokenUsage;
+  snapshot?: AssistantSnapshot;
   error?: string;
   finish?: string;
   time: {

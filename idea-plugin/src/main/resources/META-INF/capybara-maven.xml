@@ -1,0 +1,7 @@
+<idea-plugin>
+    <!--
+      Loaded only when the bundled IDEA Maven plugin is present. It contributes no extra
+      extensions; its purpose is to give the Capybara plugin classloader access to
+      org.jetbrains.idea.maven.execution so IdeaExecutionService can drive the native Maven runner.
+    -->
+</idea-plugin>

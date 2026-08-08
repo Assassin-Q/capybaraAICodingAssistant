@@ -7,6 +7,14 @@
     ]]></description>
 
     <depends>com.intellij.modules.lang</depends>
+    <!-- Optional: only needed so the IDEA Maven runner bridge can resolve MavenRunner at runtime. -->
+    <depends optional="true" config-file="capybara-maven.xml">org.jetbrains.idea.maven</depends>
+    <!--
+      JCEF module. IDEA 2025.3.1+ requires plugins that use com.intellij.ui.jcef to declare
+      this dependency; the module does not exist in 2023.x-2025.2, so it must stay optional
+      or the plugin would refuse to load on older IDEs.
+    -->
+    <depends optional="true" config-file="capybara-jcef.xml">com.intellij.modules.jcef</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow
@@ -24,6 +32,14 @@
             description="显示或隐藏水豚 AI 助手工具窗口">
             <add-to-group group-id="ToolsMenu" anchor="last" />
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl SLASH" />
+        </action>
+
+        <action
+            id="com.aicoding.plugin.OpenCapybaraBrowserAction"
+            class="com.aicoding.plugin.actions.OpenCapybaraBrowserAction"
+            text="打开水豚浏览器"
+            description="打开可被 OpenCode 控制的内置浏览器窗口">
+            <add-to-group group-id="ToolsMenu" anchor="last" />
         </action>
 
         <group

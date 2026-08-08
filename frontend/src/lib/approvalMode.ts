@@ -1,0 +1,135 @@
+import type {
+  LegacyPermissionConfig,
+  PermissionEffect,
+  PermissionRule,
+} from "@/lib/opencodeTypes";
+
+export type ApprovalMode = "ask" | "auto" | "full";
+
+export interface ApprovalModeOption {
+  description: string;
+  id: ApprovalMode;
+  label: string;
+}
+
+export const approvalModeOptions: ApprovalModeOption[] = [
+  {
+    description: "只有读取是自动的，其余逐项询问",
+    id: "ask",
+    label: "请求批准",
+  },
+  {
+    description: "读写文件自动完成，命令和联网仍需确认",
+    id: "auto",
+    label: "替我审批",
+  },
+  {
+    description: "全部放行，不再逐项询问",
+    id: "full",
+    label: "完全访问",
+  },
+];
+
+const rule = (action: string, effect: PermissionEffect): PermissionRule => ({
+  action,
+  effect,
+  resource: "*",
+});
+
+export const rulesForApprovalMode = (mode: ApprovalMode): PermissionRule[] => {
+  if (mode === "full") return [rule("*", "allow")];
+
+  const editEffect: PermissionEffect = mode === "auto" ? "allow" : "ask";
+  return [
+    rule("read", "allow"),
+    rule("glob", "allow"),
+    rule("grep", "allow"),
+    rule("list", "allow"),
+    rule("edit", editEffect),
+    rule("bash", "ask"),
+    rule("task", "ask"),
+    rule("external_directory", "ask"),
+    rule("webfetch", "ask"),
+    rule("websearch", "ask"),
+  ];
+};
+
+export interface LegacySessionPermissionRule {
+  action: PermissionEffect;
+  pattern: string;
+  permission: string;
+}
+
+/** Convert canonical V2 rules to the V1 session PATCH contract exposed by OpenCode. */
+export const legacySessionRules = (rules: PermissionRule[]): LegacySessionPermissionRule[] =>
+  rules.map((item) => ({
+    action: item.effect,
+    pattern: item.resource,
+    permission: item.action,
+  }));
+
+/** Convert canonical V2 rules to the V1 /config permission object contract. */
+export const legacyPermissionConfig = (rules: PermissionRule[]): LegacyPermissionConfig => {
+  const result: LegacyPermissionConfig = {};
+  rules.forEach((item) => {
+    const current = result[item.action];
+    if (item.resource === "*" && (current === undefined || typeof current === "string")) {
+      result[item.action] = item.effect;
+      return;
+    }
+    const resources: Record<string, PermissionEffect> = typeof current === "object" && current !== null
+      ? { ...current }
+      : current
+        ? { "*": current }
+        : {};
+    resources[item.resource] = item.effect;
+    result[item.action] = resources;
+  });
+  return result;
+};
+
+const isEffect = (value: unknown): value is PermissionEffect =>
+  value === "allow" || value === "ask" || value === "deny";
+
+/** Normalize either the V2 ruleset or the public V1 config/session shape. */
+export const normalizePermissionRules = (value: unknown): PermissionRule[] => {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const record = item as Record<string, unknown>;
+      const effect = isEffect(record.effect) ? record.effect : record.action;
+      const action = typeof record.action === "string" && !isEffect(record.action)
+        ? record.action
+        : typeof record.permission === "string" ? record.permission : "";
+      const resource = typeof record.resource === "string"
+        ? record.resource
+        : typeof record.pattern === "string" ? record.pattern : "*";
+      return action && isEffect(effect) ? [{ action, effect, resource }] : [];
+    });
+  }
+  if (!value || typeof value !== "object") return [];
+  return Object.entries(value as Record<string, unknown>).flatMap(([action, entry]) => {
+    if (isEffect(entry)) return [{ action, effect: entry, resource: "*" }];
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    return Object.entries(entry as Record<string, unknown>).flatMap(([resource, effect]) =>
+      isEffect(effect) ? [{ action, effect, resource }] : []
+    );
+  });
+};
+
+export const configForApprovalMode = (mode: ApprovalMode): LegacyPermissionConfig =>
+  legacyPermissionConfig(rulesForApprovalMode(mode));
+
+const lastEffect = (rules: PermissionRule[], action: string): PermissionEffect | undefined =>
+  [...rules].reverse().find((item) =>
+    item.resource === "*" && (item.action === action || item.action === "*")
+  )?.effect;
+
+export const inferApprovalMode = (rules: PermissionRule[]): ApprovalMode => {
+  const riskPermissions = ["bash", "task", "external_directory", "webfetch", "websearch"];
+  if (riskPermissions.every((permission) => lastEffect(rules, permission) === "allow")) return "full";
+  if (lastEffect(rules, "edit") === "allow"
+    && lastEffect(rules, "bash") === "ask"
+    && lastEffect(rules, "websearch") === "ask") return "auto";
+  return "ask";
+};

@@ -6,6 +6,7 @@ import type {
   OpenCodeEvent,
   SessionMessage,
 } from "@/lib/opencode";
+import { EMPTY_TOKEN_USAGE, hasTokenUsage, parseTokenUsage } from "@/lib/tokenUsage";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -17,8 +18,13 @@ const asRecord = (value: unknown): UnknownRecord | undefined =>
 const stringValue = (value: unknown, fallback = ""): string =>
   typeof value === "string" ? value : fallback;
 
-const numberValue = (value: unknown, fallback = Date.now()): number =>
+const numberValue = (value: unknown, fallback = 0): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
+const optionalNumber = (value: unknown): number | undefined => {
+  const result = numberValue(value);
+  return result > 0 ? result : undefined;
+};
 
 const eventType = (event: OpenCodeEvent): string | undefined =>
   event.type?.replace(/\.\d+$/, "");
@@ -66,6 +72,7 @@ const placeholderAssistant = (messageID: string): AssistantMessage => ({
   content: [],
   id: messageID,
   model: { id: "", providerID: "" },
+  tokens: EMPTY_TOKEN_USAGE,
   time: { created: Date.now() },
   type: "assistant",
 });
@@ -90,10 +97,28 @@ const updateAssistant = (
 
 const modelFromInfo = (info: UnknownRecord, current: AssistantMessage["model"]) => {
   const model = asRecord(info.model);
+  const rawVariant = stringValue(model?.variant) || stringValue(info.variant);
   return {
     id: stringValue(model?.id) || stringValue(model?.modelID) || stringValue(info.modelID) || current.id,
     providerID: stringValue(model?.providerID) || stringValue(info.providerID) || current.providerID,
-    variant: stringValue(model?.variant) || stringValue(info.variant) || current.variant,
+    variant: rawVariant ? (rawVariant === "default" ? undefined : rawVariant) : current.variant,
+  };
+};
+
+const snapshotFromInfo = (
+  info: UnknownRecord,
+  current: AssistantMessage["snapshot"]
+): AssistantMessage["snapshot"] => {
+  const snapshot = asRecord(info.snapshot);
+  const start = stringValue(snapshot?.start) || current?.start;
+  if (!start) return current;
+  const files = Array.isArray(snapshot?.files)
+    ? snapshot.files.filter((file): file is string => typeof file === "string")
+    : current?.files ?? [];
+  return {
+    end: stringValue(snapshot?.end) || current?.end,
+    files: [...new Set([...(current?.files ?? []), ...files])],
+    start,
   };
 };
 
@@ -110,8 +135,8 @@ const normalizePart = (
       id,
       text: stringValue(raw.text),
       time: rawTime ? {
-        completed: numberValue(rawTime.completed) || numberValue(rawTime.end) || undefined,
-        created: numberValue(rawTime.created) || numberValue(rawTime.start) || undefined,
+        completed: optionalNumber(rawTime.completed) ?? optionalNumber(rawTime.end),
+        created: optionalNumber(rawTime.created) ?? optionalNumber(rawTime.start),
       } : undefined,
       type,
     };
@@ -135,9 +160,9 @@ const normalizePart = (
       structured: rawState.structured,
     },
     time: {
-      completed: numberValue(rawTime.completed) || numberValue(rawTime.end) || undefined,
-      created: numberValue(rawTime.created) || numberValue(rawTime.start),
-      ran: numberValue(rawTime.ran) || numberValue(rawTime.start) || undefined,
+      completed: optionalNumber(rawTime.completed) ?? optionalNumber(rawTime.end),
+      created: optionalNumber(rawTime.created) ?? optionalNumber(rawTime.start) ?? Date.now(),
+      ran: optionalNumber(rawTime.ran) ?? optionalNumber(rawTime.start),
     },
     type,
   };
@@ -188,9 +213,11 @@ const applyMessageInfo = (messages: SessionMessage[], properties: UnknownRecord)
     finish: stringValue(info.finish) || current.finish,
     model: modelFromInfo(info, current.model),
     parentID: stringValue(info.parentID) || current.parentID,
+    snapshot: snapshotFromInfo(info, current.snapshot),
+    tokens: parseTokenUsage(info.tokens) ?? current.tokens,
     time: {
-      completed: numberValue(time?.completed) || current.time.completed,
-      created: numberValue(time?.created, current.time.created),
+      completed: optionalNumber(time?.completed) ?? current.time.completed,
+      created: optionalNumber(time?.created) ?? current.time.created,
     },
   }));
 };
@@ -244,7 +271,8 @@ const nextPartID = (
   messages: SessionMessage[],
   messageID: string,
   properties: UnknownRecord,
-  type: "text" | "reasoning" | "tool"
+  type: "text" | "reasoning" | "tool",
+  createNew = false,
 ): string => {
   const explicit = type === "text"
     ? stringValue(properties.textID) || stringValue(properties.partID)
@@ -257,6 +285,11 @@ const nextPartID = (
     // Persisted V2 messages use text-0 / reasoning-0. Matching those IDs keeps
     // the final reconciliation from mounting a second copy of the same part.
     return `${type}-${ordinal}`;
+  }
+  if (createNew) {
+    const message = messages.find((item): item is AssistantMessage => item.type === "assistant" && item.id === messageID);
+    const count = message?.content.filter((part) => part.type === type).length ?? 0;
+    return `${type}:${messageID}:${count}`;
   }
   const message = messages.find((item): item is AssistantMessage => item.type === "assistant" && item.id === messageID);
   const current = message?.content.filter((part) => part.type === type).at(-1);
@@ -300,7 +333,7 @@ const applyStreamEvent = (messages: SessionMessage[], rawType: string, propertie
 
   if (type === "session.text.started" || type === "session.reasoning.started") {
     const partType = type.includes("reasoning") ? "reasoning" : "text";
-    return ensureTextPart(messages, messageID, nextPartID(messages, messageID, properties, partType), partType);
+    return ensureTextPart(messages, messageID, nextPartID(messages, messageID, properties, partType, true), partType);
   }
 
   if (type === "session.text.delta" || type === "session.reasoning.delta") {
@@ -318,7 +351,7 @@ const applyStreamEvent = (messages: SessionMessage[], rawType: string, propertie
     return updateAssistant(messages, messageID, (message) => {
       const index = message.content.findIndex((part) => part.id === partID && part.type === "reasoning");
       if (index < 0) {
-        const completedAt = numberValue(properties.timestamp);
+        const completedAt = optionalNumber(properties.timestamp) ?? Date.now();
         return text
           ? { ...message, content: [...message.content, { id: partID, text, time: { completed: completedAt, created: completedAt }, type: "reasoning" }] }
           : message;
@@ -330,8 +363,8 @@ const applyStreamEvent = (messages: SessionMessage[], rawType: string, propertie
         ...current,
         text: text || current.text,
         time: {
-          completed: numberValue(properties.timestamp),
-          created: current.time?.created ?? numberValue(properties.timestamp),
+          completed: optionalNumber(properties.timestamp) ?? Date.now(),
+          created: current.time?.created ?? optionalNumber(properties.timestamp) ?? Date.now(),
         },
       };
       return { ...message, content };
@@ -346,7 +379,7 @@ const applyStreamEvent = (messages: SessionMessage[], rawType: string, propertie
   }
 
   if (type === "session.tool.input.started") {
-    const partID = nextPartID(messages, messageID, properties, "tool");
+    const partID = nextPartID(messages, messageID, properties, "tool", true);
     return updateToolPart(messages, messageID, partID, (part) => ({
       ...part,
       name: stringValue(properties.name, part.name),
@@ -387,19 +420,24 @@ const applyStreamEvent = (messages: SessionMessage[], rawType: string, propertie
 
   if (type === "session.step.started") {
     const model = asRecord(properties.model);
+    const rawVariant = stringValue(model?.variant);
     return updateAssistant(messages, messageID, (message) => ({
       ...message,
       agent: stringValue(properties.agent, message.agent),
       model: {
         id: stringValue(model?.modelID) || stringValue(model?.id) || message.model.id,
         providerID: stringValue(model?.providerID) || message.model.providerID,
-        variant: stringValue(model?.variant) || message.model.variant,
+        variant: rawVariant ? (rawVariant === "default" ? undefined : rawVariant) : message.model.variant,
       },
     }));
   }
 
   if (type === "session.step.ended") {
-    return updateAssistant(messages, messageID, (message) => ({ ...message, finish: stringValue(properties.finish, message.finish) }));
+    return updateAssistant(messages, messageID, (message) => ({
+      ...message,
+      finish: stringValue(properties.finish, message.finish),
+      tokens: parseTokenUsage(properties.tokens) ?? message.tokens,
+    }));
   }
 
   if (type === "session.step.failed") {
@@ -438,6 +476,8 @@ export const reconcileSessionMessages = (
       error: message.error ?? previous.error,
       finish: message.finish ?? previous.finish,
       parentID: message.parentID ?? previous.parentID,
+      snapshot: message.snapshot ?? previous.snapshot,
+      tokens: hasTokenUsage(message.tokens) ? message.tokens : previous.tokens,
     });
   });
   current

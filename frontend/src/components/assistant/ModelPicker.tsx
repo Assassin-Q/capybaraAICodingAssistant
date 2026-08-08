@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Bot, Check, ChevronDown, Cpu, Gauge, Globe2, SlidersHorizontal } from "lucide-react";
+import { Bot, Check, ChevronDown, Cpu, Gauge, SlidersHorizontal } from "lucide-react";
 
 import {
   ModelSelector,
@@ -93,21 +93,26 @@ export function ModelPicker({ className, models, onManage, onChange, value }: Mo
 
 interface VariantPickerProps {
   className?: string;
+  labels?: Record<string, string>;
   onChange: (value: string | undefined) => void;
   value?: string;
   variants: string[];
 }
 
-export function VariantPicker({ className, onChange, value, variants }: VariantPickerProps) {
+export function VariantPicker({ className, labels = {}, onChange, value, variants }: VariantPickerProps) {
   const [open, setOpen] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
-  const options = ["default", ...variants.filter((variant) => variant !== "default")];
+  const providerVariants = [...new Set(variants.filter((variant) => variant !== "default"))];
+  if (providerVariants.length === 0) return null;
+  const options = ["default", ...providerVariants];
+  const selectedValue = value && options.includes(value) ? value : "default";
+  const displayLabel = (option: string): string => labels[option]?.trim() || variantLabel(option);
   return (
     <ModelSelector onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setHasInteracted(false); }} open={open}>
       <ModelSelectorTrigger asChild>
         <Button aria-label="选择思考强度" className={cn("h-7 min-w-14 gap-1 rounded-md bg-transparent px-1.5 text-[11px] hover:bg-muted/70", className)} size="sm" title="选择思考强度" type="button" variant="ghost">
           <Gauge className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate">{variantLabel(value)}</span>
+          <span className="truncate">{displayLabel(selectedValue)}</span>
           <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
         </Button>
       </ModelSelectorTrigger>
@@ -116,9 +121,9 @@ export function VariantPicker({ className, onChange, value, variants }: VariantP
           <ModelSelectorGroup heading="思考强度">
             {options.map((option) => (
               <ModelSelectorItem className={cn(open && !hasInteracted && "data-[selected=true]:bg-transparent data-[selected=true]:text-foreground")} key={option} onMouseMove={() => setHasInteracted(true)} onSelect={() => { onChange(option === "default" ? undefined : option); setOpen(false); }} value={option}>
-                <ModelSelectorName>{variantLabel(option)}</ModelSelectorName>
-                {option === "default" && <span className="text-[10px] text-muted-foreground">使用模型默认设置</span>}
-                {option === (value ?? "default") && <Check className="ml-1 size-3.5 shrink-0" />}
+                <ModelSelectorName>{displayLabel(option)}</ModelSelectorName>
+                <span className="font-mono text-[10px] text-muted-foreground">{option}</span>
+                {option === selectedValue && <Check className="ml-1 size-3.5 shrink-0" />}
               </ModelSelectorItem>
             ))}
           </ModelSelectorGroup>
@@ -162,24 +167,6 @@ export function AgentPicker({ agents, className, onChange, value }: AgentPickerP
       <Bot className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="truncate">{selected.id}</span>
       {primaryAgents.length > 1 && <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", statusColor)} />}
-    </Button>
-  );
-}
-
-export function NetworkToggle({ enabled, onChange }: { enabled: boolean; onChange: (enabled: boolean) => void }) {
-  return (
-    <Button
-      aria-label={enabled ? "关闭联网" : "开启联网"}
-      aria-pressed={enabled}
-      className={cn("h-7 gap-1 rounded-md px-1.5 text-[11px] hover:bg-muted/70", enabled && "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/15")}
-      onClick={() => onChange(!enabled)}
-      size="sm"
-      title={enabled ? "联网已开启" : "联网已关闭"}
-      type="button"
-      variant="ghost"
-    >
-      <Globe2 className="size-3.5" />
-      <span>联网</span>
     </Button>
   );
 }
