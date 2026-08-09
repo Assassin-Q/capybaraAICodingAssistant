@@ -10,13 +10,23 @@ import com.aicoding.plugin.services.BrowserControlService
 import com.aicoding.plugin.services.ChatMessage
 import com.aicoding.plugin.services.DevelopmentEnvironmentsRequest
 import com.aicoding.plugin.services.GitCommitDialogRequest
+import com.aicoding.plugin.services.GitFileDiffRequest
 import com.aicoding.plugin.services.GitStatusService
+import com.aicoding.plugin.services.IdeThemeMappingRequest
+import com.aicoding.plugin.services.IdeThemeRequest
+import com.aicoding.plugin.services.IdeThemeService
 import com.aicoding.plugin.services.IdeaBuildRequest
+import com.aicoding.plugin.services.IdeaBridgeToggleRequest
 import com.aicoding.plugin.services.IdeaDiffFileRequest
 import com.aicoding.plugin.services.IdeaDiffService
 import com.aicoding.plugin.services.IdeaExecutionService
+import com.aicoding.plugin.services.IdeaDiagnosticRequest
+import com.aicoding.plugin.services.IdeaEditorContextRequest
 import com.aicoding.plugin.services.IdeaInlineDiffRequest
+import com.aicoding.plugin.services.IdeaInsightService
+import com.aicoding.plugin.services.IdeaNavigateRequest
 import com.aicoding.plugin.services.IdeaRunConfigurationRequest
+import com.aicoding.plugin.services.IdeaSymbolRequest
 import com.aicoding.plugin.services.LineRange
 import com.aicoding.plugin.services.MemorySettingsRequest
 import com.aicoding.plugin.services.MemorySystemService
@@ -25,10 +35,15 @@ import com.aicoding.plugin.services.OpenCodeEndpoint
 import com.aicoding.plugin.services.OpenCodeServerManager
 import com.aicoding.plugin.services.OpenCodeSnapshotDiffRequest
 import com.aicoding.plugin.services.OpenCodeSnapshotDiffService
+import com.aicoding.plugin.services.OpenCodeConfigService
 import com.aicoding.plugin.services.PluginFileRequest
 import com.aicoding.plugin.services.PluginImportRequest
 import com.aicoding.plugin.services.PluginLocationRequest
 import com.aicoding.plugin.services.PluginManagementService
+import com.aicoding.plugin.services.RemoveProviderRequest
+import com.aicoding.plugin.services.SkillHubDetailRequest
+import com.aicoding.plugin.services.SkillHubDetailService
+import com.aicoding.plugin.services.SkillHubFileRequest
 import com.aicoding.plugin.services.SkillHubInstallRequest
 import com.aicoding.plugin.services.SkillHubSearchRequest
 import com.aicoding.plugin.services.SkillImportRequest
@@ -97,7 +112,21 @@ private data class IdeThemeEvent(val theme: String)
 @Serializable
 private data class BranchChangedEvent(val from: String, val to: String)
 
+@Serializable
+private data class RestartRequest(val force: Boolean = false)
+
+@Serializable
+private data class ApprovalPendingRequest(val sessionID: String, val pending: Boolean = true)
+
+@Serializable
+private data class ApprovalPendingEvent(val sessions: List<String>)
+
 class HttpServerManager(private val project: Project) {
+    init {
+        // The panel owns the instance; services only need a way to reach broadcastSse.
+        active[project] = this
+    }
+
     private val json = Json { encodeDefaults = false; ignoreUnknownKeys = true }
     private val messageService = project.getService(MessageService::class.java)
     private val openCodeServer = OpenCodeServerManager(project.basePath)
@@ -105,11 +134,14 @@ class HttpServerManager(private val project: Project) {
     private val ideaDiffService = IdeaDiffService(project)
     private val snapshotDiffService = OpenCodeSnapshotDiffService()
     private val skillService = SkillManagementService(project)
+    private val skillHubDetailService = project.getService(SkillHubDetailService::class.java)
     private val pluginService = PluginManagementService(project)
     private val executionService = IdeaExecutionService(project)
-    private val browserService = project.getService(BrowserControlService::class.java)
+    private val insightService = IdeaInsightService(project)
     private val approvalModeService = project.getService(ApprovalModeService::class.java)
+    private val browserService = project.getService(BrowserControlService::class.java)
     private val gitStatusService = project.getService(GitStatusService::class.java)
+    private val openCodeConfigService = project.getService(OpenCodeConfigService::class.java)
     private var branchWatcher: java.util.concurrent.ScheduledExecutorService? = null
     private val sseClients = CopyOnWriteArrayList<OutputStream>()
     private var server: HttpServer? = null
@@ -144,6 +176,10 @@ class HttpServerManager(private val project: Project) {
         createdServer.start()
         server = createdServer
         port = createdServer.address.port
+        updateRegistry(register = true)
+        // OpenCode discovers plugins only during startup, so publish the bridge before probing
+        // or launching the service. This makes the first plugin-managed launch usable immediately.
+        executionService.activateBridge(port)
         openCodeEndpoint = runCatching {
             openCodeServer.start(port)
         }.getOrElse { error ->
@@ -159,9 +195,6 @@ class HttpServerManager(private val project: Project) {
             connection.subscribe(LafManagerListener.TOPIC, lafManagerListener)
         }
         messageService.addListener(messageListener)
-        // The bridge exists only while an IDEA project is open, so OpenCode sessions elsewhere
-        // never see the idea_* tools. It also carries approval-mode enforcement.
-        executionService.activateBridge(port)
         startBranchWatcher()
         executor?.execute {
             runCatching { memorySystem.ensureDefaultInstalled() }
@@ -170,7 +203,37 @@ class HttpServerManager(private val project: Project) {
         println("Capybara frontend server started on http://127.0.0.1:$port")
     }
 
+    /**
+     * Registry of every plugin server currently running, keyed by project path.
+     *
+     * The bridge plugin is installed globally and binds its `directory` once, so with one OpenCode
+     * process serving several IDEA projects it can only find one port file. This file lets it
+     * reach all of them and ask which one owns the session.
+     */
+    private fun registryFile(): File =
+        File(System.getProperty("user.home"), ".config/opencode/capybara-ports.json")
+
+    private fun updateRegistry(register: Boolean) {
+        runCatching {
+            val path = projectPath ?: return
+            val file = registryFile()
+            file.parentFile?.mkdirs()
+            val current = runCatching {
+                (json.parseToJsonElement(file.readText()) as? kotlinx.serialization.json.JsonObject)
+                    ?.mapValues { it.value.toString().trim('"') }
+                    ?.toMutableMap()
+            }.getOrNull() ?: mutableMapOf()
+            if (register) current[path] = port.toString() else current.remove(path)
+            file.writeText(
+                current.entries.joinToString(",", "{", "}") { (key, value) ->
+                    "\"${key.replace("\\", "\\\\").replace("\"", "\\\"")}\":\"$value\""
+                }
+            )
+        }
+    }
+
     fun stop() {
+        updateRegistry(register = false)
         messageService.removeListener(messageListener)
         lafConnection?.disconnect()
         lafConnection = null
@@ -224,6 +287,8 @@ class HttpServerManager(private val project: Project) {
                         writeJson(exchange, 200, openCodeEndpoint)
                     exchange.requestURI.path == "/api/opencode/restart" && exchange.requestMethod == "POST" ->
                         handleRestartOpenCode(exchange)
+                    exchange.requestURI.path == "/api/opencode/remove-provider" && exchange.requestMethod == "POST" ->
+                        writeJson(exchange, 200, openCodeConfigService.removeProvider(body<RemoveProviderRequest>(exchange)))
                     exchange.requestURI.path == "/api/events" && exchange.requestMethod == "GET" ->
                         handleSse(exchange)
                     exchange.requestURI.path == "/api/reload" && exchange.requestMethod == "POST" ->
@@ -455,8 +520,12 @@ class HttpServerManager(private val project: Project) {
     }
 
     private fun handleRestartOpenCode(exchange: HttpExchange) {
+        val body = exchange.requestBody.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val force = body.takeIf { it.isNotBlank() }
+            ?.let { runCatching { json.decodeFromString<RestartRequest>(it).force }.getOrDefault(false) }
+            ?: false
         openCodeEndpoint = runCatching {
-            openCodeServer.restart(port)
+            openCodeServer.restart(port, force)
         }.getOrElse { error ->
             OpenCodeEndpoint(
                 projectPath = projectPath,
@@ -480,16 +549,40 @@ class HttpServerManager(private val project: Project) {
         ?.substringAfter('=')
         ?.let { URLDecoder.decode(it, Charsets.UTF_8) }
 
-    /** Enforcement entry point for the OpenCode `permission.ask` hook. */
+    /**
+     * Enforcement entry point for the OpenCode `permission.ask` hook.
+     *
+     * OpenCode discards the `permission` payload sent to `PATCH /session` and `PATCH /config`
+     * (verified against 1.18.12: 200 back, nothing applied), so the mode has to be enforced here.
+     */
     private fun handleApprovalMode(exchange: HttpExchange) {
         val route = exchange.requestURI.path.removePrefix("/api/approval-mode").substringBefore('?')
         val method = exchange.requestMethod
         when {
             route == "/rules" && method == "GET" -> writeJson(exchange, 200, approvalModeService.rules())
+            route == "/pending" && method == "GET" ->
+                writeJson(exchange, 200, ApprovalPendingEvent(approvalModeService.pendingSessions()))
+            route == "/pending" && method == "POST" -> {
+                val request = body<ApprovalPendingRequest>(exchange)
+                if (approvalModeService.setPending(request.sessionID, request.pending)) {
+                    broadcastSse(
+                        "approval.pending",
+                        json.encodeToString(ApprovalPendingEvent(approvalModeService.pendingSessions())),
+                    )
+                }
+                writeJson(exchange, 200, ApprovalPendingEvent(approvalModeService.pendingSessions()))
+            }
             route == "/decide" && method == "GET" -> {
                 val sessionID = queryParam(exchange, "sessionID").orEmpty()
                 val type = queryParam(exchange, "type").orEmpty()
-                writeJson(exchange, 200, ApprovalDecision(approvalModeService.decide(sessionID, type)))
+                writeJson(
+                    exchange,
+                    200,
+                    ApprovalDecision(
+                        status = approvalModeService.decide(sessionID, type),
+                        known = approvalModeService.knows(sessionID),
+                    ),
+                )
             }
             route == "" && method == "GET" -> {
                 val sessionID = queryParam(exchange, "sessionID").orEmpty()
@@ -520,6 +613,10 @@ class HttpServerManager(private val project: Project) {
                 writeJson(exchange, 200, skillService.searchSkillHub(body<SkillHubSearchRequest>(exchange)))
             route == "/hub/install" && method == "POST" ->
                 writeJson(exchange, 200, skillService.installFromSkillHub(body<SkillHubInstallRequest>(exchange)))
+            route == "/hub/detail" && method == "POST" ->
+                writeJson(exchange, 200, skillHubDetailService.detail(body<SkillHubDetailRequest>(exchange)))
+            route == "/hub/file" && method == "POST" ->
+                writeJson(exchange, 200, skillHubDetailService.file(body<SkillHubFileRequest>(exchange)))
             else -> writeResponse(exchange, 404, "Not found", "text/plain; charset=utf-8")
         }
     }
@@ -573,6 +670,8 @@ class HttpServerManager(private val project: Project) {
             route == "/commit-dialog" && method == "POST" ->
                 writeJson(exchange, 200, gitStatusService.openCommitDialog(body<GitCommitDialogRequest>(exchange)))
             route == "/push" && method == "POST" -> writeJson(exchange, 200, gitStatusService.openPushDialog())
+            route == "/file-diff" && method == "POST" ->
+                writeJson(exchange, 200, gitStatusService.openFileDiff(body<GitFileDiffRequest>(exchange)))
             else -> writeResponse(exchange, 404, "Not found", "text/plain; charset=utf-8")
         }
     }
@@ -597,7 +696,25 @@ class HttpServerManager(private val project: Project) {
                     ?.let { URLDecoder.decode(it, Charsets.UTF_8) }
                 writeJson(exchange, 200, executionService.logs(configurationID))
             }
+            route == "/project-context" && method == "GET" ->
+                writeJson(exchange, 200, insightService.projectContext())
+            route == "/editor-context" && method == "POST" ->
+                writeJson(exchange, 200, insightService.editorContext(body<IdeaEditorContextRequest>(exchange)))
+            route == "/diagnostics" && method == "POST" ->
+                writeJson(exchange, 200, insightService.diagnostics(body<IdeaDiagnosticRequest>(exchange)))
+            route == "/symbol" && method == "POST" ->
+                writeJson(exchange, 200, insightService.symbol(body<IdeaSymbolRequest>(exchange)))
+            route == "/navigate" && method == "POST" ->
+                writeJson(exchange, 200, insightService.navigate(body<IdeaNavigateRequest>(exchange)))
+            route == "/refresh" && method == "POST" -> writeJson(exchange, 200, insightService.refresh())
             route == "/bridge" && method == "GET" -> writeJson(exchange, 200, executionService.bridgeStatus())
+            route == "/bridge/enabled" && method == "POST" ->
+                writeJson(exchange, 200, executionService.setBridgeEnabled(body<IdeaBridgeToggleRequest>(exchange).enabled))
+            route == "/theme" && method == "GET" -> writeJson(exchange, 200, IdeThemeService.settings())
+            route == "/theme" && method == "POST" ->
+                writeJson(exchange, 200, IdeThemeService.apply(body<IdeThemeRequest>(exchange)))
+            route == "/theme/settings" && method == "POST" ->
+                writeJson(exchange, 200, IdeThemeService.updateMapping(body<IdeThemeMappingRequest>(exchange)))
             else -> writeResponse(exchange, 404, "Not found", "text/plain; charset=utf-8")
         }
     }
@@ -624,6 +741,13 @@ class HttpServerManager(private val project: Project) {
             sseClients.remove(output)
             runCatching { output.close() }
         }
+    }
+
+    companion object {
+        private val active = java.util.concurrent.ConcurrentHashMap<Project, HttpServerManager>()
+
+        /** The running server for a project, or null before the tool window has been opened. */
+        fun forProject(project: Project): HttpServerManager? = active[project]
     }
 
     fun broadcastSse(eventType: String, data: String) {

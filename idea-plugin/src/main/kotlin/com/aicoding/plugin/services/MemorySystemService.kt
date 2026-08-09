@@ -63,6 +63,13 @@ data class MemorySystemStatus(
     val environmentSyncEnabled: Boolean,
     val memoryProvider: String? = null,
     val memoryModel: String? = null,
+    /**
+     * Auto-capture sends an extra structured-output request to the model after every idle session.
+     * Nothing in the UI used to say so, so the cost was invisible.
+     */
+    val captureCallsTotal: Long = 0,
+    val captureCallsThisMonth: Long = 0,
+    val captureCostVisible: Boolean = true,
     val storagePath: String,
     val dashboardUrl: String,
     val lastEnvironmentScan: Long? = null,
@@ -119,9 +126,11 @@ class MemorySystemService(
             "opencode-mem" to MemoryPluginInfo(
                 id = "opencode-mem",
                 name = "OpenCode Mem",
+                // Pinned to the scope that publishes the Turso/libSQL engine — "opencode-mem" is
+                // also taken by an unrelated project on npm.
                 spec = "opencode-mem",
-                description = "本地向量记忆、自动捕获、跨项目用户画像与管理面板。",
-                capabilities = listOf("自动捕获", "跨项目检索", "用户画像", "本地存储"),
+                description = "本地 Turso/libSQL 向量库，自动捕获、跨项目用户画像与管理面板。自动捕获会额外调用一次模型。",
+                capabilities = listOf("语义检索", "自动捕获（额外计费）", "跨项目检索", "用户画像", "本地存储"),
                 fullIntegration = true,
             ),
             "opencode-agent-memory" to MemoryPluginInfo(
@@ -135,15 +144,29 @@ class MemorySystemService(
                 id = "opencode-supermemory",
                 name = "Supermemory",
                 spec = "opencode-supermemory",
-                description = "云端长期记忆与跨项目召回。",
-                capabilities = listOf("云端记忆", "跨项目检索"),
+                description = "Supermemory 云端记忆，可用 npx supermemory local 自托管。默认数据会离开本机。",
+                capabilities = listOf("云端记忆", "跨项目检索", "可自托管"),
             ),
             "opencode-working-memory" to MemoryPluginInfo(
                 id = "opencode-working-memory",
                 name = "Working Memory",
                 spec = "opencode-working-memory",
-                description = "面向长会话的结构化工作记忆。",
-                capabilities = listOf("工作记忆", "会话压缩"),
+                description = "把提取折进 OpenCode 自带的 compaction，不产生额外模型调用；没有向量检索。",
+                capabilities = listOf("工作记忆", "会话压缩", "零额外调用"),
+            ),
+            "opencode-hindsight" to MemoryPluginInfo(
+                id = "opencode-hindsight",
+                name = "Hindsight",
+                spec = "opencode-hindsight",
+                description = "Vectorize 提供的托管记忆服务。",
+                capabilities = listOf("云端记忆", "语义检索"),
+            ),
+            "nowledge-mem" to MemoryPluginInfo(
+                id = "nowledge-mem",
+                name = "Nowledge Mem",
+                spec = "@nowledge/opencode-mem",
+                description = "Nowledge Mem 的 OpenCode 集成。",
+                capabilities = listOf("云端记忆", "跨项目检索"),
             ),
         )
     }
@@ -266,6 +289,8 @@ class MemorySystemService(
             environmentSyncEnabled = state.environmentSyncEnabled,
             memoryProvider = config.string("opencodeProvider") ?: config.string("memoryProvider"),
             memoryModel = config.string("opencodeModel") ?: config.string("memoryModel"),
+            captureCallsTotal = captureCounts().first,
+            captureCallsThisMonth = captureCounts().second,
             storagePath = expandPath(config.string("storagePath") ?: "~/.opencode-mem/data"),
             dashboardUrl = dashboardUrl,
             lastEnvironmentScan = state.lastEnvironmentScan,
@@ -274,6 +299,29 @@ class MemorySystemService(
             error = lastError,
         )
     }
+
+    /**
+     * How many memories the engine captured in total and this month.
+     *
+     * Each captured memory corresponds to one extra structured-output request, so the row count is
+     * the closest honest proxy for "how many times has this billed me" without the engine exposing
+     * a call counter of its own.
+     */
+    private fun captureCounts(): Pair<Long, Long> = runCatching {
+        val items = memoryApi("/api/memories?page=1&pageSize=1000&includePrompts=false")
+            ?.takeIf { it.status in 200..299 }
+            ?.let { json.parseToJsonElement(it.body) as? JsonObject }
+            ?.get("data")?.let { it as? JsonObject }
+            ?.get("items") as? JsonArray
+            ?: return 0L to 0L
+        val monthStart = java.time.YearMonth.now()
+            .atDay(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val thisMonth = items.count { element ->
+            val created = (element as? JsonObject)?.string("createdAt") ?: return@count false
+            runCatching { java.time.Instant.parse(created).toEpochMilli() >= monthStart }.getOrDefault(false)
+        }
+        items.size.toLong() to thisMonth.toLong()
+    }.getOrDefault(0L to 0L)
 
     fun scanEnvironments(sync: Boolean): MemoryActionResponse {
         return try {
@@ -402,6 +450,9 @@ class MemorySystemService(
         chat["injectOn"] = JsonPrimitive("first")
         root["chatMessage"] = JsonObject(chat)
 
+        // Zero-cost mode: with auto-capture off, extraction still happens — but only inside
+        // OpenCode's own compaction request, so it costs no extra model call. Turning the switch
+        // off used to mean "remember nothing", which is a worse trade than most users expect.
         val compaction = (root["compaction"] as? JsonObject)?.toMutableMap() ?: mutableMapOf()
         compaction["enabled"] = JsonPrimitive(active)
         root["compaction"] = JsonObject(compaction)

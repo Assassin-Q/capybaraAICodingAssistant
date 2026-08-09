@@ -11,7 +11,15 @@ data class ApprovalModeRequest(val sessionID: String, val mode: String)
 data class ApprovalModeResponse(val sessionID: String, val mode: String)
 
 @Serializable
-data class ApprovalDecision(val status: String)
+data class ApprovalDecision(
+    val status: String,
+    /**
+     * Whether this plugin instance actually owns the session. One OpenCode process can serve
+     * several IDEA projects, and the mode lives in the project that opened the session — so the
+     * bridge has to be able to tell "I decided this" from "I have never seen this session".
+     */
+    val known: Boolean = true,
+)
 
 @Serializable
 data class ApprovalModeRule(
@@ -39,6 +47,15 @@ data class ApprovalModeRules(val modes: List<ApprovalModeRule>)
 class ApprovalModeService {
     private val modes = ConcurrentHashMap<String, String>()
 
+    /**
+     * Sessions with an approval request the user has not answered yet.
+     *
+     * The frontend only polls the session it is showing, so a run blocked in a background session
+     * used to just look stuck. The bridge hook reports every ask here the moment it intercepts
+     * one — that hook is the only place that sees all of them.
+     */
+    private val pending = ConcurrentHashMap.newKeySet<String>()
+
     fun get(sessionID: String): String = modes[sessionID] ?: DEFAULT_MODE
 
     fun set(sessionID: String, mode: String): String {
@@ -49,7 +66,19 @@ class ApprovalModeService {
 
     fun forget(sessionID: String) {
         modes.remove(sessionID)
+        pending.remove(sessionID)
     }
+
+    /** @return true when the set actually changed, so callers only broadcast on a real change. */
+    fun setPending(sessionID: String, isPending: Boolean): Boolean {
+        if (sessionID.isBlank()) return false
+        return if (isPending) pending.add(sessionID) else pending.remove(sessionID)
+    }
+
+    fun pendingSessions(): List<String> = pending.toList().sorted()
+
+    /** True once a mode has been set for this session, i.e. this project opened it. */
+    fun knows(sessionID: String): Boolean = modes.containsKey(sessionID)
 
     /**
      * @param type the OpenCode permission kind, e.g. `websearch`, `bash`, `edit`.

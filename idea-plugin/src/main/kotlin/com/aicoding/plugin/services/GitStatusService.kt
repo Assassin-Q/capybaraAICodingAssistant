@@ -1,19 +1,36 @@
 package com.aicoding.plugin.services
 
+import com.intellij.diff.DiffContentFactory
+import com.intellij.diff.DiffDialogHints
+import com.intellij.diff.DiffManager
+import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.ChangeListManager
+import com.intellij.openapi.vfs.LocalFileSystem
 import kotlinx.serialization.Serializable
 import java.io.File
 import java.util.concurrent.TimeUnit
 
 @Serializable
-data class GitChangedFile(val path: String, val status: String, val staged: Boolean)
+data class GitChangedFile(
+    val path: String,
+    val status: String,
+    val staged: Boolean,
+    val additions: Int = 0,
+    val deletions: Int = 0,
+    /** True for binary files, where git reports "-" instead of counts. */
+    val binary: Boolean = false,
+)
+
+@Serializable
+data class GitFileDiffRequest(val path: String)
 
 @Serializable
 data class GitStatusResponse(
@@ -64,15 +81,73 @@ class GitStatusService(private val project: Project) {
         val branch = header.substringBefore("...").substringBefore(" [").trim().ifBlank { null }
         val upstream = header.substringAfter("...", "").substringBefore(" [").trim().ifBlank { null }
         val counts = header.substringAfter("[", "").substringBefore("]", "")
+        val stats = numstat()
         GitStatusResponse(
             available = true,
             ahead = Regex("ahead (\\d+)").find(counts)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0,
             behind = Regex("behind (\\d+)").find(counts)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0,
             branch = branch,
-            files = lines.drop(if (header.isBlank()) 0 else 1).mapNotNull(::parseStatusLine),
+            files = lines.drop(if (header.isBlank()) 0 else 1)
+                .mapNotNull(::parseStatusLine)
+                .map { file -> stats[file.path]?.let { file.copy(additions = it.first, deletions = it.second, binary = it.third) } ?: file },
             upstream = upstream,
         )
     }.getOrElse { GitStatusResponse(false, message = it.message ?: "当前目录不是 Git 仓库") }
+
+    /** `git diff HEAD --numstat` gives per-file line counts; untracked files are counted separately. */
+    private fun numstat(): Map<String, Triple<Int, Int, Boolean>> {
+        val result = git(listOf("diff", "HEAD", "--numstat"), 20_000)
+        if (result.exitCode != 0) return emptyMap()
+        val tracked = result.output.lines().filter(String::isNotBlank).mapNotNull { line ->
+            val parts = line.split('\t')
+            if (parts.size < 3) return@mapNotNull null
+            val path = parts[2].substringAfter(" => ").trim().trim('"')
+            val binary = parts[0] == "-" || parts[1] == "-"
+            path to Triple(parts[0].toIntOrNull() ?: 0, parts[1].toIntOrNull() ?: 0, binary)
+        }.toMap()
+
+        // Untracked files never appear in `diff HEAD`; count their lines as additions.
+        val untracked = git(listOf("ls-files", "--others", "--exclude-standard"), 20_000)
+        if (untracked.exitCode != 0) return tracked
+        val extra = untracked.output.lines().filter(String::isNotBlank).associate { path ->
+            val file = workingDirectory?.resolve(path)
+            val lines = runCatching {
+                if (file != null && file.isFile && file.length() < 2_000_000) file.readLines().size else 0
+            }.getOrDefault(0)
+            path.trim() to Triple(lines, 0, false)
+        }
+        return tracked + extra
+    }
+
+    /** Opens IDEA's native diff for one file: committed revision on the left, working tree on the right. */
+    fun openFileDiff(request: GitFileDiffRequest): GitActionResponse = runCatching {
+        val relative = request.path.trim().trim('"')
+        require(relative.isNotBlank()) { "缺少文件路径" }
+        val base = (workingDirectory ?: error("当前 IDEA 项目没有工作目录")).toPath().toAbsolutePath().normalize()
+        val absolute = base.resolve(relative).toAbsolutePath().normalize()
+        require(absolute.startsWith(base)) { "文件不在当前项目中：$relative" }
+
+        val show = git(listOf("show", "HEAD:$relative"), 20_000, trimOutput = false)
+        val headText = if (show.exitCode == 0) show.output else ""
+        val fileName = absolute.fileName.toString()
+        ApplicationManager.getApplication().invokeLater {
+            runCatching {
+                val factory = DiffContentFactory.getInstance()
+                val fileType = FileTypeManager.getInstance().getFileTypeByFileName(fileName)
+                val virtualFile = LocalFileSystem.getInstance()
+                    .refreshAndFindFileByPath(absolute.toString().replace('\\', '/'))
+                val before = factory.create(project, headText, fileType)
+                val current = virtualFile?.let { factory.create(project, it) }
+                    ?: factory.create(project, "", fileType)
+                DiffManager.getInstance().showDiff(
+                    project,
+                    SimpleDiffRequest("Git 差异：$fileName", before, current, "HEAD", "当前工作区"),
+                    DiffDialogHints.FRAME,
+                )
+            }.onFailure { logger.info("Unable to open the git diff: ${it.message}") }
+        }
+        GitActionResponse(true, "已打开 IDEA 差异对比")
+    }.getOrElse { GitActionResponse(false, it.message ?: "无法打开差异对比") }
 
     /**
      * Returns the current branch and whether it changed since the last call, so the caller can
@@ -157,7 +232,11 @@ class GitStatusService(private val project: Project) {
         else -> "修改"
     }
 
-    private fun git(arguments: List<String>, timeout: Long = 15_000): CommandResult {
+    private fun git(
+        arguments: List<String>,
+        timeout: Long = 15_000,
+        trimOutput: Boolean = true,
+    ): CommandResult {
         val directory = workingDirectory ?: return CommandResult(-1, "当前 IDEA 项目没有工作目录")
         val process = ProcessBuilder(listOf("git") + arguments)
             .directory(directory)
@@ -172,7 +251,8 @@ class GitStatusService(private val project: Project) {
         val completed = process.waitFor(timeout, TimeUnit.MILLISECONDS)
         if (!completed) process.destroyForcibly()
         reader.join(2_000)
-        return CommandResult(if (completed) process.exitValue() else -1, output.toString().trim())
+        val text = output.toString()
+        return CommandResult(if (completed) process.exitValue() else -1, if (trimOutput) text.trim() else text)
     }
 
     private data class CommandResult(val exitCode: Int, val output: String)

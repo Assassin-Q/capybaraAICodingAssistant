@@ -54,10 +54,20 @@ data class SkillHubSearchRequest(
     val query: String,
     val limit: Int = 20,
     val org: String? = null,
+    val sortBy: String = "score",
+    val order: String = "desc",
+    val page: Int = 1,
+    val category: String? = null,
+    val source: String? = null,
+    val requiresApiKey: Boolean? = null,
 )
 
 @Serializable
-private data class SkillHubNamespace(val handle: String? = null, val canonicalName: String? = null)
+private data class SkillHubNamespace(
+    val handle: String? = null,
+    val canonicalName: String? = null,
+    val publicSlug: String? = null,
+)
 
 /** Mirrors the `api/v1/search` payload; unknown fields are ignored. */
 @Serializable
@@ -67,14 +77,61 @@ private data class SkillHubRawResult(
     val name: String? = null,
     val displayName: String? = null,
     val description: String? = null,
+    val description_zh: String? = null,
     val summary: String? = null,
     val version: String? = null,
     val source: String? = null,
+    val category: String? = null,
+    val icon_url: String? = null,
+    val homepage: String? = null,
+    val owner_name: String? = null,
+    val downloads: Long = 0,
+    val installs: Long = 0,
+    val stars: Long = 0,
+    val created_at: Long = 0,
+    val updated_at: Long = 0,
+    val tags: List<String> = emptyList(),
+    val labels: Map<String, String>? = null,
     val namespace: SkillHubNamespace? = null,
 )
 
 @Serializable
 private data class SkillHubRawSearch(val results: List<SkillHubRawResult> = emptyList())
+
+@Serializable
+private data class SkillHubCatalogRawResult(
+    val slug: String = "",
+    val name: String? = null,
+    val description: String? = null,
+    val description_zh: String? = null,
+    val version: String? = null,
+    val source: String? = null,
+    val category: String? = null,
+    val iconUrl: String? = null,
+    val homepage: String? = null,
+    val ownerName: String? = null,
+    val downloads: Long = 0,
+    val installs: Long = 0,
+    val stars: Long = 0,
+    val created_at: Long = 0,
+    val updated_at: Long = 0,
+    val tags: List<String>? = null,
+    val labels: Map<String, String>? = null,
+    val namespace: SkillHubNamespace? = null,
+)
+
+@Serializable
+private data class SkillHubCatalogData(
+    val skills: List<SkillHubCatalogRawResult> = emptyList(),
+    val total: Int = 0,
+)
+
+@Serializable
+private data class SkillHubCatalogResponse(
+    val code: Int = -1,
+    val data: SkillHubCatalogData? = null,
+    val message: String? = null,
+)
 
 @Serializable
 data class SkillHubSkill(
@@ -85,6 +142,17 @@ data class SkillHubSkill(
     val version: String? = null,
     val source: String? = null,
     val namespaceHandle: String? = null,
+    val category: String? = null,
+    val iconUrl: String? = null,
+    val homepage: String? = null,
+    val owner: String? = null,
+    val downloads: Long = 0,
+    val installs: Long = 0,
+    val stars: Long = 0,
+    val createdAt: Long = 0,
+    val updatedAt: Long = 0,
+    val tags: List<String> = emptyList(),
+    val requiresApiKey: Boolean = false,
 )
 
 @Serializable
@@ -93,6 +161,9 @@ data class SkillHubSearchResponse(
     val query: String = "",
     val results: List<SkillHubSkill> = emptyList(),
     val warnings: List<String> = emptyList(),
+    val total: Int = 0,
+    val page: Int = 1,
+    val pageSize: Int = 20,
     val message: String? = null,
 )
 
@@ -188,7 +259,7 @@ class SkillManagementService(private val project: Project) {
 
     fun skillHubStatus(): SkillHubStatus = runCatching {
         val response = httpClient.send(
-            HttpRequest.newBuilder(URI.create("$SEARCH_ENDPOINT?q=capybara&limit=1"))
+            HttpRequest.newBuilder(URI.create("$CATALOG_ENDPOINT?page=1&pageSize=1&sortBy=score&order=desc&keyword="))
                 .header("Accept", "application/json")
                 .header("User-Agent", USER_AGENT)
                 .timeout(Duration.ofSeconds(8))
@@ -196,19 +267,23 @@ class SkillManagementService(private val project: Project) {
                 .build(),
             HttpResponse.BodyHandlers.discarding(),
         )
-        SkillHubStatus(available = response.statusCode() == 200, endpoint = SEARCH_ENDPOINT)
+        SkillHubStatus(available = response.statusCode() == 200, endpoint = CATALOG_ENDPOINT)
     }.getOrElse {
         SkillHubStatus(
             available = false,
-            endpoint = SEARCH_ENDPOINT,
+            endpoint = CATALOG_ENDPOINT,
             message = it.message ?: "无法连接 SkillHub",
         )
     }
 
-    /** Calls the same `api/v1/search` endpoint the official CLI uses, without needing the CLI. */
-    fun searchSkillHub(request: SkillHubSearchRequest): SkillHubSearchResponse = runCatching {
+    /**
+     * Calls the same `api/v1/search` endpoint the official CLI uses, without needing the CLI.
+     * An empty query is allowed and returns the default listing, which is what SkillHub's own
+     * "all skills" page shows. The endpoint ignores sort parameters, so ordering and filtering
+     * happen client-side over the returned page.
+     */
+    private fun searchSkillHubLegacy(request: SkillHubSearchRequest): SkillHubSearchResponse = runCatching {
         val query = request.query.trim()
-        require(query.isNotBlank()) { "请输入搜索关键词" }
         require(query.length <= 120) { "搜索关键词过长" }
         val limit = request.limit.coerceIn(1, 100)
         val url = "$SEARCH_ENDPOINT?q=${encode(query)}&limit=$limit"
@@ -234,12 +309,96 @@ class SkillManagementService(private val project: Project) {
                     slug = item.namespace?.canonicalName?.ifBlank { null } ?: publicSlug,
                     publicSlug = publicSlug,
                     name = item.displayName?.ifBlank { null } ?: item.name?.ifBlank { null },
-                    description = item.summary?.ifBlank { null } ?: item.description?.ifBlank { null },
+                    // Chinese summary first — the catalogue is mostly Chinese-facing.
+                    description = item.description_zh?.ifBlank { null }
+                        ?: item.summary?.ifBlank { null }
+                        ?: item.description?.ifBlank { null },
                     version = item.version?.ifBlank { null },
                     source = item.source ?: "community",
                     namespaceHandle = item.namespace?.handle?.ifBlank { null },
+                    category = item.category?.ifBlank { null },
+                    iconUrl = item.icon_url?.ifBlank { null },
+                    homepage = item.homepage?.ifBlank { null },
+                    owner = item.owner_name?.ifBlank { null },
+                    downloads = item.downloads,
+                    installs = item.installs,
+                    stars = item.stars,
+                    createdAt = item.created_at,
+                    updatedAt = item.updated_at,
+                    tags = item.tags,
+                    requiresApiKey = item.labels?.get("requires_api_key") == "true",
                 )
             },
+        )
+    }.getOrElse { SkillHubSearchResponse(false, message = it.message ?: "SkillHub 搜索失败") }
+
+    fun searchSkillHub(request: SkillHubSearchRequest): SkillHubSearchResponse = runCatching {
+        val query = request.query.trim()
+        require(query.length <= 120) { "SkillHub 搜索关键词过长" }
+        val limit = request.limit.coerceIn(1, 100)
+        val page = request.page.coerceAtLeast(1)
+        val sortBy = request.sortBy.takeIf { it in CATALOG_SORTS } ?: "score"
+        val order = request.order.takeIf { it == "asc" || it == "desc" } ?: "desc"
+        val catalogUrl = buildString {
+            append(CATALOG_ENDPOINT)
+            append("?page=").append(page)
+            append("&pageSize=").append(limit)
+            append("&sortBy=").append(encode(sortBy))
+            append("&order=").append(encode(order))
+            append("&keyword=").append(encode(query))
+            request.category?.takeUnless { it == "all" || it.isBlank() }?.let {
+                append("&category=").append(encode(it))
+            }
+            request.source?.takeUnless { it == "all" || it.isBlank() }?.let {
+                append("&source=").append(encode(it))
+            }
+            request.requiresApiKey?.let { append("&requiresApiKey=").append(it) }
+        }
+        val response = httpClient.send(
+            HttpRequest.newBuilder(URI.create(catalogUrl))
+                .header("Accept", "application/json")
+                .header("User-Agent", USER_AGENT)
+                .timeout(Duration.ofSeconds(20))
+                .GET()
+                .build(),
+            HttpResponse.BodyHandlers.ofString(Charsets.UTF_8),
+        )
+        if (response.statusCode() >= 500) return@runCatching searchSkillHubLegacy(request)
+        require(response.statusCode() == 200) {
+            "SkillHub 列表接口返回 HTTP ${response.statusCode()}：${response.body().take(240)}"
+        }
+        val parsed = json.decodeFromString<SkillHubCatalogResponse>(response.body())
+        val data = parsed.data ?: return@runCatching searchSkillHubLegacy(request)
+        require(parsed.code == 0) { parsed.message ?: "SkillHub 列表接口返回失败" }
+        SkillHubSearchResponse(
+            success = true,
+            query = query,
+            results = data.skills.mapNotNull { item ->
+                if (item.slug.isBlank()) return@mapNotNull null
+                SkillHubSkill(
+                    slug = item.namespace?.canonicalName?.ifBlank { null } ?: item.slug,
+                    publicSlug = item.namespace?.publicSlug?.ifBlank { null } ?: item.slug,
+                    name = item.name?.ifBlank { null },
+                    description = item.description_zh?.ifBlank { null } ?: item.description?.ifBlank { null },
+                    version = item.version?.ifBlank { null },
+                    source = item.source ?: "community",
+                    namespaceHandle = item.namespace?.handle?.ifBlank { null },
+                    category = item.category?.ifBlank { null },
+                    iconUrl = item.iconUrl?.ifBlank { null },
+                    homepage = item.homepage?.ifBlank { null },
+                    owner = item.ownerName?.ifBlank { null },
+                    downloads = item.downloads,
+                    installs = item.installs,
+                    stars = item.stars,
+                    createdAt = item.created_at,
+                    updatedAt = item.updated_at,
+                    tags = item.tags.orEmpty(),
+                    requiresApiKey = item.labels?.get("requires_api_key") == "true",
+                )
+            },
+            total = data.total,
+            page = page,
+            pageSize = limit,
         )
     }.getOrElse { SkillHubSearchResponse(false, message = it.message ?: "SkillHub 搜索失败") }
 
@@ -396,7 +555,19 @@ class SkillManagementService(private val project: Project) {
         .ifBlank { "imported-skill" }
 
     companion object {
-        /** Same endpoints the official SkillHub CLI uses, taken from its bundled metadata.json. */
+        /**
+         * The only sorts the listing endpoint accepts. It rejects everything else with
+         * `400 参数错误：sortBy 不支持（updated_at/downloads/stars/installs/score）`, so
+         * "curated_score" and "rank" are not offered.
+         */
+        private val CATALOG_SORTS = setOf(
+            "score",
+            "downloads",
+            "stars",
+            "installs",
+            "updated_at",
+        )
+        private const val CATALOG_ENDPOINT = "https://api.skillhub.cn/api/skills"
         private const val SEARCH_ENDPOINT = "https://api.skillhub.cn/api/v1/search"
         private const val DOWNLOAD_ENDPOINT = "https://api.skillhub.cn/api/v1/download"
         private const val USER_AGENT = "capybara-idea-plugin"

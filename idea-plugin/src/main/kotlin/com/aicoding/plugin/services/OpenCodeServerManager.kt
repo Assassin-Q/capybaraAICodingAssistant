@@ -19,6 +19,13 @@ data class OpenCodeEndpoint(
     val connected: Boolean = false,
     val ideaTheme: String? = null,
     val error: String? = null,
+    /**
+     * True when a "restart" only re-probed an externally started server without stopping it.
+     * The process kept running, so plugin changes were **not** reloaded.
+     */
+    val reconnectedOnly: Boolean = false,
+    /** PID owning the port when the server is not plugin-managed, for an informed force restart. */
+    val externalPid: Long? = null,
 )
 
 data class OpenCodeCliResult(
@@ -94,16 +101,65 @@ class OpenCodeServerManager(private val projectPath: String?) {
     }
 
     /**
-     * Drops the cached endpoint and rediscovers OpenCode. A server the plugin started is
-     * terminated first; a server the user runs themselves is left alone and simply re-probed.
+     * Drops the cached endpoint and rediscovers OpenCode.
+     *
+     * A server the plugin started is terminated and relaunched. A server the user started is
+     * only re-probed — which means plugin changes are **not** picked up, because OpenCode loads
+     * plugins once at startup. Pass [force] to terminate an externally started server as well;
+     * that is destructive to whatever the user was running, so it must be an explicit choice.
      */
     @Synchronized
-    fun restart(frontendPort: Int): OpenCodeEndpoint {
-        if (endpoint.managed) terminateFailedProcess()
+    fun restart(frontendPort: Int, force: Boolean = false): OpenCodeEndpoint {
+        val wasManaged = endpoint.managed
+        val externalPort = endpoint.port.takeIf { !wasManaged }
+        if (wasManaged) terminateFailedProcess()
+        else if (force && externalPort != null) terminateExternalServer(externalPort)
         process = null
         endpoint = OpenCodeEndpoint(projectPath = projectPath)
-        return start(frontendPort)
+        val next = start(frontendPort)
+        // Tell the caller whether anything actually restarted, so the UI cannot overstate it.
+        return if (!next.managed && next.connected) {
+            next.copy(
+                externalPid = next.port?.let(::externalPid),
+                reconnectedOnly = !wasManaged && !force,
+            )
+        } else {
+            next
+        }
     }
+
+    /** Finds and kills whatever owns the port. Only reached through an explicit force restart. */
+    private fun terminateExternalServer(port: Int) {
+        val pid = externalPid(port) ?: return
+        runCatching {
+            ProcessHandle.of(pid).ifPresent { handle ->
+                handle.destroy()
+                if (!handle.onExit().orTimeout(4, TimeUnit.SECONDS).isDone) handle.destroyForcibly()
+            }
+        }
+        // Give the OS a moment to release the port before re-probing.
+        runCatching { Thread.sleep(800) }
+    }
+
+    private fun externalPid(port: Int): Long? = runCatching {
+        val windows = System.getProperty("os.name").startsWith("Windows")
+        val command = if (windows) {
+            listOf("netstat", "-ano", "-p", "TCP")
+        } else {
+            listOf("lsof", "-nP", "-iTCP:$port", "-sTCP:LISTEN", "-t")
+        }
+        val process = ProcessBuilder(command).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        process.waitFor(5, TimeUnit.SECONDS)
+        if (windows) {
+            output.lineSequence()
+                .filter { it.contains("LISTENING") && it.contains(":$port ") }
+                .mapNotNull { it.trim().split(Regex("\\s+")).lastOrNull()?.toLongOrNull() }
+                .firstOrNull()
+        } else {
+            output.lineSequence().mapNotNull(String::toLongOrNull).firstOrNull()
+        }
+    }.getOrNull()
 
     private fun terminateFailedProcess() {
         process?.let { child ->

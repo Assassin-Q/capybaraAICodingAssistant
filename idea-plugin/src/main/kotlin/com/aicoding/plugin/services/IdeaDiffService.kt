@@ -96,7 +96,7 @@ class IdeaDiffService(private val project: Project) {
                 "当前实际文件内容",
                 "该轮 AI 修改后",
             )
-            DiffManager.getInstance().showDiff(project, diffRequest, DiffDialogHints.MODAL)
+            DiffManager.getInstance().showDiff(project, diffRequest, DiffDialogHints.FRAME)
         }
     }.fold(
         onSuccess = { IdeaDiffResponse(success = true) },

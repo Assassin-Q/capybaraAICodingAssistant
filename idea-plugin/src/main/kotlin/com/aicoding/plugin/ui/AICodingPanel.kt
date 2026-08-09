@@ -24,8 +24,13 @@ import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
+import javax.swing.Timer
 
-private const val MIN_PANEL_WIDTH = 560
+// 640 keeps the composer toolbar (approval mode + model + variant + usage) on one line.
+private const val MIN_PANEL_WIDTH = 640
+
+/** Long enough that a drag finishes before the splitter is pushed back, short enough to feel instant. */
+private const val RESIZE_SETTLE_MS = 180
 private const val MIN_PANEL_HEIGHT = 480
 
 class AICodingPanel(
@@ -85,13 +90,24 @@ class AICodingPanel(
      */
     private fun enforceMinimumWidth() {
         val stretchable = toolWindow as? ToolWindowEx ?: return
+        // Correcting on every resize event made the splitter oscillate: each stretchWidth fired
+        // another resize, which stretched again, while the user was still dragging. So the
+        // correction is deferred and coalesced — it runs once, after the drag has settled.
+        val settle = Timer(RESIZE_SETTLE_MS) {
+            val current = toolWindow.component.width
+            if (current in 1 until MIN_PANEL_WIDTH && toolWindow.isVisible) {
+                stretchable.stretchWidth(MIN_PANEL_WIDTH - current)
+            }
+        }.apply { isRepeats = false }
+
         toolWindow.component.addComponentListener(object : ComponentAdapter() {
             override fun componentResized(event: ComponentEvent) {
                 val current = toolWindow.component.width
-                if (current <= 0 || current >= MIN_PANEL_WIDTH) return
-                // Guard against fighting the layout while the window is still being created.
-                if (!toolWindow.isVisible) return
-                SwingUtilities.invokeLater { stretchable.stretchWidth(MIN_PANEL_WIDTH - current) }
+                if (current <= 0 || current >= MIN_PANEL_WIDTH || !toolWindow.isVisible) {
+                    settle.stop()
+                    return
+                }
+                settle.restart()
             }
         })
     }

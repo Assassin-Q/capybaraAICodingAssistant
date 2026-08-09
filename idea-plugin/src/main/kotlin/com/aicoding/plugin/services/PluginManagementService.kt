@@ -53,6 +53,7 @@ class PluginManagementService(private val project: Project) {
         Files.list(root.path).use { paths ->
             paths.filter(Files::isRegularFile)
                 .filter(::isPluginFile)
+                .filter { !isBuiltInBridge(it) }
                 .map { toPlugin(it, root) }
                 .toList()
         }
@@ -67,6 +68,7 @@ class PluginManagementService(private val project: Project) {
         val existing = request.location?.takeIf(String::isNotBlank)?.let(::validatedPluginFile)
         val fileName = normalizeFileName(request.name)
         val target = existing ?: root.resolve(fileName).toAbsolutePath().normalize()
+        require(!isBuiltInBridge(target)) { "IDEA 原生桥接是内置插件，不能编辑" }
         require(target.startsWith(root)) { "插件路径不在所选范围中" }
         if (Files.exists(target) && existing == null && !request.overwrite) error("已存在同名插件文件")
         Files.createDirectories(target.parent)
@@ -82,6 +84,7 @@ class PluginManagementService(private val project: Project) {
         }
         val root = targetRoot(request.scope)
         val target = root.resolve(source.fileName.toString()).normalize()
+        require(!isBuiltInBridge(target)) { "不能覆盖内置的 IDEA 原生桥接" }
         if (Files.exists(target) && !request.overwrite) error("已存在同名插件文件")
         Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
         refreshFiles()
@@ -90,6 +93,7 @@ class PluginManagementService(private val project: Project) {
 
     fun setEnabled(request: PluginLocationRequest): PluginActionResponse = runCatching {
         val path = validatedPluginFile(request.location)
+        require(!isBuiltInBridge(path)) { "请使用内置桥接开关调整状态" }
         val enabled = request.enabled ?: true
         val current = path.fileName.toString()
         val targetName = when {
@@ -104,7 +108,9 @@ class PluginManagementService(private val project: Project) {
     }.getOrElse { PluginActionResponse(false, it.message ?: "无法更新插件状态") }
 
     fun delete(request: PluginLocationRequest): PluginActionResponse = runCatching {
-        Files.delete(validatedPluginFile(request.location))
+        val path = validatedPluginFile(request.location)
+        require(!isBuiltInBridge(path)) { "IDEA 原生桥接是内置插件，不能删除" }
+        Files.delete(path)
         refreshFiles()
         PluginActionResponse(true, "插件已删除")
     }.getOrElse { PluginActionResponse(false, it.message ?: "无法删除插件") }
@@ -140,6 +146,11 @@ class PluginManagementService(private val project: Project) {
     private fun isPluginFile(path: Path): Boolean {
         val name = path.fileName.toString().lowercase().removeSuffix(".disabled")
         return name.endsWith(".ts") || name.endsWith(".js")
+    }
+
+    private fun isBuiltInBridge(path: Path): Boolean {
+        val normalized = path.fileName.toString().lowercase().removeSuffix(".disabled")
+        return normalized.substringBeforeLast('.') == "capybara-idea"
     }
 
     private fun normalizeFileName(value: String): String {
