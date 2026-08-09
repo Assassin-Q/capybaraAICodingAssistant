@@ -1,4 +1,4 @@
-import { FileCode2, FolderOpen, Terminal } from "lucide-react";
+import { FileCode2, FolderOpen, FolderTree, Navigation, SearchCode, Terminal, TriangleAlert } from "lucide-react";
 import { Columns3 } from "lucide-react";
 import type { BundledLanguage } from "shiki";
 
@@ -31,6 +31,10 @@ const textValue = (value: unknown): string => {
 
 const firstValue = (input: Record<string, unknown>, keys: string[]): unknown =>
   keys.map((key) => input[key]).find((value) => value !== undefined && value !== "");
+
+const recordArray = (value: unknown): Record<string, unknown>[] => Array.isArray(value)
+  ? value.map(asRecord).filter((item): item is Record<string, unknown> => Boolean(item))
+  : [];
 
 interface StructuredFile {
   file: string;
@@ -169,6 +173,23 @@ export function ToolCallInput({ name, input }: { name: string; input: unknown })
     );
   }
 
+  if (kind.startsWith("idea_")) {
+    return (
+      <div className="grid gap-1.5">
+        <DetailRow icon={<FileCode2 className="size-3" />} label="文件" value={file ?? (kind === "idea_project_context" ? "当前项目" : "当前编辑器")} />
+        <DetailRow label="操作" value={firstValue(record, ["action", "mode"])} />
+        <DetailRow label="行" value={firstValue(record, ["line", "startLine"])} />
+        <DetailRow label="列" value={firstValue(record, ["column", "startColumn"])} />
+        <DetailRow label="配置" value={firstValue(record, ["id", "configurationID"])} />
+        <DetailRow label="任务" value={record.tasks} />
+        <DetailRow label="地址" value={record.url} />
+        <DetailRow label="选择器" value={record.selector} />
+        <DetailRow label="诊断级别" value={record.minSeverity} />
+        <DetailRow label="上下文行数" value={record.contextLines} />
+      </div>
+    );
+  }
+
   const entries = Object.entries(record).filter(([, value]) => value !== undefined && value !== "");
   return (
     <div className={cn("grid gap-1.5", entries.length > 8 && "max-h-52 overflow-y-auto pr-1")}>
@@ -196,6 +217,79 @@ export function ToolCallOutput({ name, output }: { name: string; output: unknown
   const files = structuredFiles(normalized);
 
   if (files.length > 0) return <StructuredFileOutput files={files} />;
+
+  if (record && kind === "idea_project_context") {
+    const modules = recordArray(record.modules);
+    const openFiles = Array.isArray(record.openFiles) ? record.openFiles : [];
+    return (
+      <div className="grid gap-2">
+        <div className="grid gap-1.5">
+          <DetailRow icon={<FolderTree className="size-3" />} label="项目" value={record.projectName} />
+          <DetailRow label="SDK" value={record.sdkVersion ?? record.sdk} />
+          <DetailRow label="当前文件" value={record.currentFile} />
+          <DetailRow label="打开文件" value={`${openFiles.length} 个`} />
+        </div>
+        {modules.length > 0 && <div className="grid max-h-52 gap-1 overflow-y-auto pr-1">{modules.map((module) => (
+          <div className="rounded-sm bg-background/50 px-2 py-1.5" key={String(module.name)}>
+            <p className="text-xs font-medium">{String(module.name)}</p>
+            <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">{Array.isArray(module.sourceRoots) ? module.sourceRoots.map(textValue).join(" · ") : textValue(module.sourceRoots)}</p>
+          </div>
+        ))}</div>}
+      </div>
+    );
+  }
+
+  if (record && kind === "idea_editor_context") {
+    return (
+      <div className="grid gap-2">
+        <div className="grid gap-1.5">
+          <DetailRow icon={<FileCode2 className="size-3" />} label="文件" value={record.path} />
+          <DetailRow label="语言" value={record.language} />
+          <DetailRow label="位置" value={record.line ? `${record.line}:${record.column ?? 1}` : undefined} />
+          <DetailRow label="选区" value={record.selectionStartLine ? `${record.selectionStartLine}-${record.selectionEndLine ?? record.selectionStartLine}` : undefined} />
+        </div>
+        {typeof record.selectedText === "string" && record.selectedText && <div><p className="mb-1 text-[11px] text-muted-foreground">选中内容</p><OutputText value={record.selectedText} /></div>}
+        {typeof record.context === "string" && record.context && <OutputText value={record.context} />}
+      </div>
+    );
+  }
+
+  if (record && kind === "idea_diagnostics") {
+    const diagnostics = recordArray(record.diagnostics);
+    return (
+      <div className="grid gap-2">
+        <div className="grid gap-1.5"><DetailRow icon={<TriangleAlert className="size-3" />} label="文件" value={record.path} /><DetailRow label="分析状态" value={record.analysisComplete === true ? "已完成" : "分析中"} /></div>
+        {diagnostics.length === 0 ? <p className="text-xs text-muted-foreground">当前级别没有诊断项</p> : (
+          <div className="grid max-h-64 gap-1 overflow-y-auto pr-1">{diagnostics.map((diagnostic, index) => (
+            <div className="rounded-sm bg-background/50 px-2 py-1.5" key={`${diagnostic.line}-${diagnostic.column}-${index}`}>
+              <div className="flex items-center gap-2"><span className={cn("text-[10px] font-medium", String(diagnostic.severity).includes("ERROR") ? "text-red-600" : "text-amber-600")}>{textValue(diagnostic.severity)}</span><span className="font-mono text-[10px] text-muted-foreground">{textValue(diagnostic.line)}:{textValue(diagnostic.column)}</span></div>
+              <p className="mt-0.5 text-xs leading-5">{textValue(diagnostic.description)}</p>
+            </div>
+          ))}</div>
+        )}
+      </div>
+    );
+  }
+
+  if (record && kind === "idea_symbol") {
+    const results = recordArray(record.results);
+    const definition = asRecord(record.definition);
+    return (
+      <div className="grid gap-2">
+        <div className="grid gap-1.5"><DetailRow icon={<SearchCode className="size-3" />} label="符号" value={record.symbol} /><DetailRow label="定义" value={definition ? `${textValue(definition.path)}:${textValue(definition.line)}` : undefined} /><DetailRow label="结果" value={`${results.length} 处`} /></div>
+        {results.length > 0 && <div className="grid max-h-64 gap-1 overflow-y-auto pr-1">{results.map((result, index) => (
+          <div className="rounded-sm bg-background/50 px-2 py-1.5" key={`${result.path}-${result.line}-${index}`}>
+            <p className="truncate font-mono text-[11px]">{textValue(result.path)}:{textValue(result.line)}</p>
+            {typeof result.preview === "string" && result.preview && <p className="mt-0.5 truncate text-xs text-muted-foreground">{textValue(result.preview)}</p>}
+          </div>
+        ))}</div>}
+      </div>
+    );
+  }
+
+  if (record && ["idea_navigate", "idea_refresh_project"].includes(kind)) {
+    return <div className="flex items-start gap-2 text-xs"><Navigation className="mt-0.5 size-3.5 text-muted-foreground" /><span>{textValue(record.message ?? record.success)}</span></div>;
+  }
 
   if (["bash", "shell", "exec", "run"].includes(kind)) {
     if (!record) return <OutputText value={normalized} />;

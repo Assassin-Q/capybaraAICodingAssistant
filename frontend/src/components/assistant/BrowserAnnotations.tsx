@@ -12,6 +12,7 @@ export interface BrowserAnnotation {
   text: string;
   comment?: string;
   url: string;
+  rect?: { left: number; top: number; width: number; height: number };
 }
 
 interface PicksEvent {
@@ -50,13 +51,46 @@ export const useBrowserAnnotations = (): {
   return { annotations, clear: () => setAnnotations([]) };
 };
 
+/** Cuts the element (plus a margin for context) out of the viewport capture. */
+const cropToRect = async (
+  source: File,
+  rect: { x: number; y: number; width: number; height: number },
+  label: string,
+): Promise<File | undefined> => {
+  try {
+    const bitmap = await createImageBitmap(source);
+    // The capture is in device pixels; the rect comes from getBoundingClientRect in CSS pixels.
+    const margin = 24;
+    const scale = bitmap.width / Math.max(1, window.innerWidth) || 1;
+    const x = Math.max(0, (rect.x - margin) * scale);
+    const y = Math.max(0, (rect.y - margin) * scale);
+    const width = Math.min(bitmap.width - x, (rect.width + margin * 2) * scale);
+    const height = Math.min(bitmap.height - y, (rect.height + margin * 2) * scale);
+    if (width < 8 || height < 8) return undefined;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(width);
+    canvas.height = Math.round(height);
+    const context = canvas.getContext("2d");
+    if (!context) return undefined;
+    context.drawImage(bitmap, x, y, width, height, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    return blob ? new File([blob], `${label}.png`, { type: "image/png" }) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 /**
  * Grabs the current page as a PNG through the plugin's browser bridge.
  *
  * The capture is painted straight off the JCEF component, so it no longer depends on the CEF
  * remote-debugging port being available. Returns undefined when the browser window is closed.
  */
-export const captureBrowserScreenshot = async (): Promise<File | undefined> => {
+export const captureBrowserScreenshot = async (
+  /** Crops to this rect (CSS pixels) so each annotation ships the element, not the whole viewport. */
+  rect?: { x: number; y: number; width: number; height: number },
+  label = "browser-annotation",
+): Promise<File | undefined> => {
   try {
     // `/browser` is served by the same plugin port as `/api`, just a different context.
     const origin = localApiBaseUrl.replace(/\/api$/, "");
@@ -72,7 +106,8 @@ export const captureBrowserScreenshot = async (): Promise<File | undefined> => {
     const binary = atob(encoded);
     const bytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-    return new File([bytes], "browser-annotation.png", { type: "image/png" });
+    const full = new File([bytes], `${label}.png`, { type: "image/png" });
+    return rect ? await cropToRect(full, rect, label) ?? full : full;
   } catch {
     // A screenshot is a bonus; never block sending the prompt on it.
     return undefined;
@@ -98,9 +133,12 @@ export const annotationsAsPrompt = (annotations: BrowserAnnotation[]): string =>
 
 export function BrowserAnnotationChip({
   annotations,
+  imagesSupported,
   onClear,
 }: {
   annotations: BrowserAnnotation[];
+  /** Text-only models reject image attachments with a 400, so the crops are held back. */
+  imagesSupported: boolean;
   onClear: () => void;
 }) {
   if (annotations.length === 0) return null;
@@ -134,7 +172,9 @@ export function BrowserAnnotationChip({
       </div>
       <PopoverContent align="start" className="w-80 border-border/50 p-0" sideOffset={6}>
         <p className="border-b border-border/40 px-3 py-2 text-[11px] text-muted-foreground">
-          发送时会连同页面截图一起交给模型
+          {imagesSupported
+            ? "发送时每条标注会附带该元素的截图"
+            : "当前模型不支持图片，只发送标注文字"}
         </p>
         <div className="max-h-56 overflow-y-auto">
           {annotations.map((annotation, index) => (

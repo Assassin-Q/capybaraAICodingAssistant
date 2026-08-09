@@ -33,6 +33,8 @@ export interface EventStreamRefs {
 
 interface UseOpenCodeEventStreamOptions {
   applyIdeaTheme: (theme: IdeaTheme) => void;
+  /** Pushed by the bridge whenever an approval is raised in any session, not just the visible one. */
+  onPendingApprovals: (sessionIDs: string[]) => void;
   enqueueOpenCodeEvent: (event: OpenCodeEvent) => void;
   finishRun: (sessionID: string, generation: number, failureReason?: string) => Promise<void> | void;
   flushOpenCodeEvents: () => void;
@@ -57,6 +59,7 @@ interface UseOpenCodeEventStreamOptions {
  */
 export function useOpenCodeEventStream({
   applyIdeaTheme,
+  onPendingApprovals,
   enqueueOpenCodeEvent,
   finishRun,
   flushOpenCodeEvents,
@@ -193,7 +196,9 @@ export function useOpenCodeEventStream({
         ...current.filter((item) => item.id !== event.id),
         { ...event, addedAt: Date.now() },
       ]),
-      applyIdeaTheme
+      applyIdeaTheme,
+      undefined,
+      onPendingApprovals
     );
     return () => {
       unsubscribeOpenCode();
@@ -201,6 +206,7 @@ export function useOpenCodeEventStream({
       if (refreshTimer.current !== undefined) window.clearTimeout(refreshTimer.current);
     };
   }, [
+    onPendingApprovals,
     activeAssistantMessageIDs,
     activePrompt,
     activePromptHasActivity,

@@ -1,4 +1,11 @@
 import { CUSTOM_PERSONA_ID, findPersonaPreset, PERSONA_PRESETS } from "@/lib/personaPresets";
+import {
+  AUTO_PROFESSIONAL_ROLE_ID,
+  createDefaultProfessionalRolePreferences,
+  findProfessionalRolePreset,
+  PROFESSIONAL_ROLE_PRESETS,
+  type ProfessionalRolePreferences,
+} from "@/lib/professionalRoles";
 
 export interface PersonaPreferences {
   enabled: boolean;
@@ -13,6 +20,7 @@ export interface WorkspacePreferences {
   disabledSkillNames: string[];
   modelVariantLabels: ModelVariantLabels;
   persona: PersonaPreferences;
+  professionalRoles: ProfessionalRolePreferences;
 }
 
 const DEFAULT_PREFERENCES: WorkspacePreferences = {
@@ -24,6 +32,7 @@ const DEFAULT_PREFERENCES: WorkspacePreferences = {
     presetId: PERSONA_PRESETS[0].id,
     instructions: PERSONA_PRESETS[0].instructions,
   },
+  professionalRoles: createDefaultProfessionalRolePreferences(),
 };
 
 const preferenceKey = (projectPath?: string): string =>
@@ -45,6 +54,39 @@ const normalizeModelVariantLabels = (value: unknown): ModelVariantLabels => {
       return Object.keys(normalizedLabels).length > 0 ? [[modelID, normalizedLabels]] : [];
     })
   );
+};
+
+const stringArray = (value: unknown): string[] => Array.isArray(value)
+  ? [...new Set(value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))]
+  : [];
+
+const normalizeProfessionalRoles = (value: unknown): ProfessionalRolePreferences => {
+  const defaults = createDefaultProfessionalRolePreferences();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return defaults;
+  const raw = value as Partial<ProfessionalRolePreferences>;
+  const rawRoles = raw.roles && typeof raw.roles === "object" && !Array.isArray(raw.roles)
+    ? raw.roles as Record<string, unknown>
+    : {};
+  const roles = Object.fromEntries(PROFESSIONAL_ROLE_PRESETS.map((preset) => {
+    const candidate = rawRoles[preset.id];
+    const role = candidate && typeof candidate === "object" && !Array.isArray(candidate)
+      ? candidate as Partial<ProfessionalRolePreferences["roles"][string]>
+      : {};
+    return [preset.id, {
+      enabled: role.enabled !== false,
+      instructions: typeof role.instructions === "string" && role.instructions.trim()
+        ? role.instructions.trim()
+        : preset.instructions,
+      mcpNames: stringArray(role.mcpNames),
+      skillNames: stringArray(role.skillNames),
+    }];
+  }));
+  const requestedRoleId = typeof raw.selectedRoleId === "string" ? raw.selectedRoleId : "";
+  const selectedRoleId = requestedRoleId === AUTO_PROFESSIONAL_ROLE_ID
+    || (findProfessionalRolePreset(requestedRoleId) && roles[requestedRoleId]?.enabled)
+    ? requestedRoleId
+    : AUTO_PROFESSIONAL_ROLE_ID;
+  return { enabled: raw.enabled === true, roles, selectedRoleId };
 };
 
 const normalize = (value: unknown): WorkspacePreferences => {
@@ -70,6 +112,7 @@ const normalize = (value: unknown): WorkspacePreferences => {
       : [],
     modelVariantLabels: normalizeModelVariantLabels(raw.modelVariantLabels),
     persona: normalizedPersona,
+    professionalRoles: normalizeProfessionalRoles(raw.professionalRoles),
   };
 };
 

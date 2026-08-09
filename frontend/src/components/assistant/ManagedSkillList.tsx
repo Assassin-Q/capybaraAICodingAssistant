@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, PackageOpen, Search, Sparkles, Trash2 } from "lucide-react";
+import { Download, PackageOpen, RotateCcw, Search, Sparkles, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,9 @@ import {
   useSettingsFeedback,
 } from "@/components/assistant/settingsShared";
 import { errorMessage } from "@/components/assistant/shared";
+import { ideaApi } from "@/lib/idea";
 import { skillsApi, type ManagedScope, type ManagedSkillInfo } from "@/lib/ideaIntegrations";
-import { openCodeApi } from "@/lib/opencode";
+import { openCodeApi, setOpenCodeBaseUrl } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
 
 interface ManagedSkillListProps {
@@ -51,6 +52,7 @@ export function ManagedSkillList({
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const { error, notice, report, setError } = useSettingsFeedback();
   const confirm = useConfirm();
 
@@ -133,6 +135,31 @@ export function ManagedSkillList({
       title: `删除技能「${skill.name}」`,
     });
 
+  /** Enabled on disk but not in OpenCode's live list — only a reload will pick these up. */
+  const pendingReload = useMemo(
+    () => skills.filter((skill) => skill.enabled && !loadedNames.has(skill.name)),
+    [loadedNames, skills]
+  );
+
+  const restartService = async () => {
+    setRestarting(true);
+    try {
+      const runtime = await ideaApi.restartOpenCode();
+      if (runtime.error) {
+        setError(runtime.error);
+        return;
+      }
+      if (runtime.baseUrl) setOpenCodeBaseUrl(runtime.baseUrl);
+      // Give OpenCode a moment to finish scanning skills before re-reading.
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await refresh();
+    } catch (restartError) {
+      setError(errorMessage(restartError));
+    } finally {
+      setRestarting(false);
+    }
+  };
+
   const loadState = (skill: ManagedSkillInfo) => {
     if (!skill.enabled) return { label: "已停用", variant: "outline" as const };
     if (loadedNames.has(skill.name)) return { label: "已加载", variant: "secondary" as const };
@@ -161,6 +188,21 @@ export function ManagedSkillList({
       />
 
       <SettingsMessage error={error} notice={notice} />
+
+      {pendingReload.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+          <RotateCcw className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span className="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-400">
+            有 {pendingReload.length} 个技能已启用但 OpenCode 还没加载
+            （{pendingReload.slice(0, 3).map((skill) => skill.name).join("、")}
+            {pendingReload.length > 3 ? " 等" : ""}）。重启服务后生效。
+          </span>
+          <Button disabled={restarting} onClick={() => void restartService()} size="sm" type="button">
+            <RotateCcw className={cn("size-3.5", restarting && "animate-spin")} />
+            一键重启服务
+          </Button>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         {scopeFilters.map((item) => (

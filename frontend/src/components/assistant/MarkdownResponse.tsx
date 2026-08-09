@@ -13,6 +13,7 @@ import {
   CodeBlockTitle,
 } from "@/components/ai-elements/code-block";
 import { MessageResponse } from "@/components/ai-elements/message";
+import { cn } from "@/lib/utils";
 
 const languageAliases: Record<string, BundledLanguage> = {
   bash: "shellscript",
@@ -69,6 +70,14 @@ const CodeFence = ({ children }: ComponentProps<"pre"> & ExtraProps) => {
 
 const components: Components = { pre: CodeFence };
 
-export function MarkdownResponse(props: ComponentProps<typeof MessageResponse>) {
-  return <MessageResponse components={components} isAnimating={false} mode="static" {...props} />;
+export function MarkdownResponse({ className, ...props }: ComponentProps<typeof MessageResponse>) {
+  return (
+    <MessageResponse
+      className={cn("capybara-prose", className)}
+      components={components}
+      isAnimating={false}
+      mode="static"
+      {...props}
+    />
+  );
 }

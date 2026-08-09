@@ -16,6 +16,7 @@ export function SessionDialog({
   onCreate,
   onDelete,
   deletingSessionID,
+  pendingApprovalSessionIDs = [],
 }: {
   onCreate: () => void;
   onDelete: (session: SessionInfo) => void;
@@ -23,6 +24,8 @@ export function SessionDialog({
   onSelect: (sessionID: string) => void;
   deletingSessionID?: string;
   open: boolean;
+  /** Sessions with an approval request still waiting for an answer. */
+  pendingApprovalSessionIDs?: string[];
   selectedSessionID: string;
   sessions: SessionInfo[];
 }) {
@@ -52,6 +55,15 @@ export function SessionDialog({
                   <button className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left" onClick={() => onSelect(session.id)} type="button">
                     <MessageSquarePlus className="size-4 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 truncate">{sessionName(session)}</span>
+                    {/* A blocked run is invisible once you switch away, so it is flagged here. */}
+                    {pendingApprovalSessionIDs.includes(session.id) && (
+                      <span
+                        className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+                        title="这个会话有待批准的操作，正在等待你回复"
+                      >
+                        待批准
+                      </span>
+                    )}
                     {session.id === selectedSessionID && <Check className="size-4 shrink-0" />}
                   </button>
                   <Button

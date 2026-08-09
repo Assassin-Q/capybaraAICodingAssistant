@@ -21,9 +21,39 @@ export interface IdeaRuntimeConfig {
   connected?: boolean;
   ideaTheme?: "dark" | "light";
   error?: string;
+  /** True when a restart only re-probed an external server without stopping it. */
+  reconnectedOnly?: boolean;
+  /** PID owning the port when the server is not plugin-managed. */
+  externalPid?: number;
 }
 
 export type IdeaTheme = "dark" | "light";
+
+export interface IdeaThemeOption {
+  current: boolean;
+  dark: boolean;
+  id: string;
+  name: string;
+}
+
+export interface IdeaThemeSettings {
+  currentThemeId?: string;
+  currentThemeName?: string;
+  darkThemeId?: string;
+  lightThemeId?: string;
+  message?: string;
+  success: boolean;
+  syncWithOs: boolean;
+  syncWithOsSupported: boolean;
+  theme: IdeaTheme;
+  themes: IdeaThemeOption[];
+}
+
+export interface IdeaThemeMappingRequest {
+  darkThemeId: string;
+  lightThemeId: string;
+  syncWithOs?: boolean;
+}
 
 export interface MemoryPluginInfo {
   id: string;
@@ -58,6 +88,9 @@ export interface MemorySystemStatus {
   environmentSyncEnabled: boolean;
   memoryProvider?: string;
   memoryModel?: string;
+  /** One captured memory ≈ one extra structured-output request to the capture model. */
+  captureCallsTotal: number;
+  captureCallsThisMonth: number;
   storagePath: string;
   dashboardUrl: string;
   lastEnvironmentScan?: number;
@@ -228,14 +261,22 @@ const normalizeContextEvent = (raw: unknown): IdeContextEvent | null => {
 export const ideaApi = {
   getRuntimeConfig: () => request<IdeaRuntimeConfig>("/opencode-info"),
 
-  /** Re-discovers (and, if plugin-managed, relaunches) the local OpenCode server. */
-  restartOpenCode: () =>
-    request<IdeaRuntimeConfig>("/opencode/restart", { body: "{}", method: "POST" }),
+  /**
+   * Re-discovers the local OpenCode server. A plugin-managed server is relaunched; an
+   * externally started one is only re-probed unless `force` is set, because OpenCode loads
+   * plugins once at startup and re-probing does not reload them.
+   */
+  restartOpenCode: (force = false) =>
+    request<IdeaRuntimeConfig>("/opencode/restart", {
+      body: JSON.stringify({ force }),
+      method: "POST",
+    }),
 
   /**
    * Approval mode lives in the plugin, not in OpenCode: `PATCH /session` and `PATCH /config`
-   * both accept a `permission` payload, return 200 and discard it. The plugin's bridge enforces
-   * the mode through OpenCode's `permission.ask` hook instead.
+   * both accept a `permission` payload, return 200 and discard it (verified against 1.18.12).
+   * The bridge plugin enforces the mode through OpenCode's `permission.ask` hook, which reads
+   * the decision back from `/api/approval-mode/decide`.
    */
   getApprovalMode: (sessionID: string) =>
     request<{ sessionID: string; mode: string }>(
@@ -248,11 +289,45 @@ export const ideaApi = {
       method: "POST",
     }),
 
+  /** Sessions currently blocked on an approval, across every session — not just the visible one. */
+  getPendingApprovals: () => request<{ sessions: string[] }>("/approval-mode/pending"),
+
+  setPendingApproval: (sessionID: string, pending: boolean) =>
+    request<{ sessions: string[] }>("/approval-mode/pending", {
+      body: JSON.stringify({ pending, sessionID }),
+      method: "POST",
+    }),
+
   /** Mode → operation labels, so the picker renders exactly what the plugin enforces. */
   getApprovalModeRules: () =>
     request<{
       modes: Array<{ id: string; label: string; allow: string[]; ask: string[] }>;
     }>("/approval-mode/rules"),
+
+  /**
+   * Deletes a provider from opencode.jsonc. OpenCode's `PATCH /config` can only merge, so this
+   * is the only way to actually remove one; the plugin backs the file up before editing.
+   */
+  removeProvider: (providerID: string) =>
+    request<{ success: boolean; message?: string; file?: string }>("/opencode/remove-provider", {
+      body: JSON.stringify({ providerID }),
+      method: "POST",
+    }),
+
+  /** Switches IDEA's own look-and-feel so the IDE and the panel stay in sync. */
+  setIdeaTheme: (theme: IdeaTheme) =>
+    request<IdeaThemeSettings>("/ide/theme", {
+      body: JSON.stringify({ theme }),
+      method: "POST",
+    }),
+
+  getIdeaThemeSettings: () => request<IdeaThemeSettings>("/ide/theme"),
+
+  updateIdeaThemeSettings: (settings: IdeaThemeMappingRequest) =>
+    request<IdeaThemeSettings>("/ide/theme/settings", {
+      body: JSON.stringify(settings),
+      method: "POST",
+    }),
 
   getProjectPath: async () => {
     const response = await request<{ path?: string }>("/project-path");
@@ -352,7 +427,8 @@ export const ideaApi = {
 export const subscribeIdeaEvents = (
   onContext: (event: IdeContextEvent) => void,
   onTheme?: (theme: IdeaTheme) => void,
-  onError?: () => void
+  onError?: () => void,
+  onApprovalPending?: (sessionIDs: string[]) => void
 ) => {
   const source = new EventSource(`${localApiBaseUrl}/events`);
 
@@ -386,6 +462,14 @@ export const subscribeIdeaEvents = (
   source.addEventListener("chat_message", handleMessage);
   source.addEventListener("ide.context", handleMessage);
   source.addEventListener("ide.theme", handleTheme);
+  source.addEventListener("approval.pending", (event: MessageEvent<string>) => {
+    try {
+      const parsed = JSON.parse(event.data) as { sessions?: unknown };
+      if (Array.isArray(parsed.sessions)) onApprovalPending?.(parsed.sessions.map(String));
+    } catch {
+      // Ignore malformed events without interrupting the shared stream.
+    }
+  });
 
   return () => source.close();
 };

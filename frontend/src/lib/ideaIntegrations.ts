@@ -33,9 +33,20 @@ export interface SkillHubSkill {
   name?: string;
   description?: string;
   version?: string;
-  /** "community" or "@org" for enterprise sources. */
+  /** clawhub / community / enterprise. */
   source?: string;
   namespaceHandle?: string;
+  category?: string;
+  iconUrl?: string;
+  homepage?: string;
+  owner?: string;
+  downloads: number;
+  installs: number;
+  stars: number;
+  createdAt: number;
+  updatedAt: number;
+  tags: string[];
+  requiresApiKey: boolean;
 }
 
 export interface SkillHubSearchResponse {
@@ -43,7 +54,22 @@ export interface SkillHubSearchResponse {
   query: string;
   results: SkillHubSkill[];
   warnings: string[];
+  total: number;
+  page: number;
+  pageSize: number;
   message?: string;
+}
+
+export interface SkillHubSearchRequest {
+  query: string;
+  limit?: number;
+  /** Exactly what GET /api/skills accepts; anything else comes back as a 400. */
+  sortBy?: "score" | "downloads" | "stars" | "installs" | "updated_at";
+  order?: "asc" | "desc";
+  page?: number;
+  category?: string;
+  source?: string;
+  requiresApiKey?: boolean;
 }
 
 export interface ManagedPluginFile {
@@ -89,10 +115,13 @@ export interface IdeaExecutionResponse {
 }
 
 export interface IdeaBridgeStatus {
+  success: boolean;
   installed: boolean;
+  enabled: boolean;
   location: string;
   mavenAvailable: boolean;
   gradleAvailable: boolean;
+  message?: string;
 }
 
 const post = <T>(path: string, body?: unknown) =>
@@ -100,6 +129,77 @@ const post = <T>(path: string, body?: unknown) =>
     body: JSON.stringify(body ?? {}),
     method: "POST",
   });
+
+export interface SkillHubFileEntry {
+  path: string;
+  size: number;
+}
+
+export interface SkillHubVersion {
+  version: string;
+  changelog: string;
+  createdAt: number;
+  latest: boolean;
+}
+
+export interface SkillHubTraceItem {
+  key: string;
+  score: number;
+  reason: string;
+}
+
+export interface SkillHubTraceDimension {
+  key: string;
+  label: string;
+  score: number;
+  reason: string;
+  items: SkillHubTraceItem[];
+}
+
+export interface SkillHubEvaluation {
+  overall: number;
+  userSummary: string;
+  dimensions: SkillHubTraceDimension[];
+}
+
+export interface SkillHubSecurityReport {
+  lab: string;
+  status: string;
+  statusText: string;
+  reportUrl: string;
+}
+
+export interface SkillHubDetail {
+  success: boolean;
+  message?: string;
+  slug: string;
+  canonicalName: string;
+  name: string;
+  owner: string;
+  iconUrl: string;
+  description: string;
+  category: string;
+  subCategories: string[];
+  version: string;
+  updatedAt: number;
+  downloads: number;
+  stars: number;
+  installs: number;
+  requiresApiKey: boolean;
+  homepage: string;
+  files: SkillHubFileEntry[];
+  versions: SkillHubVersion[];
+  evaluation?: SkillHubEvaluation;
+  security: SkillHubSecurityReport[];
+}
+
+export interface SkillHubFileContent {
+  success: boolean;
+  message?: string;
+  path: string;
+  text: string;
+  truncated: boolean;
+}
 
 export const skillsApi = {
   list: () => ideaRequest<ManagedSkillInfo[]>("/skills"),
@@ -116,14 +216,21 @@ export const skillsApi = {
   hubStatus: () => ideaRequest<SkillHubStatus>("/skills/hub/status"),
 
 
-  searchHub: (query: string, limit = 20) =>
-    post<SkillHubSearchResponse>("/skills/hub/search", { limit, query }),
+  searchHub: (input: SkillHubSearchRequest) =>
+    post<SkillHubSearchResponse>("/skills/hub/search", input),
 
   installFromHub: (input: {
     coordinate: string;
     scope: ManagedScope;
     overwrite?: boolean;
   }) => post<SkillActionResponse>("/skills/hub/install", input),
+
+  /** Detail, file tree, versions and the TRACE report in one round trip. */
+  hubDetail: (slug: string, namespace: string) =>
+    post<SkillHubDetail>("/skills/hub/detail", { namespace, slug }),
+
+  hubFile: (slug: string, namespace: string, path: string) =>
+    post<SkillHubFileContent>("/skills/hub/file", { namespace, path, slug }),
 };
 
 export const pluginsApi = {
@@ -150,6 +257,9 @@ export interface GitChangedFile {
   path: string;
   status: string;
   staged: boolean;
+  additions: number;
+  deletions: number;
+  binary: boolean;
 }
 
 export interface GitStatusResponse {
@@ -183,6 +293,10 @@ export const gitApi = {
     post<{ success: boolean; message?: string }>("/git/commit-dialog", { message }),
 
   openPushDialog: () => post<{ success: boolean; message?: string }>("/git/push"),
+
+  /** Opens IDEA's native diff for one file: HEAD on the left, working tree on the right. */
+  openFileDiff: (path: string) =>
+    post<{ success: boolean; message?: string }>("/git/file-diff", { path }),
 };
 
 export const ideaExecutionApi = {
@@ -203,5 +317,8 @@ export const ideaExecutionApi = {
     ),
 
   bridgeStatus: () => ideaRequest<IdeaBridgeStatus>("/ide/bridge"),
+
+  setBridgeEnabled: (enabled: boolean) =>
+    post<IdeaBridgeStatus>("/ide/bridge/enabled", { enabled }),
 
 };

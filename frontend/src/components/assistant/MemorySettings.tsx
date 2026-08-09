@@ -418,7 +418,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
         <div className="mt-3 divide-y divide-border/40">
           <ToggleRow checked={status?.enabled ?? true} description="暂停时保留已有数据，但不再注入、捕获或更新用户画像。" disabled={!status || Boolean(busy) || !integrated} label="启用用户记忆" onCheckedChange={(enabled) => void saveSettings({ enabled })} />
           <ToggleRow checked={status?.autoInstall ?? true} description="全局没有任何记忆插件时，自动安装 OpenCode Mem。" disabled={!status || Boolean(busy)} label="缺失时自动安装" onCheckedChange={(autoInstall) => void saveSettings({ autoInstall })} />
-          <ToggleRow checked={status?.autoCaptureEnabled ?? true} description="会话空闲后提取可长期复用的技术决策、排错经验和偏好。" disabled={controlsDisabled} label="自动捕获" onCheckedChange={(autoCaptureEnabled) => void saveSettings({ autoCaptureEnabled })} />
+          <ToggleRow checked={status?.autoCaptureEnabled ?? true} description="会话空闲后提取可长期复用的技术决策、排错经验和偏好。每次提取会额外调用一次下面这个模型；关掉后仍会在 OpenCode 自带的 compaction 里提取，不额外计费。" disabled={controlsDisabled} label="自动捕获（会额外调用模型）" onCheckedChange={(autoCaptureEnabled) => void saveSettings({ autoCaptureEnabled })} />
           <ToggleRow checked={status?.crossProjectEnabled ?? true} description="检索所有项目的记忆，让个人偏好和通用经验跟随到新工作区。" disabled={controlsDisabled} label="跨项目召回" onCheckedChange={(crossProjectEnabled) => void saveSettings({ crossProjectEnabled })} />
           <ToggleRow checked={status?.profileEnabled ?? true} description="根据长期交互整理沟通偏好、工作习惯和常用工作流。" disabled={controlsDisabled} label="学习用户画像" onCheckedChange={(profileEnabled) => void saveSettings({ profileEnabled })} />
           <ToggleRow checked={status?.environmentSyncEnabled ?? true} description="扫描本机 SDK、运行时和工具路径，并同步为一条受控的全局记忆。" disabled={controlsDisabled} label="同步开发环境" onCheckedChange={(environmentSyncEnabled) => void saveSettings({ environmentSyncEnabled })} />
@@ -431,7 +431,17 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
             onChange={(nextModel) => { setProvider(nextModel.providerID); setModel(nextModel.id); }}
             value={selectedMemoryModelKey}
           />
-          <p className="text-[11px] leading-4 text-muted-foreground">仅显示 OpenCode 当前已配置、已启用且可以直接调用的供应商模型。</p>
+          <p className="text-[11px] leading-4 text-muted-foreground">
+            仅显示 OpenCode 当前已配置、已启用且可以直接调用的供应商模型。
+            这个模型只用来整理记忆，选便宜的小模型即可，不影响对话质量。
+          </p>
+          {status && status.captureCallsTotal > 0 && (
+            <p className="rounded-md bg-muted/40 px-2.5 py-1.5 text-[11px] leading-5 text-muted-foreground">
+              已提取记忆 <b className="font-mono">{status.captureCallsTotal}</b> 条
+              （本月 <b className="font-mono">{status.captureCallsThisMonth}</b> 条）。
+              每条对应一次额外的模型调用——这是自动捕获的实际开销。
+            </p>
+          )}
         </div>
         <div className="mt-3 flex justify-end"><Button disabled={controlsDisabled || !provider.trim() || !model.trim() || !modelChanged} onClick={() => void saveSettings({ memoryModel: model.trim(), memoryProvider: provider.trim() })} size="sm" type="button" variant="secondary">保存整理模型</Button></div>
       </section>

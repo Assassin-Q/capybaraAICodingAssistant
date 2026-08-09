@@ -41,10 +41,22 @@ export const rulesForApprovalMode = (mode: ApprovalMode): PermissionRule[] => {
 
   const editEffect: PermissionEffect = mode === "auto" ? "allow" : "ask";
   return [
+    // Reset any broader rule inherited from an earlier mode. OpenCode evaluates
+    // the last matching rule, so the explicit safe rules below still win.
+    rule("*", "ask"),
     rule("read", "allow"),
     rule("glob", "allow"),
     rule("grep", "allow"),
     rule("list", "allow"),
+    rule("lsp", "allow"),
+    rule("todowrite", "allow"),
+    rule("question", "allow"),
+    rule("idea_project_context", "allow"),
+    rule("idea_editor_context", "allow"),
+    rule("idea_diagnostics", "allow"),
+    rule("idea_symbol", "allow"),
+    rule("idea_read_run_log", "allow"),
+    rule("idea_navigate", "allow"),
     rule("edit", editEffect),
     rule("bash", "ask"),
     rule("task", "ask"),

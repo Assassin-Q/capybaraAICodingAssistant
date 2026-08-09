@@ -28,7 +28,11 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* The CJK faces are listed explicitly: without them Chinese fell back to whatever the OS
+     picked while still being laid out on Inter's metrics, which is what made it look cramped. */
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC",
+    "Source Han Sans SC", sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
@@ -118,6 +122,93 @@ textarea,
 input,
 select {
   font: inherit;
+}
+
+/**
+ * Reading layer for assistant markdown.
+ *
+ * Streamdown ships no typography of its own, so headings, paragraphs and lists were rendering at
+ * browser defaults: 1em line-height, 1em paragraph margins, oversized h1/h2. Mixed CN/EN prose at
+ * those metrics reads as a wall of text. Everything below is spacing and rhythm only — colours
+ * still come from the theme tokens.
+ */
+.capybara-prose {
+  font-size: 0.875rem;
+  line-height: 1.75;
+  letter-spacing: 0.01em;
+  text-wrap: pretty;
+}
+
+.capybara-prose p,
+.capybara-prose blockquote,
+.capybara-prose table {
+  margin-block: 0.75em;
+}
+
+.capybara-prose h1,
+.capybara-prose h2,
+.capybara-prose h3,
+.capybara-prose h4 {
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+  margin-block: 1.6em 0.6em;
+}
+
+.capybara-prose h1 { font-size: 1.25rem; }
+.capybara-prose h2 { font-size: 1.125rem; }
+.capybara-prose h3 { font-size: 1rem; }
+.capybara-prose h4 { font-size: 0.9375rem; }
+
+.capybara-prose ul,
+.capybara-prose ol {
+  margin-block: 0.75em;
+  padding-inline-start: 1.5em;
+}
+
+.capybara-prose ul { list-style: disc; }
+.capybara-prose ol { list-style: decimal; }
+.capybara-prose li { margin-block: 0.35em; }
+.capybara-prose li > p { margin-block: 0.25em; }
+
+/* Nested lists sit tighter so the hierarchy reads without extra vertical noise. */
+.capybara-prose li > ul,
+.capybara-prose li > ol {
+  margin-block: 0.35em;
+}
+
+.capybara-prose strong { font-weight: 600; }
+
+.capybara-prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.15em 0.36em;
+  border-radius: 0.3rem;
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+  /* Latin code inside CJK prose needs the tracking removed again. */
+  letter-spacing: 0;
+}
+
+.capybara-prose a {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+}
+
+.capybara-prose blockquote {
+  padding-inline-start: 0.9em;
+  border-inline-start: 2px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+.capybara-prose hr {
+  margin-block: 1.5em;
+  border-color: var(--border);
+}
+
+.capybara-prose th,
+.capybara-prose td {
+  padding: 0.45em 0.7em;
 }
 
 button,

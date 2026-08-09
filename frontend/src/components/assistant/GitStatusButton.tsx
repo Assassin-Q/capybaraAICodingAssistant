@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { GitBranch, GitCommitHorizontal, Sparkles, Upload } from "lucide-react";
+import { AlertTriangle, FileDiff, GitBranch, GitCommitHorizontal, Sparkles, Upload } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,7 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
   }, [refresh]);
 
   const changeCount = status?.files.length ?? 0;
+  const untrackedCount = status?.files.filter((file) => file.status === "未跟踪").length ?? 0;
   const hasChanges = changeCount > 0;
 
   const run = async (label: string, action: () => Promise<{ success: boolean; message?: string }>) => {
@@ -127,66 +128,109 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
           </div>
         )}
 
-        <div className="max-h-56 overflow-y-auto">
+        <div className="max-h-64 overflow-y-auto">
           {changeCount === 0 ? (
             <p className="px-3 py-6 text-center text-xs text-muted-foreground">工作区干净，没有待提交的改动</p>
           ) : (
             status.files.map((file) => (
-              <div className="flex items-center gap-2 px-3 py-1.5" key={file.path}>
+              <button
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-accent/60"
+                key={file.path}
+                onClick={() => void run("diff", () => gitApi.openFileDiff(file.path))}
+                title={`${file.path}\n点击在 IDEA 中对比 HEAD 与当前工作区`}
+                type="button"
+              >
                 <span
                   className={cn(
-                    "shrink-0 text-[10px]",
+                    "w-8 shrink-0 text-[10px]",
                     file.staged ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
                   )}
                 >
                   {file.status}
                 </span>
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={file.path}>
-                  {file.path}
-                </span>
-              </div>
+                <span className="min-w-0 flex-1 truncate font-mono text-[11px]">{file.path}</span>
+                {file.binary ? (
+                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">二进制</span>
+                ) : (
+                  <span className="shrink-0 font-mono text-[10px] tabular-nums">
+                    {file.additions > 0 && (
+                      <span className="text-emerald-600 dark:text-emerald-400">+{file.additions}</span>
+                    )}
+                    {file.additions > 0 && file.deletions > 0 && " "}
+                    {file.deletions > 0 && <span className="text-red-500">-{file.deletions}</span>}
+                  </span>
+                )}
+                <FileDiff className="size-3 shrink-0 text-muted-foreground" />
+              </button>
             ))
           )}
         </div>
+
+        {changeCount > 0 && (
+          <div className="flex items-center gap-2 border-t border-border/40 px-3 py-1.5 text-[10px] text-muted-foreground">
+            <span>共 {changeCount} 个文件</span>
+            {/* Binary files carry no line counts, and `undefined + n` turned the totals into NaN. */}
+            <span className="font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
+              +{status.files.reduce((total, file) => total + (file.additions || 0), 0)}
+            </span>
+            <span className="font-mono tabular-nums text-red-500">
+              -{status.files.reduce((total, file) => total + (file.deletions || 0), 0)}
+            </span>
+            <span className="ml-auto">点击文件可对比</span>
+          </div>
+        )}
+
+        {untrackedCount > 0 && (
+          <div className="flex items-start gap-2 border-t border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+            <span className="min-w-0 flex-1">
+              有 {untrackedCount} 个文件还没纳入 Git。IDEA 的提交窗口默认不会勾选它们，
+              漏掉就不会进这次提交——请在窗口左侧确认勾上，或先把它们加入 .gitignore。
+            </span>
+          </div>
+        )}
 
         {message && (
           <p className="border-t border-border/40 px-3 py-2 text-[11px] text-muted-foreground">{message}</p>
         )}
 
-        <div className="flex flex-wrap gap-1.5 border-t border-border/40 px-3 py-2">
+        <div className="border-t border-border/40 p-2">
           <Button
+            className="w-full justify-center"
             disabled={!hasChanges || busy !== ""}
             onClick={() => void commitWithSummary()}
             size="sm"
             type="button"
           >
             <Sparkles className="size-3.5" />
-            {busy === "summary" ? "生成中…" : "AI 摘要并提交"}
+            {busy === "summary" ? "正在生成摘要…" : "AI 摘要并提交"}
           </Button>
-          <Button
-            disabled={!hasChanges || busy !== ""}
-            onClick={() => void run("commit", () => gitApi.openCommitDialog())}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <GitCommitHorizontal className="size-3.5" />
-            提交
-          </Button>
-          <Button
-            disabled={busy !== ""}
-            onClick={() => void run("push", () => gitApi.openPushDialog())}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <Upload className="size-3.5" />
-            推送
-          </Button>
+          <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+            <Button
+              disabled={!hasChanges || busy !== ""}
+              onClick={() => void run("commit", () => gitApi.openCommitDialog())}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <GitCommitHorizontal className="size-3.5" />
+              直接提交
+            </Button>
+            <Button
+              disabled={busy !== ""}
+              onClick={() => void run("push", () => gitApi.openPushDialog())}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Upload className="size-3.5" />
+              推送
+            </Button>
+          </div>
+          <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
+            都会打开 IDEA 自带窗口，可在那里改摘要、挑文件
+          </p>
         </div>
-        <p className="px-3 pb-2 text-[10px] text-muted-foreground">
-          提交和推送都会打开 IDEA 自带的窗口，你可以在那里改摘要、挑文件。
-        </p>
       </PopoverContent>
     </Popover>
   );

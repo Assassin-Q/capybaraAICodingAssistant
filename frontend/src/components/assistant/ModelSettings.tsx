@@ -11,6 +11,7 @@ import { ModelVariantEditor } from "@/components/assistant/ModelVariantEditor";
 import { normalizedVariantOverrides } from "@/components/assistant/modelVariantConfig";
 import type { ModelVariantMap } from "@/components/assistant/modelVariantConfig";
 import { errorMessage } from "@/components/assistant/shared";
+import { ideaApi } from "@/lib/idea";
 import { openCodeApi } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
 import type { ModelVariantLabels } from "@/lib/preferences";
@@ -23,8 +24,13 @@ interface ModelSettingsProps {
   projectPath?: string;
 }
 
+/** Fallback when neither the user nor the catalog supplies one; the schema demands a number. */
+const DEFAULT_MAX_OUTPUT = 8192;
+
 interface ModelDraft {
   context: string;
+  /** OpenCode Model.limit requires context AND output; saving without output returns 400. */
+  maxOutput: string;
   enabled: boolean;
   id: string;
   inputModalities: ModelModality[];
@@ -74,6 +80,7 @@ const emptyProvider = (): ProviderDraft => ({
 
 const emptyModel = (): ModelDraft => ({
   context: "",
+  maxOutput: "",
   enabled: true,
   id: "",
   inputModalities: ["text"],
@@ -132,6 +139,9 @@ const modelDraftFromConfig = (
   context: model.limit?.context || catalogModel?.limit?.context
     ? String(model.limit?.context ?? catalogModel?.limit?.context)
     : "",
+  maxOutput: model.limit?.output || catalogModel?.limit?.output
+    ? String(model.limit?.output ?? catalogModel?.limit?.output)
+    : "",
   enabled,
   id,
   inputModalities: normalizeModalities(
@@ -154,6 +164,7 @@ const modelDraftFromConfig = (
 
 const modelDraftFromCatalog = (model: ModelInfo, enabled: boolean): ModelDraft => ({
   context: model.limit?.context ? String(model.limit.context) : "",
+  maxOutput: model.limit?.output ? String(model.limit.output) : "",
   enabled,
   id: model.id,
   inputModalities: normalizeModalities(
@@ -167,12 +178,20 @@ const modelDraftFromCatalog = (model: ModelInfo, enabled: boolean): ModelDraft =
   ),
   reasoning: model.capabilities?.reasoning === true,
   toolCall: model.capabilities?.toolcall !== false,
-  variants: {},
+  // Thinking levels the provider already publishes, so a matched ID brings its variants along.
+  variants: model.variants ?? {},
 });
 const toModelConfig = (draft: ModelDraft, existing?: CustomModelConfig): CustomModelConfig => ({
   ...existing,
   attachment: draft.inputModalities.includes("image"),
-  limit: draft.context.trim() ? { context: Number(draft.context) || undefined } : undefined,
+  // The schema marks both keys required. A missing output is what produced
+  // "Missing key at [\"provider\"][...][\"limit\"][\"output\"]" on every save.
+  limit: draft.context.trim() || draft.maxOutput.trim()
+    ? {
+      context: Number(draft.context) || existing?.limit?.context || 0,
+      output: Number(draft.maxOutput) || existing?.limit?.output || DEFAULT_MAX_OUTPUT,
+    }
+    : undefined,
   modalities: { input: draft.inputModalities, output: draft.outputModalities },
   name: draft.name.trim() || draft.id.trim(),
   reasoning: draft.reasoning,
@@ -293,6 +312,48 @@ export function ModelSettings({
   const disabledModelIDs = new Set(selectedConfig.blacklist ?? []);
   const modelIDs = [...new Set([...Object.keys(catalogModels), ...Object.keys(configuredModels), ...disabledModelIDs])]
     .filter((id) => configuredModels[id]?.status !== "deprecated");
+
+  /**
+   * Typing an ID the provider already publishes fills in everything we know about it — context,
+   * max output, capabilities, modalities and variants — instead of making the user retype the
+   * spec by hand. Fields the user already touched are left alone, so it never fights edits.
+   */
+  const applyModelID = (nextID: string, known?: ModelInfo) => {
+    setModelDraft((current) => {
+      const trimmed = nextID.trim();
+      const match = known ?? catalogModels[trimmed];
+      if (!match) return { ...current, id: nextID };
+      const untouched = current.id.trim() === "" || current.id.trim() === trimmed
+        ? true
+        : !current.context && !current.maxOutput && !current.name;
+      if (!untouched) return { ...current, id: nextID };
+      const filled = modelDraftFromCatalog(match, current.enabled);
+      return { ...filled, id: nextID, name: current.name.trim() || filled.name };
+    });
+  };
+
+  /**
+   * Every model id in the catalog that looks like what is being typed, across all providers.
+   * A custom provider has no catalog of its own, so matching only inside it would never suggest
+   * anything — which is the case where filling the spec in by hand hurts most.
+   */
+  const modelIDSuggestions = (query: string): Array<{ model: ModelInfo; providerID: string }> => {
+    const needle = query.trim().toLowerCase();
+    if (needle.length < 2) return [];
+    const seen = new Set<string>();
+    const matches: Array<{ model: ModelInfo; providerID: string }> = [];
+    catalog.all.forEach((provider) => {
+      Object.values(provider.models ?? {}).forEach((model) => {
+        if (matches.length >= 8) return;
+        if (!model.id.toLowerCase().includes(needle)) return;
+        const key = `${provider.id}/${model.id}`;
+        if (seen.has(key) || model.id === query.trim()) return;
+        seen.add(key);
+        matches.push({ model, providerID: provider.id });
+      });
+    });
+    return matches;
+  };
 
   const draftForModel = (modelID: string): ModelDraft => {
     const enabled = !disabledModelIDs.has(modelID);
@@ -463,23 +524,20 @@ export function ModelSettings({
     setSaving(true);
     setError("");
     try {
-      const remaining = Object.fromEntries(
-        Object.entries(config.provider ?? {}).filter(([id]) => id !== providerID)
-      );
-      const disabledProviders = [...new Set([...(config.disabled_providers ?? []), providerID])];
-      await openCodeApi.updateConfig({ disabled_providers: disabledProviders, provider: remaining }, projectPath);
+      // Edits opencode.jsonc directly — PATCH /config only merges and cannot remove a key.
+      const removal = await ideaApi.removeProvider(providerID);
+      if (!removal.success) {
+        setError(removal.message ?? `无法删除 ${providerID}`);
+        return;
+      }
 
-      const verified = await openCodeApi.getConfig(projectPath);
-      const stillPresent = Object.keys(verified.provider ?? {}).includes(providerID);
+      const verified = await openCodeApi.getConfig(projectPath).catch(() => config);
       setPendingDeleteProviderID(undefined);
-      applyLocalConfig(verified, Object.keys(verified.provider ?? {})[0] ?? "");
+      applyLocalConfig(verified, configuredProviderIDs(verified)[0] ?? "");
       setSelectedID(configuredProviderIDs(verified)[0] ?? catalog.connected[0] ?? "");
       onChanged();
-      if (stillPresent) {
-        setError(
-          `OpenCode 未删除 ${providerID}，已改为停用。该条目仍在 opencode.jsonc 中，可手动删除后重启服务。`
-        );
-      }
+      // OpenCode caches config at startup, so the list only settles after a reload.
+      setError(removal.message ?? "");
     } catch (deleteError) {
       setError(errorMessage(deleteError));
     } finally {
@@ -540,9 +598,32 @@ export function ModelSettings({
   const modelEditor = (
     <div className="grid gap-4 bg-muted/25 px-3 py-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        <SettingField label="模型 ID"><Input disabled={editingModelID !== "new"} onChange={(event) => setModelDraft((current) => ({ ...current, id: event.target.value }))} placeholder="例如 gpt-5.5" value={modelDraft.id} /></SettingField>
+        <SettingField label="模型 ID">
+          <div className="relative">
+            <Input disabled={editingModelID !== "new"} onChange={(event) => applyModelID(event.target.value)} placeholder="例如 gpt-5.5" title="选中建议即可自动带出上下文、模态和档位" value={modelDraft.id} />
+            {editingModelID === "new" && modelIDSuggestions(modelDraft.id).length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md">
+                {modelIDSuggestions(modelDraft.id).map(({ model, providerID }) => (
+                  <button
+                    className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-accent"
+                    key={`${providerID}/${model.id}`}
+                    onClick={() => applyModelID(model.id, model)}
+                    type="button"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-mono text-[11px]">{model.id}</span>
+                      <span className="block truncate text-[10px] text-muted-foreground">{model.name}</span>
+                    </span>
+                    <Badge variant="outline">{providerName(providerID, catalog)}</Badge>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </SettingField>
         <SettingField label="显示名称"><Input onChange={(event) => setModelDraft((current) => ({ ...current, name: event.target.value }))} placeholder="模型名称" value={modelDraft.name} /></SettingField>
         <SettingField label="上下文大小"><Input inputMode="numeric" onChange={(event) => setModelDraft((current) => ({ ...current, context: event.target.value }))} placeholder="例如 200000" value={modelDraft.context} /></SettingField>
+        <SettingField label="最大输出"><Input inputMode="numeric" onChange={(event) => setModelDraft((current) => ({ ...current, maxOutput: event.target.value }))} placeholder={String(DEFAULT_MAX_OUTPUT)} value={modelDraft.maxOutput} /></SettingField>
         <div className="grid gap-2 pt-5"><CapabilityToggle checked={modelDraft.enabled} label="启用此模型" onCheckedChange={(enabled) => setModelDraft((current) => ({ ...current, enabled }))} /></div>
         <CapabilityToggle checked={modelDraft.reasoning} label="支持思考" onCheckedChange={(reasoning) => setModelDraft((current) => ({ ...current, reasoning }))} />
         <CapabilityToggle checked={modelDraft.toolCall} label="支持工具调用" onCheckedChange={(toolCall) => setModelDraft((current) => ({ ...current, toolCall }))} />
@@ -647,15 +728,21 @@ export function ModelSettings({
           {editingModelID === "new" && modelEditor}
           {modelIDs.length === 0 && editingModelID !== "new" ? <p className="p-4 text-sm text-muted-foreground">尚未配置模型</p> : modelIDs.map((id) => {
             const model = draftForModel(id);
+            // The provider marks retired models "deprecated"; the composer filters those out, so
+            // showing them here as plain "enabled" made the two lists silently disagree.
+            const deprecated = catalogModels[id]?.status === "deprecated" || configuredModels[id]?.status === "deprecated";
             return <div key={id}>
               <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-accent/50">
                 <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => toggleModelEditor(id)} type="button">
-                  <span className={cn("size-1.5 shrink-0 rounded-full", model.enabled ? "bg-emerald-500" : "bg-muted-foreground")} />
+                  <span className={cn("size-1.5 shrink-0 rounded-full", deprecated ? "bg-muted-foreground/60" : model.enabled ? "bg-emerald-500" : "bg-muted-foreground")} />
                   <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{model.name}</span><span className="block truncate font-mono text-[11px] text-muted-foreground">{id}</span></span>
+                  {deprecated && <Badge title="供应商已下线该模型，输入框的模型选择里不会出现" variant="outline">已弃用</Badge>}
                   {model.context && <Badge variant="secondary">{model.context}</Badge>}
                   <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", editingModelID === id && "rotate-180")} />
                 </button>
-                <Switch aria-label={`${model.enabled ? "停用" : "启用"}模型 ${model.name}`} checked={model.enabled} disabled={saving} onCheckedChange={(enabled) => void setModelEnabled(id, enabled)} size="sm" />
+                {/* A deprecated model cannot be used at all, so the toggle reads off and locked
+                    rather than claiming the model is enabled. */}
+                <Switch aria-label={deprecated ? `${model.name} 已被供应商下线` : `${model.enabled ? "停用" : "启用"}模型 ${model.name}`} checked={model.enabled && !deprecated} disabled={saving || deprecated} onCheckedChange={(enabled) => void setModelEnabled(id, enabled)} size="sm" title={deprecated ? "供应商已下线该模型，无法启用" : undefined} />
                 <Button aria-label={`移除模型 ${model.name}`} className="size-8 shrink-0" disabled={saving} onClick={() => setPendingDeleteModelID(id)} size="icon-sm" title="移除模型" type="button" variant="ghost"><Trash2 className="size-3.5 text-muted-foreground" /></Button>
               </div>
               {editingModelID === id && modelEditor}

@@ -613,22 +613,23 @@ export const openCodeApi = {
 
   getSessionApprovalMode: async (sessionID: string, directory?: string): Promise<ApprovalMode> => {
     const rules = await openCodeApi.getSessionPermissionRules(sessionID, directory);
+    if (rules.length === 0) {
+      await openCodeApi.setSessionApprovalMode(sessionID, "ask", directory);
+      return "ask";
+    }
     return inferApprovalMode(rules);
   },
 
   setSessionApprovalMode: async (sessionID: string, mode: ApprovalMode, directory?: string): Promise<void> => {
-    const sessionResponse = await request<unknown>(
-      `/session/${encodeURIComponent(sessionID)}`,
-      undefined,
-      directoryParams(directory)
-    );
-    const session = asRecord(unwrapData(sessionResponse));
-    const currentRules = permissionRules(session?.permission);
-    if (inferApprovalMode(currentRules) !== mode) {
-      await request<unknown>(`/session/${encodeURIComponent(sessionID)}`, {
-        body: JSON.stringify({ permission: legacySessionRules(rulesForApprovalMode(mode)) }),
-        method: "PATCH",
-      }, directoryParams(directory));
+    const currentRules = await openCodeApi.getSessionPermissionRules(sessionID, directory);
+    if (currentRules.length > 0 && inferApprovalMode(currentRules) === mode) return;
+    const response = await request<unknown>(`/session/${encodeURIComponent(sessionID)}`, {
+      body: JSON.stringify({ permission: legacySessionRules(rulesForApprovalMode(mode)) }),
+      method: "PATCH",
+    }, directoryParams(directory));
+    const savedRules = permissionRules(asRecord(unwrapData(response))?.permission);
+    if (inferApprovalMode(savedRules) !== mode) {
+      throw new Error("OpenCode 未应用所选审批模式，请检查服务版本");
     }
   },
 

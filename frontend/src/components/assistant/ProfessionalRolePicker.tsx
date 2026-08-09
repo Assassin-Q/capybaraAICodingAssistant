@@ -22,10 +22,13 @@ interface ProfessionalRolePickerProps {
 }
 
 export function ProfessionalRolePicker({ onChange, preferences }: ProfessionalRolePickerProps) {
-  if (!preferences.enabled) return null;
-  const enabledRoles = PROFESSIONAL_ROLE_PRESETS.filter((preset) => preferences.roles[preset.id]?.enabled);
+  // Preferences saved before this feature existed have no `professionalRoles` key at all,
+  // and reading `.enabled` off that undefined crashed the whole composer.
+  if (!preferences?.enabled) return null;
+  const roles = preferences.roles ?? {};
+  const enabledRoles = PROFESSIONAL_ROLE_PRESETS.filter((preset) => roles[preset.id]?.enabled);
   const selected = findProfessionalRolePreset(preferences.selectedRoleId);
-  const label = selected && preferences.roles[selected.id]?.enabled ? selected.name : "自动角色";
+  const label = selected && roles[selected.id]?.enabled ? selected.name : "自动角色";
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>

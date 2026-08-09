@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AssistantMessage, AssistantThinking } from "@/components/assistant/AssistantMessage";
 import { ContextChip } from "@/components/assistant/ContextChip";
+import { ErrorBoundary } from "@/components/assistant/ErrorBoundary";
 import { GitStatusButton } from "@/components/assistant/GitStatusButton";
 import { ContextUsageIndicator } from "@/components/assistant/TokenUsage";
 import type { ConversationTurn } from "@/components/assistant/conversationTurns";
@@ -24,6 +25,13 @@ import {
   VariantPicker,
 } from "@/components/assistant/ModelPicker";
 import { ApprovalModePicker } from "@/components/assistant/ApprovalModePicker";
+import {
+  annotationsAsPrompt,
+  BrowserAnnotationChip,
+  captureBrowserScreenshot,
+  useBrowserAnnotations,
+} from "@/components/assistant/BrowserAnnotations";
+import { ProfessionalRolePicker } from "@/components/assistant/ProfessionalRolePicker";
 import { modelVariantIDs } from "@/components/assistant/modelVariants";
 import { PermissionInline } from "@/components/assistant/PermissionInline";
 import { PromptQueue, type QueuedPrompt } from "@/components/assistant/PromptQueue";
@@ -65,6 +73,7 @@ export interface AssistantShellProps {
   composerText: string;
   conversationTurns: ConversationTurn[];
   currentPermissions: PermissionRequest[];
+  pendingApprovalSessionIDs: string[];
   currentQuestions: QuestionRequest[];
   todos: import("@/lib/opencode").TodoInfo[];
   currentSession?: SessionInfo;
@@ -106,6 +115,7 @@ export interface AssistantShellProps {
   onOpenModelSettings: () => void;
   onPermissionReply: (request: PermissionRequest, reply: PermissionReply) => void;
   onPreferencesChanged: (preferences: WorkspacePreferences) => void;
+  onProfessionalRoleChange: (roleId: string) => void;
   onPrompt: (message: PromptInputMessage) => Promise<boolean>;
   onQuestionChange: (request: QuestionRequest, index: number, values: string[]) => void;
   onQuestionReject: (request: QuestionRequest) => void;
@@ -139,6 +149,50 @@ function StatusDot({ connected }: { connected: boolean | null }) {
 
 export function AssistantShell(props: AssistantShellProps) {
   const [composerHovered, setComposerHovered] = useState(false);
+  const { annotations: browserAnnotations, clear: clearBrowserAnnotations } = useBrowserAnnotations();
+
+  /**
+   * Browser annotations ride along with the next prompt and are cleared once it is accepted —
+   * a chip that only displayed a count would tell the model nothing.
+   */
+  const submitPrompt = async (message: PromptInputMessage): Promise<boolean> => {
+    const annotationText = annotationsAsPrompt(browserAnnotations);
+    if (!annotationText) return onPrompt(message);
+    // DeepSeek V4 Flash and other text-only models answer an image attachment with
+    // "Model only supports text input; received unsupported content type 'image_url'" and the
+    // whole turn 400s — so the crops only ship when the selected model declares image input.
+    const acceptsImages = Boolean(selectedModel?.capabilities?.input?.image);
+    const shots = acceptsImages
+      ? (await Promise.all(browserAnnotations.map((annotation, index) => captureBrowserScreenshot(
+        annotation.rect
+          ? {
+            height: annotation.rect.height,
+            width: annotation.rect.width,
+            x: annotation.rect.left,
+            y: annotation.rect.top,
+          }
+          : undefined,
+        `annotation-${index + 1}`
+      )))).filter((file): file is File => Boolean(file))
+      : [];
+    const accepted = await onPrompt({
+      files: [
+        ...message.files,
+        ...shots.map((file, index) => ({
+          file,
+          filename: file.name,
+          id: `browser-shot-${index}-${file.lastModified}`,
+          mediaType: file.type,
+          type: "file" as const,
+          url: URL.createObjectURL(file),
+        })),
+      ],
+      text: [message.text, annotationText].filter(Boolean).join("\n\n"),
+    });
+    if (accepted) clearBrowserAnnotations();
+    return accepted;
+  };
+
   // Bumped when a run starts so the conversation pins to the bottom and the
   // thinking placeholder is fully visible.
   const [pinToBottom, setPinToBottom] = useState(0);
@@ -159,6 +213,7 @@ export function AssistantShell(props: AssistantShellProps) {
     composerText,
     conversationTurns,
     currentPermissions,
+    pendingApprovalSessionIDs,
     currentQuestions,
     todos,
     currentSession,
@@ -200,6 +255,7 @@ export function AssistantShell(props: AssistantShellProps) {
     onOpenModelSettings,
     onPermissionReply,
     onPreferencesChanged,
+    onProfessionalRoleChange,
     onPrompt,
     onQuestionChange,
     onQuestionReject,
@@ -223,10 +279,16 @@ export function AssistantShell(props: AssistantShellProps) {
   const composerBeamStrength = isGenerating ? 1 : composerHovered ? 0.75 : 0.5;
 
   let latestUserMessageID: string | undefined;
+  // Each turn gets its own boundary: one malformed message (a bad attachment, an unexpected
+  // part shape) must not take the whole conversation down with it.
   const renderedTurns = conversationTurns.flatMap((message) => {
     if (message.type === "user") {
       latestUserMessageID = message.id;
-      return [<UserMessage key={message.id} message={message} />];
+      return [
+        <ErrorBoundary key={message.id} label="用户消息">
+          <UserMessage message={message} />
+        </ErrorBoundary>,
+      ];
     }
     if (message.type === "assistant") {
       const diffMessageID = message.parentID ?? latestUserMessageID ?? message.id;
@@ -235,21 +297,31 @@ export function AssistantShell(props: AssistantShellProps) {
         || Boolean(streamingAssistantParentID && message.parentID === streamingAssistantParentID)
       );
       return [
-        <AssistantMessage
-          diffs={diffsByMessageID[diffMessageID]}
-          isStreaming={messageIsStreaming}
-          key={message.id}
-          message={message as AssistantMessageData}
-        />,
+        <ErrorBoundary key={message.id} label="助手消息">
+          <AssistantMessage
+            diffs={diffsByMessageID[diffMessageID]}
+            isStreaming={messageIsStreaming}
+            message={message as AssistantMessageData}
+          />
+        </ErrorBoundary>,
       ];
     }
     return [];
   });
 
+  const lastTurn = conversationTurns[conversationTurns.length - 1];
+  const lastTurnHasContent = lastTurn?.type === "assistant"
+    && lastTurn.content.some((part) => part.type === "text" && part.text.trim().length > 0);
+
   // Passed as `undefined` when there is nothing pending so the conversation can
   // fall back to its empty state instead of rendering an empty footer block.
   const footerNodes = [
-    isGenerating && !hasStreamingAssistantContent ? <AssistantThinking key="thinking" /> : null,
+    // Between two assistant messages OpenCode reports "generating" with nothing streaming yet.
+    // Showing the placeholder on that gap left a spinner parked under a finished turn, so it only
+    // appears while the newest turn genuinely has no content of its own.
+    isGenerating && !hasStreamingAssistantContent && !lastTurnHasContent
+      ? <AssistantThinking key="thinking" />
+      : null,
     currentPermissions[0]
       ? <PermissionInline key={currentPermissions[0].id} onReply={(reply) => onPermissionReply(currentPermissions[0], reply)} request={currentPermissions[0]} />
       : null,
@@ -267,7 +339,7 @@ export function AssistantShell(props: AssistantShellProps) {
 
   return (
     <TooltipProvider>
-      <div className="assistant-shell flex h-full min-h-[480px] min-w-[560px] w-full flex-col bg-background text-foreground">
+      <div className="assistant-shell flex h-full min-h-[480px] min-w-[640px] w-full flex-col bg-background text-foreground">
         <header className="flex min-h-11 shrink-0 items-center gap-1 border-b border-border/60 px-2">
           <Button aria-label="打开会话历史" className="size-8 shrink-0" onClick={() => onSessionDialogOpenChange(true)} size="icon" title="会话历史" type="button" variant="ghost">
             <History className="size-3.5" />
@@ -315,6 +387,7 @@ export function AssistantShell(props: AssistantShellProps) {
           theme={theme}
         >
           <VirtualConversation
+              conversationKey={selectedSessionID}
             className="h-full w-full"
             empty={booting
               ? <ConversationEmptyState description="正在连接 OpenCode" icon={<RefreshCw className="size-5 animate-spin" />} title="准备工作区" />
@@ -330,6 +403,15 @@ export function AssistantShell(props: AssistantShellProps) {
           <TodoPanel todos={todos} />
           {(composerText.startsWith("/") || composerText.startsWith("$") || composerText.startsWith("@")) && <SlashCommandMenu agents={agents} commands={commands} disabledSkillNames={preferences.disabledSkillNames} mcpNames={mcpNames} onInsert={onSetComposerText} query={composerText} skills={skills} />}
           <PromptQueue items={queuedPrompts} onClear={onQueueClear} onDelete={onQueueDelete} onEdit={onQueueEdit} />
+          {browserAnnotations.length > 0 && (
+            <div className="mb-2 flex min-w-0 flex-wrap items-center gap-1.5">
+              <BrowserAnnotationChip
+                annotations={browserAnnotations}
+                imagesSupported={Boolean(selectedModel?.capabilities?.input?.image)}
+                onClear={clearBrowserAnnotations}
+              />
+            </div>
+          )}
           {contexts.length > 0 && <div className="mb-2 flex min-w-0 flex-wrap gap-1.5">{contexts.map((context) => <ContextChip context={context} key={`${context.id}-${context.addedAt}`} onRemove={() => onContextsChange(contexts.filter((item) => item.id !== context.id))} />)}</div>}
           <BorderBeam
             active={!booting && Boolean(selectedSessionID)}
@@ -341,7 +423,7 @@ export function AssistantShell(props: AssistantShellProps) {
             strength={composerBeamStrength}
             theme={theme}
           >
-            <PromptInput className="rounded-[10px] border border-border/60 bg-card shadow-none" onSubmit={onPrompt} onTextChange={onSetComposerText} text={composerText}>
+            <PromptInput className="rounded-[10px] border border-border/60 bg-card shadow-none" onSubmit={submitPrompt} onTextChange={onSetComposerText} text={composerText}>
               <PromptInputAttachments />
               <PromptInputTextarea className="min-h-10 max-h-28 py-2 text-sm" disabled={booting || !selectedSessionID} placeholder={contexts.length > 0 ? "补充任务说明..." : "输入任务..."} />
               <PromptInputFooter className="px-1.5 pb-1 pt-0.5">
@@ -349,6 +431,7 @@ export function AssistantShell(props: AssistantShellProps) {
                   <PromptInputAttachmentButton />
                   <div className="flex min-w-0 max-w-full flex-wrap items-center">
                     {/* The primary agent is left to OpenCode; approval mode takes this slot. */}
+                    <ProfessionalRolePicker onChange={onProfessionalRoleChange} preferences={preferences.professionalRoles} />
                     <ApprovalModePicker onChange={onApprovalModeChange} value={approvalMode} />
                     <ModelPicker models={selectableModels} onChange={onModelChange} onManage={onOpenModelSettings} value={resolvedModelKey} />
                     <VariantPicker
@@ -368,8 +451,8 @@ export function AssistantShell(props: AssistantShellProps) {
           </BorderBeam>
         </div>
       </div>
-      <SessionDialog deletingSessionID={deletingSessionID} onCreate={onCreateSession} onDelete={onDeleteSession} onOpenChange={onSessionDialogOpenChange} onSelect={onSelectSession} open={sessionDialogOpen} selectedSessionID={selectedSessionID} sessions={sessions} />
-      <WorkspaceDialog baseUrl={getOpenCodeBaseUrl()} connected={connected === true} initialSection={workspaceSection} models={selectableModels} onConfigurationChanged={onConfigurationChanged} onOpenChange={onWorkspaceOpenChange} onPreferencesChanged={onPreferencesChanged} open={workspaceDialogOpen} projectID={currentSession?.projectID} projectPath={projectPath} />
+      <SessionDialog deletingSessionID={deletingSessionID} pendingApprovalSessionIDs={pendingApprovalSessionIDs} onCreate={onCreateSession} onDelete={onDeleteSession} onOpenChange={onSessionDialogOpenChange} onSelect={onSelectSession} open={sessionDialogOpen} selectedSessionID={selectedSessionID} sessions={sessions} />
+      <WorkspaceDialog baseUrl={getOpenCodeBaseUrl()} connected={connected === true} initialSection={workspaceSection} mcpNames={mcpNames} models={selectableModels} onConfigurationChanged={onConfigurationChanged} onOpenChange={onWorkspaceOpenChange} onPreferencesChanged={onPreferencesChanged} open={workspaceDialogOpen} projectID={currentSession?.projectID} projectPath={projectPath} skills={skills} />
     </TooltipProvider>
   );
 }

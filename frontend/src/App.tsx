@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AssistantShell } from "@/components/assistant/AssistantShell";
+import { ErrorBoundary } from "@/components/assistant/ErrorBoundary";
 import type { SectionID as WorkspaceSectionID } from "@/components/assistant/WorkspaceDialog";
 import {
   groupConversationTurns,
@@ -15,7 +16,7 @@ import {
   mentionedSubagents,
 } from "@/components/assistant/appRuntime";
 import { ideaApi } from "@/lib/idea";
-import { loadWorkspacePreferences } from "@/lib/preferences";
+import { loadWorkspacePreferences, saveWorkspacePreferences } from "@/lib/preferences";
 import { useRunLifecycle, type ActivePrompt } from "@/hooks/useRunLifecycle";
 import { useBatchedOpenCodeEvents } from "@/hooks/useBatchedOpenCodeEvents";
 import { useInteractiveStatePolling } from "@/hooks/useInteractiveStatePolling";
@@ -47,6 +48,7 @@ import { appendTextAttachments } from "@/lib/textAttachments";
 import { restoreActiveRun } from "@/components/assistant/runRestoration";
 import { getContextUsage } from "@/lib/tokenUsage";
 import type { ApprovalMode } from "@/lib/approvalMode";
+import { buildProfessionalRoleInstructions } from "@/lib/professionalRoles";
 interface QuestionAnswers { [requestID: string]: string[][]; }
 
 function App() {
@@ -64,8 +66,26 @@ function App() {
   const [selectedAgentID, setSelectedAgentID] = useState("");
   const [selectedVariant, setSelectedVariant] = useState<string>();
   const [approvalMode, setApprovalMode] = useState<ApprovalMode>("ask");
-  const [permissions, setPermissions] = useState<PermissionRequest[]>([]);
+  const [permissions, setPermissionsState] = useState<PermissionRequest[]>([]);
+  /**
+   * Keeps the previous array when the pending set is unchanged. Polling replaced it with a fresh
+   * array every second, and that new identity rebuilt the conversation footer — which is what made
+   * the approval card flicker while it was waiting for an answer.
+   */
+  const setPermissions = useCallback((next: PermissionRequest[] | ((current: PermissionRequest[]) => PermissionRequest[])) => {
+    setPermissionsState((current) => {
+      const value = typeof next === "function" ? next(current) : next;
+      const same = value.length === current.length
+        && value.every((item, index) => item.id === current[index]?.id);
+      return same ? current : value;
+    });
+  }, []);
   const [questions, setQuestions] = useState<QuestionRequest[]>([]);
+  /**
+   * Sessions whose run is blocked on an approval. Switching away hides the card, so without this
+   * the run just looks stuck; the session list shows a 待批准 badge instead.
+   */
+  const [pendingApprovalSessionIDs, setPendingApprovalSessionIDs] = useState<string[]>([]);
   const [todos, setTodos] = useState<TodoInfo[]>([]);
   const [questionAnswers, setQuestionAnswers] = useState<QuestionAnswers>({});
   const [contexts, setContexts] = useState<ContextChipData[]>([]);
@@ -197,6 +217,13 @@ function App() {
       openCodeApi.listQuestions(sessionID, projectPath),
     ]);
     setPermissions(nextPermissions);
+    setPendingApprovalSessionIDs((current) => {
+      const others = current.filter((id) => id !== sessionID);
+      return nextPermissions.length > 0 ? [...others, sessionID] : others;
+    });
+    if (nextPermissions.length === 0) {
+      void ideaApi.setPendingApproval(sessionID, false).catch(() => undefined);
+    }
     setQuestions(nextQuestions);
     syncQuestionAnswers(nextQuestions);
     return { permissions: nextPermissions, questions: nextQuestions };
@@ -209,6 +236,13 @@ function App() {
     projectPath,
     sessionID: selectedSessionID,
   });
+
+  useEffect(() => {
+    void ideaApi
+      .getPendingApprovals()
+      .then((result) => setPendingApprovalSessionIDs(result.sessions))
+      .catch(() => undefined);
+  }, []);
 
   const refreshWorkspace = useCallback(async (includeMessages = true) => {
     if (!projectPath || refreshInFlight.current) return;
@@ -229,7 +263,9 @@ function App() {
       setModels(nextModels);
       setAgents(nextAgents);
       setCommands(nextCommands);
-      setMcpNames(Object.keys(nextConfig.mcp ?? {}));
+      setMcpNames(Object.entries(nextConfig.mcp ?? {})
+        .filter(([, config]) => config.enabled !== false)
+        .map(([name]) => name));
       setSkills(nextSkills);
       setSessions(nextSessions);
       setSelectedSessionID(sessionID);
@@ -269,6 +305,9 @@ function App() {
       setError("");
       const model = selectedModel ? modelRefWithAvailableVariant(selectedModel, selectedVariant) : undefined;
       const session = await openCodeApi.createSession(projectPath, model, selectedAgentID || undefined);
+      // Enforcement lives in the plugin, not in OpenCode: PATCH /session accepts `permission`,
+      // returns 200 and discards it (verified on 1.18.12). The bridge's `permission.ask` hook
+      // reads the mode back from /api/approval-mode instead.
       await ideaApi.setApprovalMode(session.id, approvalMode);
       setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
       setSelectedSessionID(session.id);
@@ -382,7 +421,7 @@ function App() {
           loadPending(selectedSessionID),
           openCodeApi.getTodos(selectedSessionID, projectPath),
           openCodeApi.getSessionStatus(selectedSessionID, projectPath),
-          ideaApi.getApprovalMode(selectedSessionID),
+          openCodeApi.getSessionApprovalMode(selectedSessionID, projectPath),
         ]);
         if (cancelled) return;
         if (activePrompt.current?.sessionID !== selectedSessionID) {
@@ -395,7 +434,7 @@ function App() {
         setPermissions(pending.permissions);
         setQuestions(pending.questions);
         setTodos(nextTodos);
-        setApprovalMode(nextApprovalMode.mode as ApprovalMode);
+        setApprovalMode(nextApprovalMode);
         const busy = status.type === "busy";
         setRunStatus(busy ? "streaming" : "ready");
         if (busy) {
@@ -440,6 +479,7 @@ function App() {
 
   useOpenCodeEventStream({
     applyIdeaTheme,
+    onPendingApprovals: setPendingApprovalSessionIDs,
     enqueueOpenCodeEvent,
     finishRun,
     flushOpenCodeEvents,
@@ -499,6 +539,18 @@ function App() {
         .filter((file) => !file.textAttachment)
         .map((file) => file.attachment);
       const fullPrompt = appendTextAttachments(text, textAttachments);
+      const enabledSkillNames = skills
+        .map((skill) => skill.name)
+        .filter((name) => !preferences.disabledSkillNames.includes(name));
+      const professionalInstructions = buildProfessionalRoleInstructions(
+        preferences.professionalRoles,
+        enabledSkillNames,
+        mcpNames
+      );
+      const roleInstructions = [
+        preferences.persona.enabled ? preferences.persona.instructions : "",
+        professionalInstructions ?? "",
+      ].filter(Boolean).join("\n\n");
       const model = await ensureSelectedModelVariant();
       const messageID = createMessageID();
       cancelledPromptIDs.current.delete(messageID);
@@ -531,6 +583,7 @@ function App() {
             directory: projectPath,
             files: transportAttachments,
             messageID,
+            personaInstructions: roleInstructions || undefined,
             text: `请优先使用 MCP 服务器“${mcpName}”完成任务。\n\n${appendTextAttachments(mcpPrompt.join(" "), textAttachments)}`,
           });
         } else {
@@ -572,7 +625,7 @@ function App() {
         files: transportAttachments,
         messageID,
         model,
-        personaInstructions: preferences.persona.enabled ? preferences.persona.instructions : undefined,
+        personaInstructions: roleInstructions || undefined,
         text: fullPrompt,
       });
       setRunStatus("streaming");
@@ -586,7 +639,7 @@ function App() {
     } finally {
       submitting.current = false;
     }
-  }, [agents, commands, ensureSelectedModelVariant, mcpNames, pollSessionStatus, preferences, projectPath, selectedAgentID, selectedSessionID]);
+  }, [agents, commands, ensureSelectedModelVariant, mcpNames, pollSessionStatus, preferences, projectPath, selectedAgentID, selectedSessionID, skills]);
 
   const handlePrompt = useCallback(async ({ text, files }: PromptInputMessage) => {
     if (!selectedSessionID || !projectPath || submitting.current) return false;
@@ -637,7 +690,15 @@ function App() {
     if (!projectPath) return;
     try {
       await openCodeApi.replyPermission(request.sessionID, request.id, reply, projectPath);
-      setPermissions((current) => current.filter((item) => item.id !== request.id));
+      setPermissions((current) => {
+        const next = current.filter((item) => item.id !== request.id);
+        // Clear the session badge as soon as its last request is answered.
+        if (next.length === 0) {
+          setPendingApprovalSessionIDs((ids) => ids.filter((id) => id !== request.sessionID));
+          void ideaApi.setPendingApproval(request.sessionID, false).catch(() => undefined);
+        }
+        return next;
+      });
     } catch (replyError) {
       setError(errorMessage(replyError));
     }
@@ -795,6 +856,14 @@ function App() {
     }
   }, [deletingSessionID, projectPath, selectedAgentID, selectedModel, selectedSessionID, selectedVariant, sessions]);
 
+  const handleProfessionalRoleChange = useCallback((roleId: string) => {
+    const next = saveWorkspacePreferences(projectPath, {
+      ...preferences,
+      professionalRoles: { ...preferences.professionalRoles, selectedRoleId: roleId },
+    });
+    setPreferences(next);
+  }, [preferences, projectPath]);
+
   const currentPermissions = permissions.filter((request) => request.sessionID === selectedSessionID);
   const currentQuestions = questions.filter((request) => request.sessionID === selectedSessionID);
   const conversationTurns = useMemo(() => groupConversationTurns(messages), [messages]);
@@ -802,7 +871,7 @@ function App() {
     () => resolveStreamingAssistantState(messages, conversationTurns, streamingAssistantID),
     [conversationTurns, messages, streamingAssistantID]
   );
-  return <AssistantShell
+  return <ErrorBoundary label="助手界面"><AssistantShell
     agents={agents}
     booting={booting}
     commands={commands}
@@ -833,6 +902,8 @@ function App() {
     onOpenModelSettings={openModelSettings}
     onPermissionReply={(request, reply) => void handlePermissionReply(request, reply)}
     onPreferencesChanged={setPreferences}
+    onProfessionalRoleChange={handleProfessionalRoleChange}
+    pendingApprovalSessionIDs={pendingApprovalSessionIDs}
     onPrompt={handlePrompt}
     onQuestionChange={handleQuestionChange}
     onQuestionReject={(request) => void handleQuestionReject(request)}
@@ -885,7 +956,7 @@ function App() {
     theme={theme}
     workspaceDialogOpen={workspaceDialogOpen}
     workspaceSection={workspaceSection}
-  />;
+  /></ErrorBoundary>;
 }
 
 export default App;

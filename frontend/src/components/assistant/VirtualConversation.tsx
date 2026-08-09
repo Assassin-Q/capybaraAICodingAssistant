@@ -18,6 +18,8 @@ interface VirtualConversationProps {
    * thinking placeholder is fully visible instead of half cut off.
    */
   pinToBottom?: number;
+  /** Changes when a different conversation is shown, so the view can re-anchor to the bottom. */
+  conversationKey?: string;
 }
 
 /**
@@ -30,6 +32,7 @@ export function VirtualConversation({
   empty,
   footer,
   followOutput,
+  conversationKey,
   items,
   pinToBottom,
 }: VirtualConversationProps) {
@@ -47,6 +50,17 @@ export function VirtualConversation({
   const scrollToBottom = useCallback(() => {
     listRef.current?.scrollTo({ behavior: "auto", top: Number.MAX_SAFE_INTEGER });
   }, []);
+
+  // Opening a session must land at the newest message. `initialTopMostItemIndex` only positions
+  // by index, and with unmeasured variable-height items that lands short of the true bottom — so
+  // the anchor is re-applied over a few frames while heights settle.
+  useEffect(() => {
+    if (!conversationKey) return;
+    atBottomRef.current = true;
+    setAtBottom(true);
+    const timers = [0, 80, 240, 500].map((delay) => window.setTimeout(scrollToBottom, delay));
+    return () => timers.forEach(window.clearTimeout);
+  }, [conversationKey, scrollToBottom]);
 
   // Virtuoso's followOutput only reacts to item changes, not to the Footer growing,
   // so the thinking placeholder would otherwise appear half below the fold.

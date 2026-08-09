@@ -8,13 +8,11 @@ import {
   PlugZap,
   Puzzle,
   Sparkles,
-  TerminalSquare,
   Wifi,
   X,
 } from "lucide-react";
 
 import { ConnectionSettings } from "@/components/assistant/ConnectionSettings";
-import { IdeaExecutionSettings } from "@/components/assistant/IdeaExecutionSettings";
 import { MemorySettings } from "@/components/assistant/MemorySettings";
 import { McpSettings } from "@/components/assistant/McpSettings";
 import { ModelSettings } from "@/components/assistant/ModelSettings";
@@ -31,6 +29,7 @@ interface WorkspaceDialogProps {
   baseUrl: string;
   connected: boolean;
   initialSection?: SectionID;
+  mcpNames: string[];
   models: ModelInfo[];
   onConfigurationChanged: () => void;
   onOpenChange: (open: boolean) => void;
@@ -38,17 +37,17 @@ interface WorkspaceDialogProps {
   open: boolean;
   projectID?: string;
   projectPath?: string;
+  skills: import("@/lib/opencode").SkillInfo[];
 }
 
 const sections = [
   { icon: Wifi, id: "connection", label: "连接" },
   { icon: Cpu, id: "models", label: "模型" },
-  { icon: BrainCircuit, id: "persona", label: "人格" },
+  { icon: BrainCircuit, id: "persona", label: "角色" },
   { icon: Database, id: "memory", label: "记忆" },
   { icon: Sparkles, id: "skills", label: "技能" },
   { icon: Puzzle, id: "plugins", label: "插件" },
   { icon: PlugZap, id: "mcp", label: "MCP" },
-  { icon: TerminalSquare, id: "idea", label: "IDEA" },
 ] as const;
 
 /** Sections that manage their own scrolling instead of scrolling the whole page. */
@@ -60,12 +59,14 @@ export function WorkspaceDialog({
   baseUrl,
   connected,
   initialSection = "connection",
+  mcpNames,
   models,
   onConfigurationChanged,
   onOpenChange,
   onPreferencesChanged,
   open,
   projectPath,
+  skills,
 }: WorkspaceDialogProps) {
   const [activeSection, setActiveSection] = useState<SectionID>("connection");
   const [preferences, setPreferences] = useState<WorkspacePreferences>(() => loadWorkspacePreferences(projectPath));
@@ -126,12 +127,11 @@ export function WorkspaceDialog({
               projectPath={projectPath}
             />
           )}
-          {activeSection === "persona" && <PersonaSettings onSave={updatePreferences} preferences={preferences} />}
+          {activeSection === "persona" && <PersonaSettings mcpNames={mcpNames} onSave={updatePreferences} preferences={preferences} skills={skills} />}
           {activeSection === "memory" && <MemorySettings models={models} onChanged={onConfigurationChanged} />}
           {activeSection === "skills" && <SkillSettings disabledSkillNames={preferences.disabledSkillNames} onDisabledSkillNamesChange={(disabledSkillNames) => updatePreferences({ ...preferences, disabledSkillNames })} projectPath={projectPath} />}
           {activeSection === "plugins" && <PluginSettings />}
           {activeSection === "mcp" && <McpSettings onChanged={onConfigurationChanged} projectPath={projectPath} />}
-          {activeSection === "idea" && <IdeaExecutionSettings />}
         </main>
       </div>
     </div>

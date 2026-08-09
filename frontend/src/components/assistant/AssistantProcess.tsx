@@ -1,5 +1,5 @@
 import { Check, Circle, LoaderCircle } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useState } from "react";
 
 import {
   ChainOfThought,
@@ -26,6 +26,17 @@ const toolLabels: Record<string, string> = {
   edit: "编辑文件",
   glob: "查找文件",
   grep: "搜索内容",
+  idea_diagnostics: "读取 IDEA 诊断",
+  idea_editor_context: "读取编辑器上下文",
+  idea_browser: "控制内置浏览器",
+  idea_gradle: "运行 IDEA Gradle",
+  idea_maven: "运行 IDEA Maven",
+  idea_navigate: "定位代码",
+  idea_project_context: "读取项目结构",
+  idea_read_run_log: "读取运行日志",
+  idea_refresh_project: "刷新 IDEA 项目",
+  idea_run_configuration: "运行 IDEA 配置",
+  idea_symbol: "查询符号关系",
   list: "列出文件",
   question: "等待回答",
   read: "读取文件",
@@ -41,6 +52,17 @@ const toolActions: Record<string, string> = {
   edit: "编辑了文件",
   glob: "搜索了文件",
   grep: "搜索了内容",
+  idea_diagnostics: "检查了 IDEA 诊断",
+  idea_editor_context: "读取了编辑器上下文",
+  idea_browser: "操作了内置浏览器",
+  idea_gradle: "运行了 Gradle 任务",
+  idea_maven: "运行了 Maven 任务",
+  idea_navigate: "定位了代码",
+  idea_project_context: "读取了项目结构",
+  idea_read_run_log: "读取了运行日志",
+  idea_refresh_project: "刷新了 IDEA 项目",
+  idea_run_configuration: "运行了 IDEA 配置",
+  idea_symbol: "查询了符号关系",
   list: "浏览了文件",
   question: "等待了回答",
   read: "读取了文件",
@@ -90,6 +112,14 @@ const toolInlineDetail = (name: string, value: unknown): string => {
   if (lowerName === "task") return compactValue(input.description ?? input.command ?? input.subagent_type ?? input.agent);
   if (lowerName === "grep") return compactValue(input.pattern ?? input.query ?? input.path);
   if (lowerName === "glob") return compactValue(input.pattern ?? input.path);
+  if (["idea_editor_context", "idea_diagnostics"].includes(lowerName)) {
+    return compactValue(input.path) || "当前编辑器";
+  }
+  if (["idea_navigate", "idea_symbol"].includes(lowerName)) {
+    const path = compactValue(input.path) || "当前编辑器";
+    const line = compactValue(input.line);
+    return line ? `${path}:${line}` : path;
+  }
   return compactValue(input.name ?? input.description ?? input.command);
 };
 
@@ -254,17 +284,17 @@ const ToolGroup = memo(function ToolGroup({
 const Narrative = memo(function Narrative({
   isStreaming,
   part,
-  runIsStreaming,
 }: {
   isStreaming: boolean;
   part: NarrativePart;
-  runIsStreaming: boolean;
 }) {
   if (part.type === "reasoning") {
     if (!part.text.trim()) return null;
     const reasoningStreaming = isStreaming && part.time?.completed === undefined;
+    // Collapsed until the user opens it; `autoClose` would slam it shut mid-read when the
+    // next reasoning chunk lands.
     return (
-      <Reasoning autoClose={!runIsStreaming} defaultOpen={reasoningStreaming} isStreaming={reasoningStreaming}>
+      <Reasoning autoClose={false} defaultOpen={false} isStreaming={reasoningStreaming}>
         <ReasoningTrigger
           getThinkingMessage={(streaming) => streaming ? <Shimmer duration={1}>思考中</Shimmer> : "思考完成"}
         />
@@ -276,7 +306,6 @@ const Narrative = memo(function Narrative({
   return <div className="max-w-full py-1 text-sm leading-6"><MarkdownResponse isAnimating={false} mode={isStreaming ? "streaming" : "static"}>{part.text}</MarkdownResponse></div>;
 }, (previous, next) =>
   previous.isStreaming === next.isStreaming
-  && previous.runIsStreaming === next.runIsStreaming
   && previous.part.id === next.part.id
   && previous.part.type === next.part.type
   && previous.part.text === next.part.text
@@ -309,7 +338,6 @@ function ProcessBlocks({
               isStreaming={blockIsStreaming}
               key={block.part.id}
               part={block.part}
-              runIsStreaming={isStreaming}
             />
           );
         }
@@ -341,52 +369,45 @@ export function AssistantProcess({
   ) as Array<NarrativePart | AssistantToolPart>, [conclusionPartID, message.content]);
   const blocks = useMemo(() => buildProcessBlocks(parts), [parts]);
   const hasExecution = parts.some((part) => part.type === "tool" || part.type === "reasoning");
+  // Collapsed until the user opens it, in both states. Nothing here may auto-toggle `open`:
+  // new reasoning or tool parts keep arriving mid-run, and collapsing under the user's cursor
+  // because the run advanced is worse than never expanding at all.
   const [open, setOpen] = useState(false);
   const [toolGroupOpen, setToolGroupOpen] = useState<Record<string, boolean>>({});
-  // Expand while the run is live, collapse once it settles — without remounting, so the
-  // user can still toggle it manually mid-run.
-  const wasStreaming = useRef(isStreaming);
-  useEffect(() => {
-    if (isStreaming !== wasStreaming.current) {
-      setOpen(isStreaming);
-      wasStreaming.current = isStreaming;
-    }
-  }, [isStreaming]);
   const handleToolGroupOpenChange = (groupID: string, nextOpen: boolean): void => {
     setToolGroupOpen((current) => current[groupID] === nextOpen
       ? current
       : { ...current, [groupID]: nextOpen });
   };
   if (!hasExecution || blocks.length === 0) return null;
-  const activeTool = [...parts].reverse().find((part): part is AssistantToolPart =>
-    part.type === "tool" && (part.state.status === "pending" || part.state.status === "running")
-  );
-  const streamingLabel = activeTool ? `正在${toolTitle(activeTool.name)}` : "正在处理";
-  const completedLabel = `已处理 ${formatDuration(message.time.created, message.time.completed)}`;
 
-  // One tree for both states. Swapping between a plain div and ChainOfThought remounted the
-  // whole panel every time `isStreaming` flipped — which happens mid-run whenever OpenCode
-  // starts the next assistant message — and that read as a collapse/flash.
+  const processBlocks = (
+    <ProcessBlocks
+      blocks={blocks}
+      isStreaming={isStreaming}
+      onToolGroupOpenChange={handleToolGroupOpenChange}
+      toolGroupOpen={toolGroupOpen}
+    />
+  );
+
+  // The container is always the same element, even while running. Returning a bare <div> during
+  // the run and a collapsible after it unmounted the whole subtree the instant streaming ended,
+  // which is the flash between one tool round finishing and the next starting.
+  //
+  // While running there is no header, so there is no "正在处理" box to open — the content is
+  // simply laid out flat. When the turn finishes the header appears and `open` falls back to the
+  // user's own state, so the trace folds away behind "已处理 N秒" as an animated collapse of a
+  // mounted element instead of a remount.
   return (
-    <ChainOfThought isStreaming={isStreaming} onOpenChange={setOpen} open={open}>
-      <ChainOfThoughtHeader className="inline-flex h-6 w-fit max-w-full items-center gap-1.5 px-0.5 py-0 text-[11px] leading-none">
-        {isStreaming ? (
-          <span className="inline-flex h-4 min-w-0 items-center gap-1.5 leading-none">
-            <LoaderCircle className="size-3 shrink-0 animate-spin" />
-            <Shimmer duration={1.2}>{streamingLabel}</Shimmer>
+    <ChainOfThought onOpenChange={setOpen} open={isStreaming || open}>
+      {!isStreaming && (
+        <ChainOfThoughtHeader className="inline-flex h-6 w-fit max-w-full items-center gap-1.5 px-0.5 py-0 text-[11px] leading-none">
+          <span className="inline-flex h-4 min-w-0 items-center leading-none">
+            {`已处理 ${formatDuration(message.time.created, message.time.completed)}`}
           </span>
-        ) : (
-          <span className="inline-flex h-4 min-w-0 items-center leading-none">{completedLabel}</span>
-        )}
-      </ChainOfThoughtHeader>
-      <ChainOfThoughtContent className="space-y-2 pl-0.5">
-        <ProcessBlocks
-          blocks={blocks}
-          isStreaming={isStreaming}
-          onToolGroupOpenChange={handleToolGroupOpenChange}
-          toolGroupOpen={toolGroupOpen}
-        />
-      </ChainOfThoughtContent>
+        </ChainOfThoughtHeader>
+      )}
+      <ChainOfThoughtContent className="space-y-2 pl-0.5">{processBlocks}</ChainOfThoughtContent>
     </ChainOfThought>
   );
 }
