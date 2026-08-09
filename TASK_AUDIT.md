@@ -120,8 +120,10 @@ Status legend: `[ ]` pending, `[-]` in progress, `[x]` implemented and verified.
 ## Settings And Packaging
 
 - [x] Settings tabs are responsive, scroll correctly, and do not contain the removed agent or permission tabs.
-      Navigation verified: 连接 / 模型 / 人格 / 记忆 / 技能 / 插件 / MCP / Git / IDEA / 清单.
-- [x] Theme follows IDEA live and also supports an explicit plugin light/dark toggle.
+      Current navigation (`WorkspaceDialog.tsx`): 连接 / 外观 / 模型 / 人格 / 记忆 / 技能 / 插件 / MCP.
+      The 权限 / Git / 清单 entries were deleted — see "Removed From Scope".
+- [x] Theme follows IDEA live, supports an explicit plugin light/dark toggle, and maps each mode to an exact
+      installed IDEA theme from the 外观 page.
 - [x] Personas and memory settings remain functional after settings refactoring.
 - [x] The Connection page can restart the OpenCode service: a plugin-managed process is relaunched, a
       user-owned one is only re-probed and reconnected.
@@ -190,3 +192,517 @@ better. The principle: this plugin should own what IDEA lacks, not re-skin what 
 - **Conversation fixes** — the process panel no longer swaps component trees when streaming ends (that
   remount read as a collapse/flash), tool-group headers follow their own tools' state instead of
   position, and submitting pins the view to the bottom so the thinking placeholder is fully visible.
+
+---
+
+# 本轮改动（2026-08-08）
+
+## 「重启服务」按钮改成诚实的
+
+**问题**：点一下按钮立刻就返回成功，但什么都没有重启。
+
+**证据**（在本机实测）：
+
+| 观察项 | 值 |
+| --- | --- |
+| OpenCode 进程 PID | 62292 |
+| 该进程启动时间 | 08/04/2026 21:54:59 |
+| 桥接插件文件 `capybara-idea.ts` 写入时间 | 08/08/2026 00:37:49 |
+
+进程比插件文件早了 5 天，**它不可能加载过这个插件**。而 `/config` 接口里能列出
+`capybara-idea.ts`，那只是 OpenCode 扫描目录的结果，不代表已加载。
+
+**根因**：`OpenCodeServerManager.restart()` 只在 `endpoint.managed == true`（即服务是插件自己拉起来的）
+时才会 `terminateFailedProcess()`。用户自己在终端跑的 OpenCode，`managed == false`，restart 走的是
+「丢掉缓存 → 重新扫 12001-12100 端口 → 又连上同一个进程」，所以又快又没用。而 OpenCode
+**只在启动时加载插件**，所以工具桥接、审批模式、新装技能全都不会生效。
+
+**改动**：
+
+| 文件 | 改动 |
+| --- | --- |
+| `services/OpenCodeServerManager.kt` | `restart(frontendPort, force)`；新增 `terminateExternalServer(port)` 与 `externalPid(port)`（Windows 用 `netstat -ano`，其余用 `lsof`）；返回值带上 `reconnectedOnly` / `externalPid` |
+| `services/OpenCodeServerManager.kt` | `OpenCodeEndpoint` 新增 `reconnectedOnly: Boolean`、`externalPid: Long?` |
+| `server/HttpServerManager.kt` | `handleRestartOpenCode` 读取请求体 `RestartRequest(force)` |
+| `lib/idea.ts` | `restartOpenCode(force = false)`；`IdeaRuntimeConfig` 新增 `reconnectedOnly?` / `externalPid?` |
+| `components/assistant/ConnectionSettings.tsx` | 只是重连时不再显示「已重启」，改为一块琥珀色说明面板，写清「没有真正重启、进程从未停止、插件改动不会生效」，并给出「强制重启」按钮（走站内 `ConfirmDialog` 二次确认，不用原生 `confirm`） |
+
+**为什么强制重启要二次确认**：这会杀掉用户自己启动的进程，可能正在跑别的会话。
+
+**验证**：`pnpm exec tsc --noEmit` 通过，`pnpm build` 通过（9.64s）。
+`reconnectedOnly` 分支尚未在真实 IDEA 里点过，属于下面「未验证」清单。
+
+---
+
+# 交接给 Codex 的待办（2026-08-08）
+
+> 下面四项是用户在 2026-08-08 提出的新需求，按优先级排列。每项都写清了**现状**、
+> **已经实测到的事实**、**建议做法**和**验收标准**，可以直接开工。
+
+## T1 — SkillHub 排序/筛选改成走官方列表接口 `[x]`
+
+### 现状
+
+`SkillHubPanel.tsx:54-65` 只提供 综合 / 下载量 / 收藏量 / 最近上新 四个排序，而且是
+**拿到一页数据后在前端 `Array.sort`**，注释里写的「公开搜索接口忽略排序参数」这一点，对
+`api/v1/search` 来说是对的，但结论下早了——网站用的根本不是这个接口。
+
+### 已实测的事实（2026-08-08 直接 curl 验证）
+
+1. 插件现在用的 `GET https://api.skillhub.cn/api/v1/search` 是 **CLI 用的接口**。
+   实测 `sortBy=downloads|stars|updated_at|rank|curated_score|score` 六种取值返回的**前几条完全一样**，
+   即该接口确实忽略排序参数。
+
+2. 网站自己用的是 **`GET https://api.skillhub.cn/api/skills`（没有 `/v1`）**，它支持排序和筛选：
+
+   | 参数 | 说明 | 实测 |
+   | --- | --- | --- |
+   | `sortBy` | 排序字段 | 服务端明确回错误信息枚举：`updated_at / downloads / stars / installs / score` |
+   | `order` | `desc` / `asc` | 有效。`order=asc` 首页返回的全是 `downloads=0` 的技能 |
+   | `page` | 页码，从 1 开始 | 有效，第 2 页内容不同 |
+   | `keyword` | 关键词搜索 | **有效**。`keyword=pdf` → total 从 109349 降到 2440 |
+   | `q` / `search` / `name` | — | **被忽略**，total 仍是 109349，别用 |
+   | `category` | 场景分类，如 `dev-programming` | 有效 |
+   | `source` | 来源，如 `community` / `clawhub` | 有效 |
+   | `requiresApiKey` | `true` / `false` | 有效 |
+   | `limit` / `pageSize` / `offset` | — | **被忽略**，固定每页 20 条 |
+
+3. 响应结构是 `{"code":0,"data":{"skills":[...],"total":109349}}`，字段是 **snake_case**：
+   `created_at` / `updated_at` / `icon_url`→这里叫 `iconUrl`（注意两个接口大小写不一样，见下）、
+   `namespace:{canonicalName,displayName,handle,publicSlug}`、`labels:{requires_api_key:"false"}`
+   （**是字符串不是布尔**）、`subCategories:[{key,name}]`、`ownerName`、`score`、`installs`。
+
+4. **`rank`（近期飙升）和 `curated_score`（推荐精选）这两个值服务端直接返回 400**：
+   `{"code":400,"message":"参数错误：sortBy 不支持（updated_at/downloads/stars/installs/score）"}`。
+   `https://skillhub.cn/api/skills` 和 `https://www.skillhub.cn/api/skills` 都只返回 HTML，没有第二个 API 入口。
+   → 这两个排序**目前无法通过公开接口实现**。请先在浏览器 DevTools 的 Network 面板里看一下
+   skillhub.cn 点「近期飙升」时到底发的什么请求（可能带鉴权头或走别的路径），拿到真实请求再实现；
+   在拿到之前**不要**放这两个按钮，放了就是假的。
+
+5. 两个接口的图标字段名不一样，改接口时必须同步改 DTO：
+   - `api/v1/search` → `icon_url`（`SkillManagementService.kt:75` 已按这个映射，图标是正常的）
+   - `api/skills` → `iconUrl`
+
+### 要做的事
+
+- `SkillManagementService.kt`
+  - `SEARCH_ENDPOINT` 增加一个 `https://api.skillhub.cn/api/skills` 的列表入口（保留 `api/v1/search` 做兜底，
+    万一新接口挂了还能用）。
+  - `SkillHubSearchRequest` 增加 `sortBy` / `order` / `page` / `category` / `source` / `requiresApiKey`，
+    `query` 映射到 `keyword`。
+  - 新增一个匹配 `{code,data:{skills,total}}` 的 DTO，`iconUrl` 走 camelCase，
+    `labels.requires_api_key` 按字符串 `"true"` 解析。
+  - 返回值带上 `total` 和 `page`，前端才能做翻页。
+- `SkillHubPanel.tsx`
+  - 排序按钮改成 综合(`score`) / 下载量(`downloads`) / 收藏量(`stars`) / 安装量(`installs`) / 最近上新(`updated_at`)，
+    **切换排序时重新请求接口**，删掉 `useMemo` 里的本地 `sorted.sort(...)`。
+  - 分类/来源/API Key 三个筛选也改成传给后端，不要在前端过滤 20 条。
+  - 加翻页或滚动加载，因为每页固定 20 条、总数 10 万+。
+
+### 验收标准
+
+- 点「下载量」和点「最近上新」返回的**第一条不一样**（现在因为只排一页，很可能一样）。
+- 选「dev-programming」后列表里每条的分类都是它，且条数不再被限制在当前这 20 条里。
+- 搜索框输入 pdf，返回的是 PDF 相关技能（用 `keyword` 才能做到）。
+
+### Codex 实施记录（实际执行：2026-08-08）
+
+- `SkillManagementService.kt` 新增 `api/skills` 列表 DTO，透传 `keyword`、`sortBy`、`order`、`page`、
+  `category`、`source`、`requiresApiKey`，并返回 `total/page/pageSize`；只有 HTTP 5xx 才回退 CLI 搜索接口。
+- `SkillHubPanel.tsx` 改为服务端排序和筛选，新增安装量、分页、升降序切换，移除了当前页本地排序和过滤。
+- 按用户补充加入 `rank` 与 `curated_score`；当前实际日期 2026-08-08 对公开接口请求这两项仍返回 HTTP 400，
+  前端会展示真实服务端错误，不会伪造本地结果。`score/downloads/stars/updated_at` 已实测返回 200。
+- 验证通过：`pnpm.cmd exec tsc --noEmit`、`pnpm.cmd build`、
+  `gradle -p idea-plugin buildPlugin -PintellijLocalPath="E:\software\IntelliJ IDEA 2023.2.4" --no-daemon`。
+
+---
+
+## T2 — 筛选下拉框要点两次才能切换 `[x]`
+
+### 现象
+
+打开「场景分类」下拉后不选，直接点「来源」下拉：第一次点只是把上一个关掉，
+**必须点第二次**才会展开新的。用户截图里箭头指的就是这个。
+
+### 根因
+
+`SkillHubPanel.tsx:322-357` 三个筛选用的是 shadcn 的 `Select`（`components/ui/select.tsx`，
+底层是 `radix-ui` 的 `Select.Root`）。Radix 的 Select 是**准模态**的：打开时会给 `body` 挂上
+`pointer-events: none`（`RemoveScroll` + `hideOthers`），外部点击只会被当成「关闭」消费掉，
+不会穿透到下面那个 trigger 上。Radix Select **没有** `modal` 属性可以关掉这个行为。
+
+### 建议做法（推荐第一种）
+
+1. **把这三个筛选换成 `DropdownMenu`**（`components/ui/dropdown-menu.tsx` 已经有了），
+   根节点传 `modal={false}`。非模态时 Radix 不会禁用 body 的 `pointer-events`，
+   一次点击既关旧的又开新的。菜单项用 `DropdownMenuRadioGroup` + `DropdownMenuRadioItem`，
+   视觉上跟现在的截图（带 ✓ 的单选列表）一致。
+2. 或者用 `Popover` + `modal={false}` 自己渲染选项列表。
+3. 不要用「全局 CSS 强行 `body{pointer-events:auto!important}`」这种绕法，会顺带破坏
+   Dialog / 真正需要模态的组件。
+
+注意：安装页那个「安装到项目 / 安装到全局」的 `Select`（`SkillHubPanel.tsx:407`）不受影响，
+因为旁边没有第二个下拉，可以不动。
+
+### 验收标准
+
+在三个筛选之间连续切换，**每次只点一下**就能打开下一个；且 Dialog / 设置页其它模态行为不受影响。
+
+### Codex 实施记录（实际执行：2026-08-08）
+
+- `SkillHubPanel.tsx` 将场景分类、来源、API Key 三个筛选从 Radix `Select` 改为项目现有的
+  `DropdownMenu modal={false}`，统一使用单选组并保留当前选中值；安装范围下拉仍保留原 Select。
+- 服务端筛选请求行为不变，菜单选择会立即以新值重新请求第一页，不再在前端对当前页做假过滤。
+- 验证通过：`pnpm.cmd exec tsc --noEmit`、`pnpm.cmd build`、
+  `gradle -p idea-plugin buildPlugin -PintellijLocalPath="E:\software\IntelliJ IDEA 2023.2.4" --no-daemon`。
+
+---
+
+## T3 — 删掉设置里的「IDEA」tab，并入「插件」tab `[x]`
+
+### 现状
+
+- `WorkspaceDialog.tsx:51` 注册了 `{ icon: TerminalSquare, id: "idea", label: "IDEA" }`，
+  第 134 行渲染 `IdeaExecutionSettings`。
+- `IdeaExecutionSettings.tsx`（128 行）现在只剩三块内容：
+  1. 「OpenCode 工具桥接」状态卡（已启用 / 未启用 + 安装路径）；
+  2. 环境检查（Maven 插件可用 / Gradle 插件可用 / 识别到 N 个 Run 配置）；
+  3. 桥接开启后 AI 能用的 5 个工具列表（`idea_run_configuration` / `idea_read_run_log` /
+     `idea_maven` / `idea_gradle` / `idea_browser`）。
+
+用户的判断是对的：这个页面本身**没有任何可操作项**，桥接是 IDEA 打开项目时自动装、关闭时自动卸的
+（`IdeaExecutionService.activateBridge/deactivateBridge`），停用要去「插件」页停用 `capybara-idea`——
+这句话本来就写在这个页面上，说明它天然属于插件页。
+
+### 要做的事
+
+- 从 `sections` 里删掉 `idea` 项，删掉第 134 行的渲染分支和 `TerminalSquare` 的 import。
+- 把 `IdeaExecutionSettings` 的内容折进 `PluginSettings.tsx`：`capybara-idea` 这一行插件展开后，
+  显示桥接状态、环境检查和那 5 个工具。其余插件行保持原样。
+- `SectionID` 是从 `sections` 推导的联合类型，删完要全局搜一下 `"idea"` 有没有被当作
+  `initialSection` 传进来（例如某个「去设置」的跳转按钮）。
+- 删掉 `IdeaExecutionSettings.tsx` 文件本身；`lib/ideaIntegrations.ts` 里的
+  `ideaExecutionApi.bridgeStatus/configurations` 继续留着给插件页用。
+
+### 验收标准
+
+设置左侧只剩 连接 / 模型 / 人格 / 记忆 / 技能 / 插件 / MCP 七项；在插件页能看到桥接是否已启用、
+Maven/Gradle 是否可用、AI 拿到了哪些工具；`pnpm exec tsc --noEmit` 无 `noUnusedLocals` 报错。
+
+### Codex 实施记录（实际执行：2026-08-08）
+
+- `WorkspaceDialog.tsx` 删除 IDEA section、图标 import 和渲染分支，`SectionID` 自动收窄为七个有效设置页。
+- `PluginSettings.tsx` 内嵌 IDEA 工具桥接状态、Maven/Gradle 可用性、Run/Debug 配置数量及五个 AI 工具；
+  原有插件新建、导入、编辑、启停、删除流程保持不变。
+- 删除 `IdeaExecutionSettings.tsx`；`ideaExecutionApi` 与 Kotlin IDEA 路由继续供插件页和 OpenCode 工具使用。
+- 验证通过：`pnpm.cmd exec tsc --noEmit`、`pnpm.cmd build`、
+  `gradle -p idea-plugin buildPlugin -PintellijLocalPath="E:\software\IntelliJ IDEA 2023.2.4" --no-daemon`。
+
+---
+
+## T4 — 水豚浏览器：保留 JCEF，重做外观并支持选元素/加评论 `[x]`
+
+### 定位已确认（2026-08-08，用户拍板）
+
+> 要的是 **Codex 内置浏览器那种**：任意网站都能开（百度这类外站也要），而且能在页面上操作。
+> **不是**只预览本地 dev server。
+
+因此**不用** ai-elements 的 `web-preview`，**不删**独立浏览器窗口。理由见下面「为什么不能换成 iframe」。
+
+### 现状
+
+- `ui/CapybaraBrowserPanel.kt`（286 行）：`JPanel(BorderLayout)` + 一排**原生 `JButton`**
+  （`←` `→` `刷新` `打开` `DevTools`）+ `JBTextField` 地址栏 + 底部 `statusLabel`
+  （截图最下面那行「脚本桥接：已就绪 · 画布 1848×816 · 截图（CDP 9222）：不可用」）。
+  页面本体是 `JBCefBrowser`，`setOffScreenRendering(true)` + `setCreateImmediately(true)`。
+- 窗口：`ui/CapybaraBrowserWindow.kt`（`FrameWrapper`，每个 project 一个）。
+- 入口：`actions/OpenCapybaraBrowserAction.kt`（工具菜单 → 打开水豚浏览器）。
+- 控制：`POST /browser/control`（`BrowserControlService.kt`，313 行），已支持
+  status / navigate / click / getText / getHtml / type / waitFor / executeScript / listenSSE /
+  openDevTools；screenshot 走 CDP 9222，端口不可用时降级提示。
+- AI 侧通过桥接插件的 `idea_browser` 工具调用上面这些 action。
+
+**问题只有两个**：外观太丑（原生 Swing 控件，跟 IDEA 和插件都不搭）、没有元素拾取和评论能力。
+渲染内核和控制通道本身是好的，不要动。
+
+### 为什么不能换成 iframe（结论，别再走回头路）
+
+| 方案 | 能开百度 | 能读 DOM / 选元素 | 外观 |
+| --- | --- | --- | --- |
+| 现在的 JCEF 窗口 | ✅ JCEF 就是 Chromium | ✅ 注入脚本，不受跨域限制 | ❌ 原生 Swing |
+| ai-elements `web-preview`（`<iframe>`） | ❌ 百度等站点 `X-Frame-Options: DENY` 直接拒绝被嵌 | ❌ 跨域，父页面读不到 `contentDocument` | ✅ React |
+| Codex 内置浏览器 | ✅ 独立 Chromium + CDP | ✅ | — |
+
+补充两点，避免再被绕进去：
+
+- **同机不同端口就是跨域**。助手前端在 `127.0.0.1:<插件端口>`，被预览的站点在别的端口/域名，
+  `iframe.contentDocument` 一律读不到；`sandbox` 里的 `allow-same-origin` 不解决这个问题
+  （它只是「不额外降级为 opaque origin」）。
+- 理论上可以在 JCEF 里用 `CefRequestHandler.getResourceRequestHandler` → `onResourceResponse`
+  把响应头的 `X-Frame-Options` 和 CSP `frame-ancestors` 抹掉，让外站也能被 iframe 嵌
+  （`CefResponse.setHeaderByName(String,String,boolean)` / `setHeaderMap` 这些方法**确实存在**，
+  已用 `javap` 对 2023.2.4 的 JBR 核实）。但**实际效果没验证过**，且只在 JCEF 里成立，
+  属于偏门做法，**不作为主方案**。
+
+### 任务 A：外观重做（把原生 Swing 换成 IDEA 风格）
+
+`CapybaraBrowserPanel.buildToolbar()`（第 88-104 行）整段重写：
+
+- 后退/前进/刷新/停止改成 `AnAction` + `ActionManager.getInstance().createActionToolbar(...)`，
+  图标用 `AllIcons.Actions.Back` / `Forward` / `Refresh` / `Suspend`；
+  `ActionToolbar.setTargetComponent(this)` 别忘了，否则 `update()` 拿不到上下文。
+- 地址栏用 `com.intellij.ui.SearchTextField`（或 `ExtendableTextField` 加个前置图标），
+  回车触发 `loadUrl`；加载中在右侧挂一个 `AnimatedIcon.Default`。
+- 配色一律走 `JBUI.CurrentTheme` / `UIUtil`，不要写死颜色，否则明暗主题切换会花。
+  底部状态栏用 `JBLabel` + `UIUtil.getContextHelpForeground()`，字号 `JBUI.Fonts.smallFont()`。
+- 间距用 `JBUI.Borders.empty(...)` / `JBUI.scale(...)`，保证 HiDPI 下不糊。
+- DevTools 按钮保留，但挪到工具栏右侧的溢出菜单里，不要一直占位。
+
+验收：明/暗主题各截一张图，工具栏和 IDEA 自带工具窗口观感一致，没有原生 `JButton` 的方块边框。
+
+### 任务 B：元素拾取（这条 JCEF 反而比 iframe 好做）
+
+CEF 的 `executeJavaScript` 注入进的是**页面自己的上下文**，跨域限制不存在。已核实存在的 API
+（`javap --system "<IDEA>/jbr" --module jcef`）：
+
+```
+org.cef.browser.CefBrowser:
+  public abstract CefFrame getMainFrame();
+  public abstract CefFrame getFrame(java.lang.String);
+  public abstract java.util.Vector<String> getFrameNames();
+  public abstract int getFrameCount();
+org.cef.browser.CefFrame:
+  public abstract void executeJavaScript(String code, String url, int line);
+  public abstract String getURL();
+  public abstract boolean isMain();
+```
+
+实现要点：
+
+1. `BrowserControlService` 新增 action：`pickElement`（进入拾取模式）、`stopPick`、
+   `listPicks`、`clearPicks`、`addComment`。
+2. 拾取脚本在 `onLoadEnd` 时注入（`CapybaraBrowserPanel` 已有 `CefLoadHandler`），
+   注入到 `getMainFrame()`；如果页面有 iframe，遍历 `getFrameNames()` 逐个注入，
+   这样页面内嵌的第三方 frame 也能拾取。
+3. 高亮用一个 `position:fixed; pointer-events:none; z-index:2147483647` 的 overlay `div`，
+   **绝对不要改目标元素本身的 style**，否则会污染用户页面的布局（这是最常见的翻车点）。
+4. `mouseover` 更新 overlay 位置；`click` 时 `preventDefault()` + `stopPropagation()`，
+   计算**稳定选择器**（优先 `id` → `data-testid`/`data-*` → 带 `nth-of-type` 的结构化路径），
+   连同 `tagName`、`innerText`、`outerHTML` 前 N 字符、`getBoundingClientRect()`
+   一起通过已有的 `JBCefJSQuery` 回传。
+5. 拾取模式要能用 `Esc` 退出，并且退出时把所有监听和 overlay 清干净
+   （用一个 `window.__capybaraPicker` 单例挂载/卸载，避免重复注入叠加多份监听）。
+
+### 任务 C：评论
+
+1. 评论 = 「选择器 + 用户输入的文字 + 拾取时抓到的元素信息 + 页面 URL」。
+   存在 `BrowserControlService` 里（按 URL 分组），跟着窗口生命周期走即可，不需要持久化。
+2. 输入框做成**注入到页面里的浮层**，锚定在被选元素旁边，比放 Swing 侧栏好用
+   （元素滚动时评论气泡跟着走）。已评论的元素常驻一个小角标。
+3. `idea_browser` 的 `status` 和 `getText` 返回值里带上评论列表，
+   AI 就能知道「用户指着页面上哪个元素说了什么」。
+4. `idea_browser` 工具描述要更新：说明可以先 `listPicks` 看用户标注了什么，再决定怎么改代码。
+
+### 不要动的部分
+
+- JCEF 渲染、`JBCefJSQuery` 桥接、`POST /browser/control` 通道、`idea_browser` 工具——都保留。
+- 独立 `FrameWrapper` 窗口和工具菜单入口——**保留**，不要合并进助手面板
+  （合进去就变成 iframe 了，见上面的表）。
+- `CdpClient.kt` 和 9222 截图路径——保留，截图目前只有它能做。
+
+### 验收标准
+
+- 明/暗主题下工具栏、地址栏、状态栏都跟 IDEA 原生控件观感一致，无原生 `JButton`。
+- 打开 `https://www.baidu.com/`，进入拾取模式，鼠标划过有高亮框，点搜索框能拿到一个可复用的选择器，
+  **且页面布局没有被改动**（对比拾取前后的截图）。
+- 对该元素写一条评论，AI 调用 `idea_browser status` 能读到这条评论和对应元素的文本。
+- 连续进出拾取模式 5 次，页面上不残留 overlay，`window` 上不叠加重复监听。
+- 现有 10 个 action 不回归：`scratchpad/test-jsbridge.mjs` 仍然 8/8 通过。
+
+### Codex 实施记录（实际执行：2026-08-08）
+
+- 保留了独立 `FrameWrapper`、JCEF OSR 渲染、`JBCefJSQuery`、`POST /browser/control` 与 CDP 9222
+  截图链路，没有改成 iframe 或 ai-elements `web-preview`。
+- `CapybaraBrowserPanel.kt` 移除了原生 `JButton/JTextField` 工具栏，改为 IDEA `AnAction` 工具栏、
+  `SearchTextField`、`AnimatedIcon.Default` 与 `JBLabel` 状态栏；后退、前进、刷新、停止和拾取使用
+  `AllIcons`，DevTools 与清除标注收进右侧溢出菜单。这样明暗主题和 HiDPI 缩放都由 IDEA UI 体系接管。
+- 新增 `BrowserPickerScript.kt`，以 `window.__capybaraPicker` 单例注入主 frame 和所有子 frame：
+  - 鼠标经过只移动独立 overlay，不修改目标元素自身样式；
+  - 点击拦截页面默认行为，按 id → `data-testid`/稳定 `data-*` → `nth-of-type` 结构路径生成选择器；
+  - 回传 selector、标签、文本、截断后的 HTML、元素矩形、主页面 URL 与 frame URL；
+  - 使用页面内自定义评论浮层，不调用原生 `confirm/alert`；已评论元素显示可再次编辑的小角标；
+  - Esc 退出，重复安装会先销毁旧 overlay、评论框和监听器，避免重复启停叠加事件。
+- `BrowserControlService.kt` 新增 `pickElement / stopPick / listPicks / clearPicks / addComment`，按页面 URL
+  保存当前窗口生命周期内的拾取与评论；`status`、`getText` 等控制响应携带当前页面 `picks`，窗口关闭时清空。
+- `IdeaExecutionService.kt` 同步扩展 `idea_browser` 的 action 枚举和 `pickId` 参数，并要求 AI 修改 UI 前优先
+  调用 `listPicks` 读取用户标注。原有 navigate/click/getText/getHtml/type/waitFor/executeScript/listenSSE/
+  screenshot/openDevTools 均保留。
+- 验证通过：`pnpm.cmd exec tsc --noEmit`、`pnpm.cmd build`、
+  `gradle -p idea-plugin buildPlugin -PintellijLocalPath="E:\software\IntelliJ IDEA 2023.2.4" --no-daemon`；
+  额外通过 IDEA 2023.2.4 SDK 的 `compileKotlin`、拾取脚本 `node --check`、`git diff --check` 和手写源码
+  单文件不超过 1000 行检查。
+- 当前仓库中没有 `scratchpad/test-jsbridge.mjs`，所以无法执行审计原文中的 8/8 脚本；没有启动或操作真实
+  IDEA 窗口，因此百度跨 frame 拾取、明暗主题截图、连续启停 5 次与页面布局截图对比仍需运行时手动验收。
+
+---
+
+## T5 — 插件明暗模式与 IDEA 主题映射 `[x]`
+
+### 问题与原因
+
+旧实现只根据主题名称猜测明暗主题，并优先匹配 `IntelliJ Light`。当 IDEA 同时安装了 `Light`、
+`IntelliJ Light` 或第三方主题时，用户无法指定插件明亮/暗色按钮究竟切到哪一个 IDEA 主题；
+IDEA 的“跟随系统明暗模式”也没有复用插件的主题选择。
+
+### Codex 实施记录（实际执行：2026-08-08）
+
+- 新增设置页「外观」，分别选择“插件明亮模式对应的 IDEA 明亮主题”和“插件暗色模式对应的 IDEA
+  暗色主题”；列表直接来自当前 IDEA 的 `LafManager.installedLookAndFeels`，`Light` 与
+  `IntelliJ Light` 会作为两个独立选项展示，不再按名称猜测。
+- `IdeThemeService` 对 `UIThemeBasedLookAndFeelInfo` 使用真实 `theme.id`，其它 LAF 使用稳定的
+  class/name 组合；默认值使用 IDEA 自己的 `defaultLightLaf` / `defaultDarkLaf`，映射通过应用级
+  `PropertiesComponent` 持久化。
+- 保存映射时同步调用 `setPreferredLightLaf`、`setPreferredDarkLaf`；支持的 IDEA 版本还会通过
+  `LafManager.autodetect` 启用“跟随系统明暗模式”，系统切换后使用同一套明亮/暗色映射。
+- 右上角插件主题按钮仍保留，但现在会按已保存的精确映射切换 IDEA；IDEA 自身主题变化继续通过
+  `ide.theme` SSE 实时同步给前端，避免插件和 IDEA 明暗状态分离。
+- 新增 `GET /api/ide/theme` 与 `POST /api/ide/theme/settings`，前端 API、设置导航和响应式下拉选择器
+  已接入；使用项目内 DropdownMenu/Switch/Button，没有原生 `select`、`confirm` 或 `alert`。
+- 验证通过：`pnpm.cmd exec tsc --noEmit`、`pnpm.cmd build`、IDEA 2023.2.4 SDK 下的
+  `compileKotlin`、`gradle -p idea-plugin buildPlugin`、`git diff --check`；所有手写源码仍少于 1000 行。
+- 没有启动或操作用户的真实 IDEA，因此安装插件后对 `Light` / `IntelliJ Light` 的实际切换、系统主题
+  自动跟随和第三方主题切换仍保留在下面的运行时点验清单中。
+
+---
+
+## T6 — 语气角色与专业角色分层 `[x]`
+
+### Codex 实施记录（实际执行：2026-08-08）
+
+- 设置页原「人格」改为「角色」，内部拆成「语气角色」和「专业角色」两个页签；原哈基米、台妹、御姐、
+  甜妹和自定义语气继续保留，语气角色只负责表达方式。
+- 新增架构设计师、UI/UX 设计师、前端工程师、后端工程师、数据库设计师、测试工程师、代码审阅者、
+  调试与性能工程师八个轻量专业角色；提示词只描述关注点，不引入 BMAD 等固定工作流。
+- 专业角色支持全局启停、单角色启停、编辑简短提示词，并可从 OpenCode 当前已加载 Skill 和已启用 MCP
+  中手动建立关联；关联项被删除或停用后不会继续注入会话。
+- 专业角色总开关关闭时，对话输入框底部完全不渲染角色控件；开启后显示紧凑下拉，支持“自动角色”和
+  所有已启用角色，选择结果按当前项目持久化。
+- 语气和专业角色作为同一个私有角色上下文发送，`stripPersonaContext` 继续在用户消息渲染前移除它，
+  因此角色提示词不会出现在用户气泡；专业角色明确声明为能力偏好，禁止强迫模型套用无关流程。
+- 网页实测通过：设置页两个页签、专业角色开关、八个角色、角色切换、开启后底部显示、关闭后隐藏均符合预期。
+
+---
+
+## T7 — 扩展 IDEA 原生工具桥接 `[x]`
+
+### Codex 实施记录（实际执行：2026-08-08）
+
+- 保留原有 Run/Debug、日志、Maven、Gradle 和 JCEF 浏览器工具，不安装 GitNexus、BMAD、MinMax 或其它
+  外部框架；新增能力全部来自 IDEA 2023.2.4 自身 API。
+- 新增 `idea_project_context`：读取项目 SDK、模块、内容根、源码根、模块依赖、打开文件和当前文件。
+- 新增 `idea_editor_context`：读取当前编辑器光标、选区、语言、行数和附近源码，也可按项目文件和行号读取。
+- 新增 `idea_diagnostics`：读取 IDEA Daemon/Inspection 已产生的错误、警告、位置和检查 ID，并告知分析是否完成。
+- 新增 `idea_symbol`：通过 PSI、`ReferencesSearch` 和 `DefinitionsScopedSearch` 查询符号定义、引用与实现。
+- 新增 `idea_navigate`：让 AI 把用户带到 IDEA 编辑器中的具体文件、行和列；新增 `idea_refresh_project` 保存
+  打开的文档并刷新 VFS 索引与 Project 树。
+- 文件参数统一限制在当前 IDEA 项目根目录；项目/编辑器/诊断/符号/日志/导航属于只读或低风险能力，按现有
+  审批规则自动放行，运行、构建、浏览器控制和刷新等有副作用操作继续请求审批。
+- 对话工具标题、输入和输出增加中文结构化渲染，项目模块、编辑器上下文、诊断列表和符号位置不再直接显示原始 JSON。
+- 验证通过：`pnpm.cmd exec tsc --noEmit`、`pnpm.cmd build`、IDEA 2023.2.4 SDK 下的 `compileKotlin`、
+  `gradle -p idea-plugin buildPlugin`。没有启动或操作用户的真实 IDEA，运行时 PSI/Daemon 结果仍需安装后点验。
+
+---
+
+## T8 — 内置桥接管理与审批模式即时生效 `[x]`
+
+### 问题与原因
+
+- `capybara-idea.ts` 原先既显示为普通 OpenCode 插件，又在页面上额外展示桥接状态，用户可以看到编辑、
+  删除等不适用于内置插件的操作。
+- 审批模式由 Kotlin 内存状态和 `permission.ask` 插件钩子实现；检查最新 OpenCode 源码后确认该钩子虽仍
+  保留类型定义，但当前权限执行链路不触发它，因此“替我审批”和“完全访问”只改变了界面状态。
+- 桥接文件原先在 OpenCode 启动之后才写入，插件自己启动的 OpenCode 第一次打开也无法加载 IDEA 工具；
+  IDEA 关闭时还会删除全局桥接文件，导致共享服务下次启动再次丢失插件。
+
+### Codex 实施记录（实际执行：2026-08-08）
+
+- 插件页新增单独的“IDEA 原生桥接（内置）”行，只提供启用/停用开关；开关右侧折叠区展示 11 项
+  `idea_*` 能力、Maven/Gradle 状态、Run/Debug 配置数量与安装位置。
+- 通用插件列表不再返回 `capybara-idea`；Kotlin 服务端同时拒绝同名插件的保存、覆盖、通用启停与删除，
+  内置桥接只能通过专用 `POST /api/ide/bridge/enabled` 调整。
+- 桥接源文件改为持久保留；停用时保存为 `.disabled`，IDEA 关闭只移除当前项目的端口提示文件，不再删除
+  全局桥接。HTTP 前端端口建立后、OpenCode 发现或启动前即准备桥接，因此插件管理的首次启动可直接加载。
+- 审批模式改为前端直接调用 OpenCode `PATCH /session/{sessionID}` 写入会话权限，不再经过 Kotlin 中转，
+  也不再要求重启服务。保存后立即使用响应中的权限规则回读校验，OpenCode 未应用时会明确报错。
+- “请求批准”和“替我审批”首先追加 `* = ask`，覆盖之前可能存在的“完全访问”；随后只对白名单读取、
+  诊断、问题面板和安全 IDEA 查询放行。“替我审批”额外放行文件编辑，命令、联网、构建、浏览器及未知工具
+  继续产生权限询问；“完全访问”使用 `* = allow`。
+- 内置桥接的每个自定义工具都显式调用 OpenCode 提供的 `context.ask(...)`：项目/编辑器/诊断/符号/日志
+  和浏览器只读动作使用安全权限，Run/Debug 启动、Maven、Gradle、项目刷新以及浏览器点击、输入、脚本等
+  有副作用动作使用各自的权限名，确保它们与文件、命令、联网工具一样受三档审批模式控制。
+- 新会话和没有显式权限规则的旧会话会自动写入“请求批准”，避免界面显示请求批准、OpenCode 实际沿用
+  Agent 默认权限。重复选择同一模式不会继续追加规则。
+- 删除了 `ApprovalModeService.kt`、`/api/approval-mode` 路由和桥接插件中的无效 `permission.ask` 钩子。
+- 浏览器窄侧栏实测通过：内置行、开关、折叠能力列表及三种审批选项正常显示，无横向溢出；未连接真实
+  OpenCode，因此权限询问面板的实际触发仍需在安装后的 IDEA 会话中点验。
+
+---
+
+## T9 — 让模型主动识别并调用 IDEA 原生能力 `[x]`
+
+### 问题与原因
+
+- OpenCode 会把桥接插件注册的 `idea_*` 工具及描述交给模型，但工具定义本身没有稳定说明当前会话正运行在
+  IntelliJ IDEA 内，也没有告诉模型哪些场景应优先使用 IDE 上下文，因此模型经常把这些工具当作可忽略的附加能力。
+- `idea_browser` 只有状态和页面控制动作，没有打开窗口的动作；窗口关闭时只能让用户手动从工具菜单打开，
+  模型无法完成“发现未打开 → 主动打开 → 检查页面”的完整流程。
+
+### Codex 实施记录（实际执行：2026-08-08）
+
+- 内置 `capybara-idea.ts` 增加 OpenCode 最新插件钩子 `experimental.chat.system.transform`。仅当当前工作区存在
+  `.idea/capybara-ai-port` 时，向每次模型请求注入一段精简 IDEA 环境说明；全局 OpenCode 在非 IDEA 项目中
+  加载该插件时不会误报运行环境。
+- 环境说明明确项目/编辑器上下文、诊断、符号索引、代码定位、项目刷新、Run/Debug、日志、Maven、Gradle
+  和水豚浏览器的适用场景，同时要求模型不要为了展示能力而无意义调用 IDEA 工具。
+- `idea_browser` 新增受审批控制的 `open` 动作，可在 IDEA 事件线程中主动打开或置前独立 JCEF 窗口，支持
+  同时传入 URL；工具描述和插件页能力说明同步更新，不再要求用户先手动进入工具菜单。
+- 系统环境只注入带 `sessionID` 的真实会话，不影响 OpenCode 内部的 Agent 生成请求。验证通过：
+  `pnpm.cmd exec tsc --noEmit`、`pnpm.cmd build`、
+  `gradle -p idea-plugin buildPlugin -PintellijLocalPath="E:\software\IntelliJ IDEA 2023.2.4" --no-daemon`。
+- 运行时仍需安装本次生成的新插件包并重启 OpenCode 服务；OpenCode 只在进程启动时加载
+  `capybara-idea.ts`，仅刷新前端不会让已经运行的旧进程获得新系统 hook 和 `open` 动作。
+
+---
+
+## T10 — 审批模式菜单关闭后清除悬停高亮 `[x]`
+
+### 问题与原因
+
+- `cmdk` 会在菜单内部保留当前选中项；用户只把鼠标移到某一审批模式、没有点击确认便关闭菜单时，下一次打开仍可能看到该项带着悬停背景。
+- 真实审批模式与菜单内的临时键盘/鼠标高亮是两种状态，不能共用同一个选中样式；当前模式只应以右侧勾选标识，临时高亮应在菜单关闭时销毁。
+
+### Codex 实施记录（实际执行：2026-08-08）
+
+- `ApprovalModePicker.tsx` 新增受控的 `activeMode` 临时高亮状态，菜单打开、关闭、点击外部关闭和完成选择时都会清空；重新打开时不继承上一次鼠标位置。
+- 压掉 `cmdk` 自动选中第一项产生的背景，只在真实 `onMouseMove` 或方向键操作后显示高亮；鼠标离开菜单也会立即清除。
+- 上下方向键现在移动临时高亮，Enter 只确认当前临时项；当前已保存的审批模式仍使用右侧勾选显示，不伪装成悬停状态。
+- 在 `http://127.0.0.1:4173/` 完成网页复测：悬停“完全访问”后点击外部关闭，再次打开三项背景均为透明，未出现残留高亮。
+- 验证通过：`pnpm.cmd exec tsc --noEmit`、`pnpm.cmd build`、
+  `gradle -p idea-plugin buildPlugin -PintellijLocalPath="E:\software\IntelliJ IDEA 2023.2.4" --no-daemon`；
+  `git diff --check` 无错误，手写源码均未超过 1000 行，也没有调用原生 `confirm()` / `alert()`。
+
+---
+
+## 仍未在真实 IDEA 里验证的项（给 Codex 的提醒）
+
+这些改动编译和打包都过了，但**没有在运行中的 IDEA 里点过**，改相关代码时请一并实测：
+
+- 三种审批模式写入会话后是否分别拦截或放行 `edit` / `bash` / `websearch`，以及权限面板回复是否继续执行；
+- `reconnectedOnly` 面板是否真的出现（需要用户自己在终端启动 OpenCode 后点重启）；
+- 水豚浏览器 OSR 是否真的出画面，以及百度跨 frame 拾取、评论角标、Esc/连续启停是否符合预期
+  （状态栏会显示画布尺寸）；
+- 外观页选择 `Light` / `IntelliJ Light` / 第三方主题后，插件按钮和系统明暗跟随是否应用精确 LAF；
+- `idea_project_context` / `idea_editor_context` / `idea_diagnostics` / `idea_symbol` 在真实项目中的返回内容；
+- Git 按钮里点文件是否打开 IDEA 三栏 diff；
+- 从 `opencode.jsonc` 删除供应商是否真的写回了文件；
+- 工具窗口最小宽度 `stretchWidth` 是否生效。
