@@ -441,7 +441,8 @@ export function ModelSettings({
           ...(providerDraft.apiKey.trim() ? { apiKey: providerDraft.apiKey.trim() } : {}),
         },
       };
-      await openCodeApi.updateConfig({ disabled_providers: [...disabledProviders], provider: { [id]: provider } }, projectPath);
+      await ideaApi.saveProvider(id, provider);
+      await openCodeApi.updateConfig({ disabled_providers: [...disabledProviders] }, projectPath);
       applyLocalConfig({
         ...config,
         disabled_providers: [...disabledProviders],
@@ -470,11 +471,7 @@ export function ModelSettings({
         blacklist: [...blacklist],
         models: { ...(existing.models ?? {}), [modelID]: toModelConfig({ ...modelDraft, id: modelID }, existing.models?.[modelID]) },
       };
-      await openCodeApi.updateConfig({
-        provider: {
-          [providerID]: nextProvider,
-        },
-      }, projectPath);
+      await ideaApi.saveProvider(providerID, nextProvider);
       applyLocalConfig({ ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } }, providerID);
       setEditingModelID(modelID);
       setModelDraft({ ...modelDraft, id: modelID });
@@ -502,7 +499,8 @@ export function ModelSettings({
       const blacklist = new Set(existing.blacklist ?? []);
       enabled ? blacklist.delete(modelID) : blacklist.add(modelID);
       const nextProvider = { ...existing, blacklist: [...blacklist] };
-      await openCodeApi.updateConfig({ provider: { [providerID]: nextProvider } }, projectPath);
+      // PATCH /config discards provider edits; the plugin writes them to opencode.jsonc instead.
+      await ideaApi.saveProvider(providerID, nextProvider);
       applyLocalConfig({ ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } }, providerID);
       onChanged();
     } catch (toggleError) {
@@ -559,11 +557,7 @@ export function ModelSettings({
         [modelID]: { ...(existing.models?.[modelID] ?? {}), status: "deprecated" as const },
       };
       const nextProvider = { ...existing, blacklist, models };
-      await openCodeApi.updateConfig({
-        provider: {
-          [providerID]: nextProvider,
-        },
-      }, projectPath);
+      await ideaApi.saveProvider(providerID, nextProvider);
       const nextConfig: OpenCodeConfig = { ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } };
       const nextVariantLabels = { ...modelVariantLabels };
       delete nextVariantLabels[modelVariantLabelKey(providerID, modelID)];

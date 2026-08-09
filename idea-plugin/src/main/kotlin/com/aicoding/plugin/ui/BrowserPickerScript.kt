@@ -183,15 +183,17 @@ internal object BrowserPickerScript {
           function closeEditor(keepPicking) {
             removeElement(state.editor);
             state.editor = null;
-            if (state.frozen) {
-              state.frozen = false;
-              // Editing an existing annotation turns the highlight on without the picker; hide it
-              // again on close so a stale box is not left over the page.
-              if (!state.enabled && state.overlay) state.overlay.style.display = 'none';
-              // One click = one annotation. Press the toolbar button again for the next one,
-              // so the highlight never starts chasing the cursor unannounced.
-              if (!keepPicking) disable(true);
-            }
+            // keepPicking means one editor is replacing another, so the freeze and the highlight
+            // must survive — clearing them here is what made the box vanish the moment a badge
+            // reopened its annotation.
+            if (keepPicking || !state.frozen) return;
+            state.frozen = false;
+            // Editing an existing annotation turns the highlight on without the picker being
+            // active; hide it again on close so no stale box is left over the page.
+            if (!state.enabled && state.overlay) state.overlay.style.display = 'none';
+            // One click = one annotation. Press the toolbar button again for the next one, so the
+            // highlight never starts chasing the cursor unannounced.
+            disable(true);
           }
 
           function button(label, primary) {

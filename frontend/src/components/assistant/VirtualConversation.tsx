@@ -37,12 +37,19 @@ export function VirtualConversation({
   pinToBottom,
 }: VirtualConversationProps) {
   const listRef = useRef<VirtuosoHandle>(null);
+  const scrollerRef = useRef<HTMLElement | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const atBottomRef = useRef(true);
+  // Rebuilding this map on every footer change handed Virtuoso a new component *type*, which
+  // unmounts and remounts the whole footer subtree — that is what made the approval dialog replay
+  // its open animation on every poll. The types are created once and the content arrives through
+  // Virtuoso's `context`, which re-renders them in place.
   const components = useMemo(() => ({
-    Footer: () => footer ? <div className="px-3 pb-6 pt-0.5">{footer}</div> : <div className="h-5" />,
+    Footer: ({ context }: { context?: { footer?: ReactNode } }) =>
+      context?.footer ? <div className="px-3 pb-6 pt-0.5">{context.footer}</div> : <div className="h-5" />,
     Header: () => <div className="h-4" />,
-  }), [footer]);
+  }), []);
+  const context = useMemo(() => ({ footer }), [footer]);
 
   // scrollToIndex stops at the last item, which leaves the footer (thinking
   // indicator, permission and question cards) below the fold. Scrolling the
@@ -74,13 +81,33 @@ export function VirtualConversation({
     return () => window.cancelAnimationFrame(frame);
   }, [pinToBottom, scrollToBottom]);
 
-  // Keep the newest content visible while streaming, but only if the user has not
-  // scrolled up to read something.
+  // Keep the newest content visible while streaming, but only if the user has not scrolled up.
+  //
+  // `items.length` alone misses the common case: during a run the last turn grows in place, so
+  // the count never changes while the content gets taller and the view drifts off the bottom.
+  // Watching the last item's identity as well re-anchors on every streamed update.
+  const lastItemKey = items.length > 0 ? String(items[items.length - 1]?.key ?? "") : "";
   useEffect(() => {
     if (!atBottomRef.current) return;
     const timer = window.setTimeout(scrollToBottom, 60);
     return () => window.clearTimeout(timer);
-  }, [footer, items.length, scrollToBottom]);
+  }, [footer, items.length, lastItemKey, scrollToBottom]);
+
+  // Virtuoso reports "not at bottom" for a frame while it re-measures a grown item, which used to
+  // latch the follow logic off for the rest of the run. Re-arm it whenever the scroller really is
+  // within a pixel of the end.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const scroller = scrollerRef.current;
+      if (!scroller || atBottomRef.current) return;
+      const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      if (distance <= 4) {
+        atBottomRef.current = true;
+        setAtBottom(true);
+      }
+    }, 400);
+    return () => window.clearInterval(timer);
+  }, []);
 
   if (items.length === 0 && !footer) {
     return <div className={cn("relative min-h-0 flex-1", className)}>{empty}</div>;
@@ -96,6 +123,7 @@ export function VirtualConversation({
         atBottomThreshold={72}
         className="h-full overscroll-contain"
         components={components}
+        context={context}
         computeItemKey={(_, item) => String(item.key)}
         data={items}
         followOutput={followOutput ? "auto" : false}
@@ -103,6 +131,7 @@ export function VirtualConversation({
         initialTopMostItemIndex={items.length > 0 ? items.length - 1 : 0}
         itemContent={(_, item) => <div className="px-3 pb-5">{item}</div>}
         ref={listRef}
+        scrollerRef={(element) => { scrollerRef.current = element as HTMLElement | null; }}
       />
       {!atBottom && items.length > 0 && (
         <Button

@@ -117,6 +117,7 @@ export interface AssistantShellProps {
   onPreferencesChanged: (preferences: WorkspacePreferences) => void;
   onProfessionalRoleChange: (roleId: string) => void;
   onPrompt: (message: PromptInputMessage) => Promise<boolean>;
+  onRecoverTurn: (action: "revert" | "fork", messageID: string) => void;
   onQuestionChange: (request: QuestionRequest, index: number, values: string[]) => void;
   onQuestionReject: (request: QuestionRequest) => void;
   onQuestionReply: (request: QuestionRequest) => void;
@@ -257,6 +258,7 @@ export function AssistantShell(props: AssistantShellProps) {
     onPreferencesChanged,
     onProfessionalRoleChange,
     onPrompt,
+    onRecoverTurn,
     onQuestionChange,
     onQuestionReject,
     onQuestionReply,
@@ -302,6 +304,7 @@ export function AssistantShell(props: AssistantShellProps) {
             diffs={diffsByMessageID[diffMessageID]}
             isStreaming={messageIsStreaming}
             message={message as AssistantMessageData}
+            onRecover={onRecoverTurn}
           />
         </ErrorBoundary>,
       ];

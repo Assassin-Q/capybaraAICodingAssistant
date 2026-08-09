@@ -1,4 +1,5 @@
-import { CircleAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CircleAlert, GitFork, Undo2 } from "lucide-react";
 import { memo } from "react";
 
 import { Message, MessageContent } from "@/components/ai-elements/message";
@@ -56,10 +57,13 @@ export const AssistantMessage = memo(function AssistantMessage({
   message,
   isStreaming,
   diffs = [],
+  onRecover,
 }: {
   diffs?: SessionFileDiff[];
   isStreaming: boolean;
   message: AssistantMessageData;
+  /** Offered on a failed turn so a provider rejection cannot poison the rest of the session. */
+  onRecover?: (action: "revert" | "fork", messageID: string) => void;
 }) {
   const visibleError = visibleMessageError(message.error);
   const lastProcessIndex = message.content.reduce(
@@ -78,9 +82,38 @@ export const AssistantMessage = memo(function AssistantMessage({
     <Message from="assistant">
       <MessageContent className="max-w-full gap-2.5">
         {visibleError && (
-          <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
-            <span className="min-w-0 break-words">{visibleError}</span>
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <div className="flex items-start gap-2">
+              <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+              <span className="min-w-0 break-words">{visibleError}</span>
+            </div>
+            {/* A failed turn stays in the history and every later request carries it along, so one
+                provider rejection can poison the rest of the session. These are the ways out. */}
+            {onRecover && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-destructive/20 pt-2">
+                <span className="text-[11px] opacity-80">这条失败的回合会留在上下文里：</span>
+                <Button
+                  className="h-6 px-2 text-[11px]"
+                  onClick={() => onRecover("revert", message.id)}
+                  size="sm"
+                  title="删除这条以及之后的所有消息，回到出错前的状态"
+                  type="button"
+                  variant="outline"
+                >
+                  <Undo2 className="size-3" />回到出错前
+                </Button>
+                <Button
+                  className="h-6 px-2 text-[11px]"
+                  onClick={() => onRecover("fork", message.id)}
+                  size="sm"
+                  title="把出错前的内容复制成新会话，原会话保持不变"
+                  type="button"
+                  variant="outline"
+                >
+                  <GitFork className="size-3" />另存为新会话
+                </Button>
+              </div>
+            )}
           </div>
         )}
         {isStreaming && !hasProcess && !hasConclusion && <ThinkingLine />}

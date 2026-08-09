@@ -33,7 +33,8 @@ export function ModelVariantEditor({
   const [newVariantID, setNewVariantID] = useState("");
   const [newVariantLabel, setNewVariantLabel] = useState("");
   const [dragging, setDragging] = useState<string>();
-  const ids = variantIDs(effective, overrides);
+  // Order comes from the label map, which is the only per-user store the editor fully controls.
+  const ids = variantIDs(effective, overrides, Object.keys(labels));
   const trimmedNewID = newVariantID.trim();
   const trimmedNewLabel = newVariantLabel.trim();
   const canAdd = Boolean(
@@ -80,7 +81,12 @@ export function ModelVariantEditor({
       return Object.fromEntries([...ordered, ...rest]);
     };
     onChange(reorder(overrides) as ModelVariantMap);
-    onLabelsChange(reorder(labels));
+    // Every row needs a label entry, otherwise it has no rank and falls to the end regardless
+    // of where it was dropped. Missing ones get their current display name.
+    onLabelsChange(Object.fromEntries(order.map((key) => [
+      key,
+      hasOwn(labels, key) ? labels[key] : variantLabel(key),
+    ])));
   };
 
   const disableVariant = (id: string) => {

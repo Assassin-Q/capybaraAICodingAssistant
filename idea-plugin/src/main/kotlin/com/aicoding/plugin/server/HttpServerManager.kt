@@ -41,6 +41,7 @@ import com.aicoding.plugin.services.PluginImportRequest
 import com.aicoding.plugin.services.PluginLocationRequest
 import com.aicoding.plugin.services.PluginManagementService
 import com.aicoding.plugin.services.RemoveProviderRequest
+import com.aicoding.plugin.services.SaveProviderRequest
 import com.aicoding.plugin.services.SkillHubDetailRequest
 import com.aicoding.plugin.services.SkillHubDetailService
 import com.aicoding.plugin.services.SkillHubFileRequest
@@ -334,6 +335,8 @@ class HttpServerManager(private val project: Project) {
                         writeJson(exchange, 200, HealthResponse(true, port))
                     exchange.requestURI.path == "/api/server-info" && exchange.requestMethod == "GET" ->
                         writeJson(exchange, 200, HealthResponse(true, port))
+                    exchange.requestURI.path == "/api/opencode/save-provider" && exchange.requestMethod == "POST" ->
+                        writeJson(exchange, 200, openCodeConfigService.saveProvider(body<SaveProviderRequest>(exchange)))
                     exchange.requestURI.path.startsWith("/api/approval-mode") -> handleApprovalMode(exchange)
                     exchange.requestURI.path.startsWith("/api/skills") -> handleSkills(exchange)
                     exchange.requestURI.path.startsWith("/api/plugins") -> handlePlugins(exchange)

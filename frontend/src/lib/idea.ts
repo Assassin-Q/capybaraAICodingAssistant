@@ -305,6 +305,19 @@ export const ideaApi = {
     }>("/approval-mode/rules"),
 
   /**
+   * Writes a provider into opencode.jsonc.
+   *
+   * OpenCode 1.18.12's PATCH /config answers 200 with the payload echoed back and then drops it —
+   * verified by patching a probe provider and finding it in neither GET /config nor the file. So
+   * provider edits, including a model blacklist, have to go through the plugin.
+   */
+  saveProvider: (providerID: string, config: unknown) =>
+    request<{ success: boolean; message?: string; file?: string }>("/opencode/save-provider", {
+      body: JSON.stringify({ config: JSON.stringify(config), providerID }),
+      method: "POST",
+    }),
+
+  /**
    * Deletes a provider from opencode.jsonc. OpenCode's `PATCH /config` can only merge, so this
    * is the only way to actually remove one; the plugin backs the file up before editing.
    */

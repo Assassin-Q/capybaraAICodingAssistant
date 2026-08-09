@@ -633,6 +633,35 @@ export const openCodeApi = {
     }
   },
 
+  /**
+   * Rewinds the session to just before `messageID`, dropping everything after it.
+   *
+   * A failed turn leaves an empty assistant message (0 in / 0 out) in the history, and every
+   * later request carries it along — one provider rejection can poison the rest of the session.
+   */
+  revertSession: (sessionID: string, messageID: string, directory?: string) =>
+    request<unknown>(`/session/${encodeURIComponent(sessionID)}/revert`, {
+      body: JSON.stringify({ messageID }),
+      method: "POST",
+    }, directoryParams(directory)),
+
+  /** Undoes the last revert. */
+  unrevertSession: (sessionID: string, directory?: string) =>
+    request<unknown>(`/session/${encodeURIComponent(sessionID)}/unrevert`, {
+      method: "POST",
+    }, directoryParams(directory)),
+
+  /** Copies the session up to `messageID` into a new one, leaving the original untouched. */
+  forkSession: async (sessionID: string, messageID: string, directory?: string): Promise<SessionInfo> => {
+    const response = await request<unknown>(`/session/${encodeURIComponent(sessionID)}/fork`, {
+      body: JSON.stringify({ messageID }),
+      method: "POST",
+    }, directoryParams(directory));
+    const session = toSession(unwrapData<unknown>(response), directory);
+    if (!session) throw new Error("OpenCode 返回了无效会话");
+    return session;
+  },
+
   sendPrompt: async (sessionID: string, input: SendPromptInput) => {
     const messageID = input.messageID ?? createMessageID();
     if (!input.text.trim() && (input.files ?? []).length === 0) throw new Error("消息必须包含文字或附件");

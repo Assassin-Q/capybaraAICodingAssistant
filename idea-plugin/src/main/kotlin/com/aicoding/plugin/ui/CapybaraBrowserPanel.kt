@@ -45,6 +45,8 @@ import java.io.ByteArrayOutputStream
 import java.util.Base64
 import javax.imageio.ImageIO
 import java.awt.Dimension
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
 import java.lang.reflect.Proxy
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -159,6 +161,12 @@ class CapybaraBrowserPanel(private val project: Project) : JPanel(BorderLayout()
             override fun setSelected(event: AnActionEvent, state: Boolean) {
                 setPickerEnabled(state)
             }
+
+            override fun update(event: AnActionEvent) {
+                super.update(event)
+                event.presentation.icon = if (pickerEnabled) PICK_ICON_ACTIVE else PICK_ICON
+                event.presentation.text = if (pickerEnabled) "退出标注（Esc）" else "标注元素"
+            }
         })
         // Both used to hide behind the overflow menu with no icon, so nobody found them.
         actions.add(browserAction("清除全部标注", "删除当前页面的所有标注", AllIcons.Actions.GC) {
@@ -191,9 +199,13 @@ class CapybaraBrowserPanel(private val project: Project) : JPanel(BorderLayout()
             add(addressField, BorderLayout.CENTER)
             add(loadingIcon, BorderLayout.EAST)
         }
+        val actionsRow = JPanel(GridBagLayout()).apply {
+            isOpaque = false
+            add(actionToolbar.component, GridBagConstraints())
+        }
         return JPanel(BorderLayout()).apply {
             border = JBUI.Borders.empty(1, 2)
-            add(actionToolbar.component, BorderLayout.WEST)
+            add(actionsRow, BorderLayout.WEST)
             add(addressBar, BorderLayout.CENTER)
         }
     }
@@ -608,6 +620,10 @@ class CapybaraBrowserPanel(private val project: Project) : JPanel(BorderLayout()
 
         /** Cursor-arrow glyph for the picker; AllIcons has no equivalent. */
         private val PICK_ICON = IconLoader.getIcon("/icons/pickElement.svg", CapybaraBrowserPanel::class.java)
+
+        /** Accent variant: the only selection feedback a mini toolbar gives. */
+        private val PICK_ICON_ACTIVE =
+            IconLoader.getIcon("/icons/pickElementActive.svg", CapybaraBrowserPanel::class.java)
 
         fun isAvailable(): Boolean = runCatching { JBCefApp.isSupported() }.getOrDefault(false)
     }

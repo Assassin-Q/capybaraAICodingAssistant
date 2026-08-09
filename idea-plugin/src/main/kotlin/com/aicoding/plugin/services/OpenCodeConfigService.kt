@@ -15,6 +15,9 @@ import java.nio.file.StandardCopyOption
 data class RemoveProviderRequest(val providerID: String)
 
 @Serializable
+data class SaveProviderRequest(val providerID: String, /** Raw JSON object for this provider. */ val config: String)
+
+@Serializable
 data class ConfigEditResponse(
     val success: Boolean,
     val message: String? = null,
@@ -187,8 +190,11 @@ class OpenCodeConfigService(private val project: Project) {
     }
 
     /** Character range of the whole `"permission": <value>` pair, or null when the key is absent. */
-    private fun permissionSpan(text: String): IntRange? {
-        val keyIndex = indexOfTopLevelKey(text, "permission")
+    private fun permissionSpan(text: String): IntRange? = keySpan(text, "permission")
+
+    /** Character range of a whole `"key": <value>` pair at the top level, or null when absent. */
+    private fun keySpan(text: String, key: String): IntRange? {
+        val keyIndex = indexOfTopLevelKey(text, key)
         if (keyIndex < 0) return null
         val colon = text.indexOf(':', keyIndex).takeIf { it >= 0 } ?: return null
         val valueStart = text.indexOfFirst(colon + 1) { !it.isWhitespace() }.takeIf { it >= 0 } ?: return null
@@ -235,6 +241,65 @@ class OpenCodeConfigService(private val project: Project) {
             index += 1
         }
         return -1
+    }
+
+    /**
+     * Merges one provider's configuration into `opencode.jsonc`.
+     *
+     * OpenCode 1.18.12's `PATCH /config` answers 200 with the payload echoed back and then drops
+     * it — verified by patching a probe provider and finding it in neither `GET /config` nor the
+     * file. So every provider edit, including a model blacklist, has to be written here.
+     *
+     * Only the `provider` value is re-serialised, so comments elsewhere in a hand-maintained
+     * JSONC file survive; comments inside the provider block do not.
+     */
+    fun saveProvider(request: SaveProviderRequest): ConfigEditResponse = runCatching {
+        val providerID = request.providerID.trim()
+        require(providerID.isNotBlank()) { "缺少供应商 ID" }
+        require(providerID.matches(Regex("^[A-Za-z0-9_.-]+$"))) { "供应商 ID 含有非法字符" }
+
+        val file = candidates().firstOrNull { Files.isRegularFile(it) }
+            ?: return ConfigEditResponse(false, "没有找到 opencode.json / opencode.jsonc")
+        val original = Files.readString(file)
+        val parsed = runCatching { json.parseToJsonElement(stripComments(original)) as? JsonObject }.getOrNull()
+            ?: return ConfigEditResponse(false, "无法解析 $file，请检查语法", file.toString())
+
+        val providers = (parsed["provider"] as? JsonObject)?.toMutableMap() ?: mutableMapOf()
+        val entry = runCatching { json.parseToJsonElement(request.config) as? JsonObject }.getOrNull()
+            ?: return ConfigEditResponse(false, "供应商配置不是合法的 JSON 对象", file.toString())
+        providers[providerID] = entry
+        val rendered = "\"provider\": " + json.encodeToString(JsonObject.serializer(), JsonObject(providers))
+
+        val span = keySpan(original, "provider")
+        val updated = if (span != null) {
+            original.replaceRange(span, rendered)
+        } else {
+            val opening = original.indexOf('{')
+            if (opening < 0) return ConfigEditResponse(false, "配置文件不是 JSON 对象", file.toString())
+            original.substring(0, opening + 1) + "\n  " + rendered + "," + original.substring(opening + 1)
+        }
+
+        val backup = file.resolveSibling("${file.fileName}.capybara.bak")
+        Files.copy(file, backup, StandardCopyOption.REPLACE_EXISTING)
+        Files.writeString(file, updated)
+        val verified = runCatching {
+            ((json.parseToJsonElement(stripComments(Files.readString(file))) as JsonObject)["provider"] as? JsonObject)
+                ?.containsKey(providerID) == true
+        }.getOrDefault(false)
+        if (!verified) {
+            Files.copy(backup, file, StandardCopyOption.REPLACE_EXISTING)
+            return ConfigEditResponse(false, "写入后配置无法解析，已自动还原。请手动编辑 $file", file.toString())
+        }
+
+        VirtualFileManager.getInstance().asyncRefresh(null)
+        ConfigEditResponse(
+            success = true,
+            message = "已写入 ${file.fileName}，重启 OpenCode 后生效。",
+            file = file.toString(),
+        )
+    }.getOrElse { error ->
+        logger.info("Provider save failed: ${error.message}")
+        ConfigEditResponse(false, error.message ?: "保存供应商失败")
     }
 
     /** Only the two files inside the opened project. */

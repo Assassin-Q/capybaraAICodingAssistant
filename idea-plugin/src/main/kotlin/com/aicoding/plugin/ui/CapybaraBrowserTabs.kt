@@ -37,8 +37,11 @@ class CapybaraBrowserTabs(private val project: Project) : JPanel(BorderLayout())
         preferredSize = Dimension(1100, 780)
         minimumSize = Dimension(480, 360)
         add(tabs, BorderLayout.CENTER)
+        add(JPanel(BorderLayout()).apply {
+            isOpaque = false
+            add(buildNewTabButton(), BorderLayout.NORTH)
+        }, BorderLayout.EAST)
         tabs.addChangeListener { attachActiveTab() }
-        tabs.putClientProperty("JTabbedPane.trailingComponent", buildNewTabButton())
         newTab()
     }
 
