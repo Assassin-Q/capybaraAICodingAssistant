@@ -64,7 +64,11 @@ data class SkillHubSecurityReport(
 
 @Serializable
 data class SkillHubDetail(
-    val success: Boolean = true,
+    /**
+     * No default on purpose: the HTTP layer serialises with `encodeDefaults = false`, so a
+     * property equal to its default is dropped and the client sees `undefined`.
+     */
+    val success: Boolean,
     val message: String? = null,
     val slug: String = "",
     val canonicalName: String = "",
@@ -89,7 +93,8 @@ data class SkillHubDetail(
 
 @Serializable
 data class SkillHubFileContent(
-    val success: Boolean = true,
+    /** See [SkillHubDetail.success]: a default here would be dropped from the response. */
+    val success: Boolean,
     val message: String? = null,
     val path: String = "",
     val text: String = "",
@@ -134,6 +139,7 @@ class SkillHubDetailService(private val project: Project) {
         val stats = skill.obj("stats")
 
         SkillHubDetail(
+            success = true,
             slug = slug,
             canonicalName = root.obj("namespace").str("canonicalName"),
             name = skill.str("displayName").ifBlank { slug },
@@ -168,6 +174,7 @@ class SkillHubDetailService(private val project: Project) {
         val body = getText(detailUrl(slug, namespace, "/file") + "&path=" + encode(path))
             ?: return SkillHubFileContent(success = false, message = "SkillHub 没有返回该文件")
         SkillHubFileContent(
+            success = true,
             path = path,
             text = body.take(MAX_FILE_CHARS),
             truncated = body.length > MAX_FILE_CHARS,

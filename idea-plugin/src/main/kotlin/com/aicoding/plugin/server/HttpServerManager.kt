@@ -589,7 +589,9 @@ class HttpServerManager(private val project: Project) {
             }
             route == "" && method == "GET" -> {
                 val sessionID = queryParam(exchange, "sessionID").orEmpty()
-                writeJson(exchange, 200, ApprovalModeResponse(sessionID, approvalModeService.get(sessionID)))
+                // Reading a session's mode claims it for this project, which is how the bridge
+                // knows where to route its approvals and its IDEA system prompt.
+                writeJson(exchange, 200, ApprovalModeResponse(sessionID, approvalModeService.claim(sessionID)))
             }
             route == "" && method == "POST" -> {
                 val request = body<ApprovalModeRequest>(exchange)

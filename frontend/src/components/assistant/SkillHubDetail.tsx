@@ -86,7 +86,9 @@ export function SkillHubDetailView({
       .hubDetail(slug, namespace)
       .then((next) => {
         if (cancelled) return;
-        if (!next.success) setError(next.message ?? "读取详情失败");
+        // Treat a missing flag as success: the plugin serialises with encodeDefaults=false, so an
+        // older build omits it entirely on the happy path.
+        if (next.success === false) setError(next.message ?? "读取详情失败");
         else setDetail(next);
       })
       .catch((detailError) => {
@@ -106,7 +108,7 @@ export function SkillHubDetailView({
     setFileText("");
     try {
       const content = await skillsApi.hubFile(slug, namespace, path);
-      setFileText(content.success ? content.text : content.message ?? "读取失败");
+      setFileText(content.success === false ? content.message ?? "读取失败" : content.text);
     } catch (fileError) {
       setFileText(errorMessage(fileError));
     } finally {

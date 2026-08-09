@@ -64,7 +64,8 @@ data class IdeaExecutionResponse(
 
 @Serializable
 data class IdeaBridgeStatus(
-    val success: Boolean = true,
+    /** No default: `encodeDefaults = false` would drop it and the client would read undefined. */
+    val success: Boolean,
     val installed: Boolean,
     val enabled: Boolean,
     val location: String,
@@ -244,6 +245,7 @@ class IdeaExecutionService(private val project: Project) : Disposable {
         val installed = enabled || Files.isRegularFile(disabled)
         return IdeaBridgeStatus(
             installed = installed,
+            success = true,
             enabled = enabled,
             location = if (enabled) active.toString() else disabled.toString(),
             mavenAvailable = pluginEnabled(MAVEN_PLUGIN_ID),
@@ -365,6 +367,38 @@ class IdeaExecutionService(private val project: Project) : Disposable {
             } catch (error) { /* registry appears once a panel has started */ }
             return ports
           }
+          /**
+           * Which IDEA project owns this session, as { path, port }.
+           *
+           * The plugin is constructed with a single `directory`, so with one OpenCode process
+           * serving several projects that value is wrong for every session but one — the prompt
+           * would then name the wrong workspace, or stop being injected entirely once that one
+           * project closed. The registry knows every running plugin server, and /approval-mode
+           * answers `known` for the project that opened the session.
+           */
+          const ownerOfSession = async (sessionID) => {
+            if (!sessionID) return null
+            let registry = {}
+            try {
+              registry = JSON.parse(await fs.readFile(registryFile, "utf8"))
+            } catch (error) { /* no panel has started yet */ }
+            const entries = Object.entries(registry)
+            try {
+              const own = (await fs.readFile(bridgePortFile, "utf8")).trim()
+              if (own && !entries.some(([, port]) => String(port).trim() === own)) {
+                entries.unshift([directory, own])
+              }
+            } catch (error) { /* this project may not be open */ }
+            for (const [path, port] of entries) {
+              try {
+                const route = "/approval-mode/decide?sessionID=" + encodeURIComponent(sessionID) + "&type=read"
+                const parsed = JSON.parse(await callPort(String(port).trim(), route))
+                if (parsed && parsed.known) return { path, port: String(port).trim() }
+              } catch (error) { /* that project may have closed */ }
+            }
+            return null
+          }
+
           const callPort = async (port, route, init = {}) => {
             const response = await fetch(`http://127.0.0.1:${'$'}{port}/api${'$'}{route}`, {
               headers: { "content-type": "application/json" },
@@ -378,9 +412,9 @@ class IdeaExecutionService(private val project: Project) : Disposable {
           // The built-in browser shares the same HTTP server; only the path prefix differs.
           const browser = (body) =>
             request("/browser", "/control", { method: "POST", body: JSON.stringify(body) })
-          const ideaSystemPrompt = [
+          const ideaSystemPrompt = (workspace) => [
             "# IntelliJ IDEA environment",
-            "You are running inside IntelliJ IDEA through the Capybara bridge. Workspace: " + directory + ".",
+            "You are running inside IntelliJ IDEA through the Capybara bridge. Workspace: " + workspace + ".",
             "The idea_* tools are live IDE capabilities, not documentation. They exist right now and you may call them without asking the user first — the approval mode already gates whatever needs gating.",
             "",
             "## Which tool for what",
@@ -438,16 +472,20 @@ class IdeaExecutionService(private val project: Project) : Disposable {
             },
             "experimental.chat.system.transform": async (input, output) => {
               if (!input.sessionID) return
-              try {
-                await fs.access(bridgePortFile)
-                output.system.push(ideaSystemPrompt)
-              } catch {
-                // The global plugin can also be loaded by OpenCode instances outside IDEA.
-              }
+              // No owning project means this session belongs to an OpenCode running outside IDEA,
+              // and it must not be told it has an IDE.
+              const owner = await ownerOfSession(input.sessionID)
+              if (owner) output.system.push(ideaSystemPrompt(owner.path))
             },
             tool: {
               idea_run_configuration: tool({
-                description: "List or start an IntelliJ IDEA Run/Debug configuration for the current project.",
+                description:
+                  "IntelliJ Run/Debug configurations. Use instead of guessing a shell command: it runs the " +
+                  "user's own configuration, with their env, JVM args and working directory, and the output " +
+                  "lands in IDEA's Run window. " +
+                  "Without id: returns [{ id, name, type, folder, temporary }] - id is what you pass back. " +
+                  "With id (plus optional mode 'run' or 'debug', default 'run'): starts it and returns " +
+                  "{ success, message }. Starting is asynchronous - read the output with idea_read_run_log.",
                 args: {
                   id: tool.schema.string().optional(),
                   mode: tool.schema.enum(["run", "debug"]).optional(),
@@ -462,7 +500,13 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 },
               }),
               idea_read_run_log: tool({
-                description: "Read recent IntelliJ IDEA Run, Debug, Maven, or Gradle console output.",
+                description:
+                  "Console output of runs started through IDEA (Run, Debug, Maven, Gradle). Use after " +
+                  "idea_run_configuration, idea_maven or idea_gradle, and to inspect a run the user started " +
+                  "themselves. " +
+                  "Returns { success, logs: [{ id, configurationID, name, executor, running, exitCode, " +
+                  "startedAt, completedAt, text }] }; running=true means it is still going, so poll again. " +
+                  "text is ANSI-stripped and capped at the most recent ~1M characters.",
                 args: { configurationID: tool.schema.string().optional() },
                 async execute(args, context) {
                   await authorize(context, "idea_read_run_log", args.configurationID ?? "*")
@@ -472,7 +516,11 @@ class IdeaExecutionService(private val project: Project) : Disposable {
               }),
               idea_project_context: tool({
                 description:
-                  "Read IntelliJ IDEA's live project structure: SDK, modules, content/source roots, dependencies, open files, and current file.",
+                  "IDEA's live project model. Use before assuming a layout from paths - it reflects the real " +
+                  "module graph, including generated, excluded and library roots that are invisible on disk. " +
+                  "Takes no arguments. Returns { success, projectName, basePath, sdk, sdkVersion, " +
+                  "modules: [{ name, sdk, contentRoots[], sourceRoots[], dependencies[] }], openFiles[], " +
+                  "currentFile }.",
                 args: {},
                 async execute(_args, context) {
                   await authorize(context, "idea_project_context")
@@ -481,8 +529,13 @@ class IdeaExecutionService(private val project: Project) : Disposable {
               }),
               idea_editor_context: tool({
                 description:
-                  "Read the current IDEA editor caret, selection, language, line range, and nearby source text. " +
-                  "Pass path and line to inspect another project file through IDEA's document model.",
+                  "What the user is looking at right now, or any file through IDEA's document model. Use when " +
+                  "they say 'this method' or 'here' without naming a file, and to read a file with unsaved " +
+                  "editor changes - this sees the buffer, a plain file read does not. " +
+                  "Args: path, line, contextLines (default 40); all optional, empty means the active editor. " +
+                  "Returns { success, path, language, line, column, lineCount, selectionStartLine, " +
+                  "selectionEndLine, selectedText, contextStartLine, contextEndLine, context }. " +
+                  "Lines are one-based.",
                 args: {
                   path: tool.schema.string().optional(),
                   line: tool.schema.number().optional(),
@@ -495,7 +548,13 @@ class IdeaExecutionService(private val project: Project) : Disposable {
               }),
               idea_diagnostics: tool({
                 description:
-                  "Read IntelliJ IDEA's current inspections, compiler highlights, warnings, and errors for a project file.",
+                  "IDEA's own inspections and compiler highlights for a file - the same squiggles the user " +
+                  "sees. Use to check your edit before claiming it compiles, instead of running a full build. " +
+                  "Args: path (default active file), minSeverity 'error', 'warning', 'weak_warning' or " +
+                  "'info' (default 'warning'), limit (default 200). " +
+                  "Returns { success, path, analysisComplete, diagnostics: [{ severity, description, line, " +
+                  "column, endLine, endColumn, inspectionId }] }. " +
+                  "analysisComplete=false means IDEA is still indexing, so the list may be short - retry.",
                 args: {
                   path: tool.schema.string().optional(),
                   minSeverity: tool.schema.enum(["error", "warning", "weak_warning"]).optional(),
@@ -508,7 +567,13 @@ class IdeaExecutionService(private val project: Project) : Disposable {
               }),
               idea_symbol: tool({
                 description:
-                  "Resolve the PSI symbol at a one-based file line/column and find project references or implementations using IDEA indexes.",
+                  "Resolve the symbol at a position and find its usages through IDEA's indexes. Far more " +
+                  "accurate than grep: it follows imports, overloads and inheritance, and ignores comments " +
+                  "and strings. " +
+                  "Args: path (default active file), line (required, one-based), column (default 1), " +
+                  "action 'references' or 'implementations' (default 'references'), limit (default 100). " +
+                  "Returns { success, symbol, definition: { path, line, column, name, kind, preview }, " +
+                  "results: [same shape] }.",
                 args: {
                   path: tool.schema.string().optional(),
                   line: tool.schema.number(),
@@ -522,7 +587,12 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 },
               }),
               idea_navigate: tool({
-                description: "Open a project file at a one-based line and column in the IntelliJ IDEA editor for the user.",
+                description:
+                  "Scroll the user's editor to a location. Purely a UI action for their benefit - it returns " +
+                  "no file content, so use idea_editor_context to read code. Good when pointing out where a " +
+                  "problem is. " +
+                  "Args: path (required), line (default 1), column (default 1), one-based. " +
+                  "Returns { success, message }.",
                 args: {
                   path: tool.schema.string(),
                   line: tool.schema.number().optional(),
@@ -534,7 +604,11 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 },
               }),
               idea_refresh_project: tool({
-                description: "Save open IDEA documents and refresh the VFS index and Project tool window after external file changes.",
+                description:
+                  "Make IDEA notice changes made outside its editor. Call after creating, deleting or " +
+                  "rewriting files with shell or file tools, otherwise the user keeps seeing stale content " +
+                  "and stale inspections. Not needed after edits made through IDEA's own tools. " +
+                  "Takes no arguments. Returns { success, message }.",
                 args: {},
                 async execute(_args, context) {
                   await authorize(context, "idea_refresh_project")
@@ -542,7 +616,13 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 },
               }),
               idea_maven: tool({
-                description: "Run Maven goals through IntelliJ IDEA's native Maven runner.",
+                description:
+                  "Maven through IDEA's own runner, so it uses the project's configured Maven home, profiles " +
+                  "and settings.xml, and the output lands in the Maven tool window. Requires pom.xml in the " +
+                  "project root and the Maven plugin enabled. " +
+                  "Args: tasks - goals as an array, e.g. ['clean','test']. " +
+                  "Returns { success, message }; it starts asynchronously, so read the result with " +
+                  "idea_read_run_log.",
                 args: { tasks: tool.schema.array(tool.schema.string()) },
                 async execute(args, context) {
                   await authorize(context, "idea_maven", args.tasks.join(" "))
@@ -550,7 +630,12 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 },
               }),
               idea_gradle: tool({
-                description: "Run Gradle tasks through IntelliJ IDEA's native Gradle runner.",
+                description:
+                  "Gradle through IDEA's external build system, so it reuses the project's JDK, daemon and " +
+                  "linked Gradle settings. Requires the Gradle plugin enabled. " +
+                  "Args: tasks - task names as an array, e.g. ['clean','build']. " +
+                  "Returns { success, message }; it starts asynchronously, so read the result with " +
+                  "idea_read_run_log.",
                 args: { tasks: tool.schema.array(tool.schema.string()) },
                 async execute(args, context) {
                   await authorize(context, "idea_gradle", args.tasks.join(" "))
@@ -564,7 +649,11 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                   "IDEA-native independent window. Before changing UI code, call 'listPicks' to read elements and " +
                   "comments marked by the user. Actions: status, open, navigate, click, getText, getHtml, type, " +
                   "waitFor, executeScript, listenSSE, pickElement, stopPick, listPicks, clearPicks, addComment, " +
-                  "openDevTools. 'screenshot' also needs the CEF debug port.",
+                  "screenshot, openDevTools. " +
+                  "Returns { success, action, result, message, status: { browserOpen, currentUrl, " +
+                  "scriptBridgeReady, screenshotAvailable, picks[] }, picks[] }. " +
+                  "Each pick is { id, selector, tagName, text, outerHtml, rect, url, comment } - the comment " +
+                  "is what the user wrote about that element and the selector traces back to your source.",
                 args: {
                   action: tool.schema.enum([
                     "status",

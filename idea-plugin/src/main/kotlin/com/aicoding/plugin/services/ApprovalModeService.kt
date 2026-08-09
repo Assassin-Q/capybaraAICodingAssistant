@@ -81,6 +81,18 @@ class ApprovalModeService {
     fun knows(sessionID: String): Boolean = modes.containsKey(sessionID)
 
     /**
+     * Records that this project owns the session, without changing a mode it already has.
+     *
+     * Ownership is what routes approvals and the IDEA system prompt to the right project. Reading
+     * a session's mode is proof enough of ownership — otherwise a session opened before this build
+     * would never be claimed by anyone and would silently lose both.
+     */
+    fun claim(sessionID: String): String {
+        if (sessionID.isBlank()) return DEFAULT_MODE
+        return modes.computeIfAbsent(sessionID) { DEFAULT_MODE }
+    }
+
+    /**
      * @param type the OpenCode permission kind, e.g. `websearch`, `bash`, `edit`.
      * Unknown kinds fall into the risky bucket so a new OpenCode tool is never auto-approved.
      */

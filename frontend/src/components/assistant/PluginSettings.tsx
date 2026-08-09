@@ -141,7 +141,9 @@ function IdeaBridgePanel() {
             </Button>
           </div>
           <p className="mb-2 break-all font-mono text-[10px] text-muted-foreground/75">{bridge?.location}</p>
-          <div className="overflow-hidden rounded-md bg-background/45">
+          {/* Eleven tools rendered inline pushed every other plugin below the fold, so the list
+              scrolls inside the card instead of growing it. */}
+          <div className="max-h-56 overflow-y-auto overscroll-contain rounded-md bg-background/45">
             {bridgeTools.map((tool) => {
               const Icon = tool.icon;
               return (
