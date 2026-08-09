@@ -58,9 +58,16 @@ export const AssistantMessage = memo(function AssistantMessage({
   isStreaming,
   diffs = [],
   onRecover,
+  runActive = false,
 }: {
   diffs?: SessionFileDiff[];
   isStreaming: boolean;
+  /**
+   * The session is still working, even if this particular message finished. OpenCode ends one
+   * assistant message and starts the next mid-run, so a per-message flag folded the execution
+   * trace the moment the first paragraph landed.
+   */
+  runActive?: boolean;
   message: AssistantMessageData;
   /** Offered on a failed turn so a provider rejection cannot poison the rest of the session. */
   onRecover?: (action: "revert" | "fork", messageID: string) => void;
@@ -117,7 +124,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           </div>
         )}
         {isStreaming && !hasProcess && !hasConclusion && <ThinkingLine />}
-        <AssistantProcess conclusionPartID={conclusionPart?.id} isStreaming={isStreaming} message={message} />
+        <AssistantProcess conclusionPartID={conclusionPart?.id} isStreaming={isStreaming || runActive} message={message} />
         {conclusion.trim() && <MarkdownResponse isAnimating={false} mode={isStreaming ? "streaming" : "static"}>{conclusion}</MarkdownResponse>}
         {!isStreaming && <SessionDiffSummary diffs={diffs} />}
         {!isStreaming && <TokenUsageSummary model={message.model} usage={message.tokens} />}

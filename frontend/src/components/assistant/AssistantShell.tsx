@@ -32,7 +32,7 @@ import {
   useBrowserAnnotations,
 } from "@/components/assistant/BrowserAnnotations";
 import { ProfessionalRolePicker } from "@/components/assistant/ProfessionalRolePicker";
-import { modelVariantIDs } from "@/components/assistant/modelVariants";
+import { modelHasDefaultVariant, modelVariantIDs } from "@/components/assistant/modelVariants";
 import { PermissionInline } from "@/components/assistant/PermissionInline";
 import { PromptQueue, type QueuedPrompt } from "@/components/assistant/PromptQueue";
 import { QuestionInline } from "@/components/assistant/QuestionInline";
@@ -283,7 +283,7 @@ export function AssistantShell(props: AssistantShellProps) {
   let latestUserMessageID: string | undefined;
   // Each turn gets its own boundary: one malformed message (a bad attachment, an unexpected
   // part shape) must not take the whole conversation down with it.
-  const renderedTurns = conversationTurns.flatMap((message) => {
+  const renderedTurns = conversationTurns.flatMap((message, index) => {
     if (message.type === "user") {
       latestUserMessageID = message.id;
       return [
@@ -303,6 +303,7 @@ export function AssistantShell(props: AssistantShellProps) {
           <AssistantMessage
             diffs={diffsByMessageID[diffMessageID]}
             isStreaming={messageIsStreaming}
+            runActive={isGenerating && index === conversationTurns.length - 1}
             message={message as AssistantMessageData}
             onRecover={onRecoverTurn}
           />
@@ -313,8 +314,25 @@ export function AssistantShell(props: AssistantShellProps) {
   });
 
   const lastTurn = conversationTurns[conversationTurns.length - 1];
-  const lastTurnHasContent = lastTurn?.type === "assistant"
-    && lastTurn.content.some((part) => part.type === "text" && part.text.trim().length > 0);
+  /**
+   * Whether anything is *visibly* in progress at the tail of the newest turn.
+   *
+   * A run alternates between visible work (a tool card marked 执行中, streaming text or reasoning)
+   * and gaps where the model has finished one step and not started the next. During a gap nothing
+   * on screen moves, so without a placeholder the conversation looks finished when it is not.
+   */
+  const tailPart = lastTurn?.type === "assistant"
+    ? lastTurn.content[lastTurn.content.length - 1]
+    : undefined;
+  const tailIsBusy = tailPart?.type === "tool"
+    ? tailPart.state.status === "pending" || tailPart.state.status === "running"
+    // Only reasoning carries completion timing; a text part is still arriving whenever the
+    // assistant message itself is the one being streamed.
+    : tailPart?.type === "reasoning"
+      ? tailPart.time?.completed === undefined
+      : tailPart?.type === "text"
+        ? hasStreamingAssistantContent
+        : false;
 
   // Passed as `undefined` when there is nothing pending so the conversation can
   // fall back to its empty state instead of rendering an empty footer block.
@@ -322,9 +340,7 @@ export function AssistantShell(props: AssistantShellProps) {
     // Between two assistant messages OpenCode reports "generating" with nothing streaming yet.
     // Showing the placeholder on that gap left a spinner parked under a finished turn, so it only
     // appears while the newest turn genuinely has no content of its own.
-    isGenerating && !hasStreamingAssistantContent && !lastTurnHasContent
-      ? <AssistantThinking key="thinking" />
-      : null,
+    isGenerating && !tailIsBusy ? <AssistantThinking key="thinking" /> : null,
     currentPermissions[0]
       ? <PermissionInline key={currentPermissions[0].id} onReply={(reply) => onPermissionReply(currentPermissions[0], reply)} request={currentPermissions[0]} />
       : null,
@@ -438,6 +454,7 @@ export function AssistantShell(props: AssistantShellProps) {
                     <ApprovalModePicker onChange={onApprovalModeChange} value={approvalMode} />
                     <ModelPicker models={selectableModels} onChange={onModelChange} onManage={onOpenModelSettings} value={resolvedModelKey} />
                     <VariantPicker
+                      hasDefault={modelHasDefaultVariant(selectedModel)}
                       labels={preferences.modelVariantLabels[resolvedModelKey]}
                       onChange={onVariantChange}
                       value={selectedVariant}

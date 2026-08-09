@@ -22,6 +22,10 @@ export const modelVariantIDs = (model?: ModelInfo): string[] =>
     ? [...new Set(Object.keys(model.variants).filter((variant) => variant !== "default"))]
     : [];
 
+/** True when the model's own config declares a "default" thinking level. */
+export const modelHasDefaultVariant = (model?: ModelInfo): boolean =>
+  Boolean(model?.variants && Object.prototype.hasOwnProperty.call(model.variants, "default"));
+
 export const modelSupportsVariant = (model: ModelInfo | undefined, variant?: string): boolean =>
   !variant || variant === "default" || modelVariantIDs(model).includes(variant);
 

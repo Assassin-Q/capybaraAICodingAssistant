@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Check, ChevronDown, CircleAlert, Cpu, Eye, EyeOff, Plus, RefreshCw, Save, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, CircleAlert, Cpu, Eye, EyeOff, Loader2, Plus, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -200,6 +200,22 @@ const toModelConfig = (draft: ModelDraft, existing?: CustomModelConfig): CustomM
   variants: normalizedVariantOverrides(draft.variants),
 });
 
+/** Result of the last action, shown beside the button that triggered it. */
+function InlineResult({ error, notice }: { error: string; notice: string }) {
+  if (!error && !notice) return null;
+  return (
+    <span
+      className={cn(
+        "mr-auto inline-flex min-w-0 items-center gap-1 text-[11px]",
+        error ? "text-destructive" : "text-amber-600 dark:text-amber-400"
+      )}
+    >
+      {error ? <CircleAlert className="size-3 shrink-0" /> : <Check className="size-3 shrink-0" />}
+      <span className="min-w-0 truncate" title={error || notice}>{error || notice}</span>
+    </span>
+  );
+}
+
 function SettingField({ children, label }: { children: React.ReactNode; label: string }) {
   return <label className="grid gap-1.5 text-xs font-medium text-foreground"><span>{label}</span>{children}</label>;
 }
@@ -249,6 +265,9 @@ export function ModelSettings({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  /** Closed after a pick; typing again reopens it. */
+  const [suggestionsOpen, setSuggestionsOpen] = useState(true);
   const [showKey, setShowKey] = useState(false);
   const [pendingDeleteModelID, setPendingDeleteModelID] = useState<string>();
   const [pendingDeleteProviderID, setPendingDeleteProviderID] = useState<string>();
@@ -257,6 +276,7 @@ export function ModelSettings({
     if (!projectPath) return;
     setLoading(true);
     setError("");
+    setNotice("");
     try {
       const [nextCatalog, nextConfig] = await Promise.all([
         openCodeApi.listProviderCatalog(projectPath),
@@ -319,6 +339,7 @@ export function ModelSettings({
    * spec by hand. Fields the user already touched are left alone, so it never fights edits.
    */
   const applyModelID = (nextID: string, known?: ModelInfo) => {
+    setSuggestionsOpen(!known);
     setModelDraft((current) => {
       const trimmed = nextID.trim();
       const match = known ?? catalogModels[trimmed];
@@ -370,6 +391,7 @@ export function ModelSettings({
     setModelDraft(emptyModel());
     setModelVariantLabelDraft({});
     setError("");
+    setNotice("");
   };
 
   const beginNewProvider = () => {
@@ -382,6 +404,7 @@ export function ModelSettings({
     setModelDraft(emptyModel());
     setModelVariantLabelDraft({});
     setError("");
+    setNotice("");
   };
 
   const chooseCatalogProvider = (providerID: string) => {
@@ -390,12 +413,14 @@ export function ModelSettings({
     setProviderDraft(draftFromCatalogProvider(provider));
     setNewProviderStep("details");
     setError("");
+    setNotice("");
   };
 
   const chooseCustomProvider = () => {
     setProviderDraft(emptyProvider());
     setNewProviderStep("details");
     setError("");
+    setNotice("");
   };
 
   const toggleModelEditor = (modelID: string) => {
@@ -416,6 +441,7 @@ export function ModelSettings({
     if (!projectPath || !id) return setError("请填写供应商 ID");
     setSaving(true);
     setError("");
+    setNotice("");
     try {
       const disabledProviders = new Set(config.disabled_providers ?? []);
       providerDraft.disabled ? disabledProviders.add(id) : disabledProviders.delete(id);
@@ -441,7 +467,8 @@ export function ModelSettings({
           ...(providerDraft.apiKey.trim() ? { apiKey: providerDraft.apiKey.trim() } : {}),
         },
       };
-      await ideaApi.saveProvider(id, provider);
+      const saved = await ideaApi.saveProvider(id, provider);
+      setNotice(saved.message ?? "已写入 opencode.jsonc，重启 OpenCode 服务后生效。");
       await openCodeApi.updateConfig({ disabled_providers: [...disabledProviders] }, projectPath);
       applyLocalConfig({
         ...config,
@@ -462,16 +489,23 @@ export function ModelSettings({
     if (!projectPath || !providerID || !modelID) return setError("请先选择供应商并填写模型 ID");
     setSaving(true);
     setError("");
+    setNotice("");
     try {
       const existing = config.provider?.[providerID] ?? {};
+      const renamedFrom = editingModelID !== "new" && editingModelID !== modelID ? editingModelID : "";
       const blacklist = new Set(existing.blacklist ?? []);
+      if (renamedFrom) blacklist.delete(renamedFrom);
       modelDraft.enabled ? blacklist.delete(modelID) : blacklist.add(modelID);
+      const models = { ...(existing.models ?? {}) };
+      const previous = models[renamedFrom || modelID];
+      if (renamedFrom) delete models[renamedFrom];
       const nextProvider = {
         ...existing,
         blacklist: [...blacklist],
-        models: { ...(existing.models ?? {}), [modelID]: toModelConfig({ ...modelDraft, id: modelID }, existing.models?.[modelID]) },
+        models: { ...models, [modelID]: toModelConfig({ ...modelDraft, id: modelID }, previous) },
       };
-      await ideaApi.saveProvider(providerID, nextProvider);
+      const saved = await ideaApi.saveProvider(providerID, nextProvider);
+      setNotice(saved.message ?? "已写入 opencode.jsonc，重启 OpenCode 服务后生效。");
       applyLocalConfig({ ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } }, providerID);
       setEditingModelID(modelID);
       setModelDraft({ ...modelDraft, id: modelID });
@@ -494,13 +528,15 @@ export function ModelSettings({
     if (!projectPath || !providerID) return;
     setSaving(true);
     setError("");
+    setNotice("");
     try {
       const existing = config.provider?.[providerID] ?? {};
       const blacklist = new Set(existing.blacklist ?? []);
       enabled ? blacklist.delete(modelID) : blacklist.add(modelID);
       const nextProvider = { ...existing, blacklist: [...blacklist] };
       // PATCH /config discards provider edits; the plugin writes them to opencode.jsonc instead.
-      await ideaApi.saveProvider(providerID, nextProvider);
+      const saved = await ideaApi.saveProvider(providerID, nextProvider);
+      setNotice(saved.message ?? "已写入 opencode.jsonc，重启 OpenCode 服务后生效。");
       applyLocalConfig({ ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } }, providerID);
       onChanged();
     } catch (toggleError) {
@@ -521,6 +557,7 @@ export function ModelSettings({
     if (!projectPath || !providerID) return;
     setSaving(true);
     setError("");
+    setNotice("");
     try {
       // Edits opencode.jsonc directly — PATCH /config only merges and cannot remove a key.
       const removal = await ideaApi.removeProvider(providerID);
@@ -549,6 +586,7 @@ export function ModelSettings({
     if (!projectPath || !providerID || !modelID) return;
     setSaving(true);
     setError("");
+    setNotice("");
     try {
       const existing = config.provider?.[providerID] ?? {};
       const blacklist = [...new Set([...(existing.blacklist ?? []), modelID])];
@@ -557,7 +595,8 @@ export function ModelSettings({
         [modelID]: { ...(existing.models?.[modelID] ?? {}), status: "deprecated" as const },
       };
       const nextProvider = { ...existing, blacklist, models };
-      await ideaApi.saveProvider(providerID, nextProvider);
+      const saved = await ideaApi.saveProvider(providerID, nextProvider);
+      setNotice(saved.message ?? "已写入 opencode.jsonc，重启 OpenCode 服务后生效。");
       const nextConfig: OpenCodeConfig = { ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } };
       const nextVariantLabels = { ...modelVariantLabels };
       delete nextVariantLabels[modelVariantLabelKey(providerID, modelID)];
@@ -578,6 +617,7 @@ export function ModelSettings({
     if (!id) return;
     setSaving(true);
     setError("");
+    setNotice("");
     try {
       await openCodeApi.removeProviderAuth(id, projectPath);
       setCatalog((current) => ({ ...current, connected: current.connected.filter((providerID) => providerID !== id) }));
@@ -594,14 +634,14 @@ export function ModelSettings({
       <div className="grid gap-3 sm:grid-cols-2">
         <SettingField label="模型 ID">
           <div className="relative">
-            <Input disabled={editingModelID !== "new"} onChange={(event) => applyModelID(event.target.value)} placeholder="例如 gpt-5.5" title="选中建议即可自动带出上下文、模态和档位" value={modelDraft.id} />
-            {editingModelID === "new" && modelIDSuggestions(modelDraft.id).length > 0 && (
+            <Input disabled={Boolean(editingModelID) && editingModelID !== "new" && Boolean(catalogModels[editingModelID ?? ""])} onChange={(event) => applyModelID(event.target.value)} placeholder="例如 gpt-5.5" title="选中建议即可自动带出上下文、模态和档位；自定义供应商的模型 ID 可以直接改" value={modelDraft.id} />
+            {editingModelID === "new" && suggestionsOpen && modelIDSuggestions(modelDraft.id).length > 0 && (
               <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md">
                 {modelIDSuggestions(modelDraft.id).map(({ model, providerID }) => (
                   <button
                     className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-accent"
                     key={`${providerID}/${model.id}`}
-                    onClick={() => applyModelID(model.id, model)}
+                    onClick={() => applyModelID(model.id.split("/").pop() ?? model.id, model)}
                     type="button"
                   >
                     <span className="min-w-0 flex-1">
@@ -663,7 +703,14 @@ export function ModelSettings({
         onLabelsChange={setModelVariantLabelDraft}
         overrides={modelDraft.variants}
       />
-      <div className="flex justify-end gap-2"><Button onClick={() => { setEditingModelID(undefined); setModelVariantLabelDraft({}); }} size="sm" type="button" variant="ghost">取消</Button><Button disabled={saving} onClick={() => void saveModel()} size="sm" type="button"><Check className="size-3.5" />保存模型</Button></div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <InlineResult error={error} notice={notice} />
+        <Button onClick={() => { setEditingModelID(undefined); setModelVariantLabelDraft({}); }} size="sm" type="button" variant="ghost">取消</Button>
+        <Button disabled={saving} onClick={() => void saveModel()} size="sm" type="button">
+          {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+          {saving ? "保存中…" : "保存模型"}
+        </Button>
+      </div>
     </div>
   );
 
@@ -713,7 +760,11 @@ export function ModelSettings({
             移除供应商
           </Button>
         )}
-        <Button disabled={saving} onClick={() => void saveProvider()} size="sm" type="button"><Save className="size-3.5" />保存供应商</Button>
+        <InlineResult error={error} notice={notice} />
+        <Button disabled={saving} onClick={() => void saveProvider()} size="sm" type="button">
+          {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+          {saving ? "保存中…" : "保存供应商"}
+        </Button>
       </div>
 
       {!isNewProvider && <div className="mt-7 border-t border-border/50 pt-5">
@@ -725,12 +776,20 @@ export function ModelSettings({
             // The provider marks retired models "deprecated"; the composer filters those out, so
             // showing them here as plain "enabled" made the two lists silently disagree.
             const deprecated = catalogModels[id]?.status === "deprecated" || configuredModels[id]?.status === "deprecated";
+            // Written to opencode.jsonc but not in the catalog OpenCode has loaded — the file is
+            // only read at startup, so this row exists on disk and nowhere else yet.
+            const awaitingRestart = !catalogModels[id] && Boolean(configuredModels[id]);
             return <div key={id}>
               <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-accent/50">
                 <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => toggleModelEditor(id)} type="button">
                   <span className={cn("size-1.5 shrink-0 rounded-full", deprecated ? "bg-muted-foreground/60" : model.enabled ? "bg-emerald-500" : "bg-muted-foreground")} />
                   <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{model.name}</span><span className="block truncate font-mono text-[11px] text-muted-foreground">{id}</span></span>
                   {deprecated && <Badge title="供应商已下线该模型，输入框的模型选择里不会出现" variant="outline">已弃用</Badge>}
+                  {!deprecated && awaitingRestart && (
+                    <Badge title="已写入 opencode.jsonc，但 OpenCode 只在启动时读取配置，重启服务后才会真正可用" variant="outline">
+                      待重启生效
+                    </Badge>
+                  )}
                   {model.context && <Badge variant="secondary">{model.context}</Badge>}
                   <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", editingModelID === id && "rotate-180")} />
                 </button>
@@ -752,6 +811,12 @@ export function ModelSettings({
     <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
       <header className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">模型设置</h2><p className="mt-1 text-sm text-muted-foreground">管理已连接供应商，并从 OpenCode 内置目录添加新的服务。</p></div><Button aria-label="刷新模型配置" disabled={loading} onClick={() => void load(selectedID)} size="icon-sm" title="刷新" type="button" variant="ghost"><RefreshCw className={cn("size-4", loading && "animate-spin")} /></Button></header>
       {error && <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive"><CircleAlert className="mt-0.5 size-3.5 shrink-0" /><span>{error}</span></div>}
+      {!error && notice && (
+        <div className="flex items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+          <span className="min-w-0 flex-1">{notice}</span>
+        </div>
+      )}
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-[12rem_minmax(0,1fr)]">
         <aside className="flex max-h-44 min-h-0 flex-col rounded-md bg-muted/30 p-1.5 md:max-h-none">
           <div className="flex h-9 shrink-0 items-center justify-between gap-1 px-2"><p className="truncate text-[11px] font-medium text-muted-foreground">供应商</p><Button aria-label="添加供应商" className="size-7 shrink-0" onClick={beginNewProvider} size="icon-sm" title="添加供应商" type="button" variant={isNewProvider ? "secondary" : "ghost"}><Plus className="size-3.5" /></Button></div>

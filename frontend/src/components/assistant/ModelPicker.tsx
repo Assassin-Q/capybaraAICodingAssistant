@@ -93,19 +93,23 @@ export function ModelPicker({ className, models, onManage, onChange, value }: Mo
 
 interface VariantPickerProps {
   className?: string;
+  /** Only offer 默认 when the model actually declares a "default" variant. */
+  hasDefault?: boolean;
   labels?: Record<string, string>;
   onChange: (value: string | undefined) => void;
   value?: string;
   variants: string[];
 }
 
-export function VariantPicker({ className, labels = {}, onChange, value, variants }: VariantPickerProps) {
+export function VariantPicker({ className, hasDefault = false, labels = {}, onChange, value, variants }: VariantPickerProps) {
   const [open, setOpen] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
   const providerVariants = [...new Set(variants.filter((variant) => variant !== "default"))];
   if (providerVariants.length === 0) return null;
-  const options = ["default", ...providerVariants];
-  const selectedValue = value && options.includes(value) ? value : "default";
+  // A model that publishes no "default" level has no such thing to fall back to — offering it
+  // sent an unknown variant to the provider.
+  const options = hasDefault ? ["default", ...providerVariants] : providerVariants;
+  const selectedValue = value && options.includes(value) ? value : options[0] ?? "default";
   const displayLabel = (option: string): string => labels[option]?.trim() || variantLabel(option);
   return (
     <ModelSelector onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setHasInteracted(false); }} open={open}>
