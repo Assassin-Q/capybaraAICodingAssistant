@@ -3,7 +3,6 @@ package com.aicoding.plugin.services
 import com.intellij.ide.actions.QuickChangeLookAndFeel
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.ide.ui.LafManager
-import com.intellij.ide.ui.laf.UIThemeBasedLookAndFeelInfo
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
@@ -101,8 +100,10 @@ object IdeThemeService {
             properties.setValue(LIGHT_THEME_KEY, themeId(light))
             properties.setValue(DARK_THEME_KEY, themeId(dark))
             runOnUiThread {
-                manager.setPreferredLightLaf(light)
-                manager.setPreferredDarkLaf(dark)
+                // Best-effort: the mapping is also persisted to our own properties above, which is
+                // what mappedThemeId actually reads, so losing the platform setters costs nothing.
+                setPreferredLaf(manager, dark = false, target = light)
+                setPreferredLaf(manager, dark = true, target = dark)
                 if (request.syncWithOs != null && manager.autodetectSupported) {
                     manager.autodetect = request.syncWithOs
                 }
@@ -152,26 +153,59 @@ object IdeThemeService {
         if (stored != null && manager.installedLookAndFeels.any { themeId(it) == stored && isDark(it) == dark }) {
             return stored
         }
-        val default = if (dark) manager.defaultDarkLaf else manager.defaultLightLaf
+        val default = defaultLaf(manager, dark)
         return default?.takeIf { isDark(it) == dark }?.let(::themeId)
             ?: manager.installedLookAndFeels.firstOrNull { isDark(it) == dark }?.let(::themeId)
             .orEmpty()
     }
 
+    /**
+     * The theme APIs are reached reflectively because their shapes moved between the build we
+     * compile against and the ones we run on.
+     *
+     * 2023.2 exposes `UIThemeBasedLookAndFeelInfo` with a nested `theme`; by 2025.3 that class is
+     * gone and the info object carries `id`/`isDark` itself, and `setPreferredDarkLaf` takes the
+     * new type. Binding to either at compile time turns the other into a NoSuchMethodError or
+     * NoSuchClassError at runtime — confirmed by the Plugin Verifier against IU-253 and IU-262.
+     * Every lookup degrades to the name-based heuristic rather than throwing.
+     */
+    private fun callNoArg(target: Any?, vararg names: String): Any? {
+        if (target == null) return null
+        for (name in names) {
+            val method = runCatching { target.javaClass.getMethod(name) }.getOrNull() ?: continue
+            runCatching { method.invoke(target) }.getOrNull()?.let { return it }
+        }
+        return null
+    }
+
     private fun themeId(info: UIManager.LookAndFeelInfo?): String {
         if (info == null) return ""
-        return if (info is UIThemeBasedLookAndFeelInfo) {
-            info.theme.id
-        } else {
-            "${info.className}::${info.name}"
-        }
+        val theme = callNoArg(info, "getTheme")
+        (callNoArg(theme, "getId") ?: callNoArg(info, "getId"))?.let { return it.toString() }
+        return "${info.className}::${info.name}"
     }
 
     private fun isDark(info: UIManager.LookAndFeelInfo?): Boolean {
         if (info == null) return false
-        if (info is UIThemeBasedLookAndFeelInfo) return info.theme.isDark
+        val theme = callNoArg(info, "getTheme")
+        (callNoArg(theme, "isDark") ?: callNoArg(info, "isDark"))?.let { return it == true }
         val marker = "${info.name} ${info.className}".lowercase()
         return DARK_NAME_MARKERS.any(marker::contains)
+    }
+
+    /** `defaultDarkLaf` / `defaultLightLaf` are absent on 2025.3+; callers fall back to the list. */
+    private fun defaultLaf(manager: LafManager, dark: Boolean): UIManager.LookAndFeelInfo? {
+        val name = if (dark) "getDefaultDarkLaf" else "getDefaultLightLaf"
+        return callNoArg(manager, name) as? UIManager.LookAndFeelInfo
+    }
+
+    /** @return false when this IDE has no matching setter, so the caller can skip it quietly. */
+    private fun setPreferredLaf(manager: LafManager, dark: Boolean, target: UIManager.LookAndFeelInfo): Boolean {
+        val name = if (dark) "setPreferredDarkLaf" else "setPreferredLightLaf"
+        val method = manager.javaClass.methods.firstOrNull {
+            it.name == name && it.parameterCount == 1 && it.parameterTypes[0].isInstance(target)
+        } ?: return false
+        return runCatching { method.invoke(manager, target) }.isSuccess
     }
 
     /**

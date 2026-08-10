@@ -2,7 +2,7 @@ package com.aicoding.plugin.services
 
 import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffDialogHints
-import com.intellij.diff.DiffManager
+import com.intellij.diff.DiffManagerEx
 import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ex.ActionUtil
@@ -139,10 +139,10 @@ class GitStatusService(private val project: Project) {
                 val before = factory.create(project, headText, fileType)
                 val current = virtualFile?.let { factory.create(project, it) }
                     ?: factory.create(project, "", fileType)
-                DiffManager.getInstance().showDiff(
+                DiffManagerEx.getInstance().showDiffBuiltin(
                     project,
                     SimpleDiffRequest("Git 差异：$fileName", before, current, "HEAD", "当前工作区"),
-                    DiffDialogHints.FRAME,
+                    DiffDialogHints.MODAL,
                 )
             }.onFailure { logger.info("Unable to open the git diff: ${it.message}") }
         }
@@ -181,9 +181,14 @@ class GitStatusService(private val project: Project) {
             if (!message.isNullOrBlank()) {
                 // Deprecated alongside changelists generally, but 2023.2.4 exposes no replacement
                 // for seeding the commit message, and IDEA's commit UI still reads it.
-                @Suppress("DEPRECATION")
-                runCatching { ChangeListManager.getInstance(project).defaultChangeList.setComment(message) }
-                    .onFailure { logger.info("Unable to prefill the commit message: ${it.message}") }
+                //
+                // Invoked reflectively: `setComment` moved up to the ChangeList super-interface in
+                // later builds, so a direct call compiles to an invokevirtual on LocalChangeList
+                // that no longer resolves there — a NoSuchMethodError on 2025.3 and 2026.2.
+                runCatching {
+                    val list = ChangeListManager.getInstance(project).defaultChangeList
+                    list.javaClass.getMethod("setComment", String::class.java).invoke(list, message)
+                }.onFailure { logger.info("Unable to prefill the commit message: ${it.message}") }
             }
             invokeVcsAction("CheckinProject")
         }

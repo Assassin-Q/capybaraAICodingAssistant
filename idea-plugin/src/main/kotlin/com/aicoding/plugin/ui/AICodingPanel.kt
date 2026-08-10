@@ -37,9 +37,19 @@ class AICodingPanel(
     private val project: Project,
     private val toolWindow: ToolWindow,
 ) : JPanel(BorderLayout()), Disposable {
-    private val browser = JBCefBrowser.createBuilder()
-        .setOffScreenRendering(false)
-        .build()
+    /**
+     * Null when this IDE cannot give us JCEF, which the panel has to survive rather than crash on.
+     *
+     * 2026.2 moved JCEF out of the platform core into the bundled `com.intellij.modules.jcef`
+     * plugin, so `com.intellij.ui.jcef.JBCefApp` is only on our classpath when that plugin is
+     * present and enabled. Building the browser in a field initializer made an absent or disabled
+     * JCEF a NoClassDefFoundError at construction — thrown before the isSupported() check below
+     * could ever run, which is why the tool window failed to open at all instead of explaining
+     * itself. The catch is on Throwable because a linkage failure is an Error, not an Exception.
+     */
+    private val browser: JBCefBrowser? = runCatching {
+        if (JBCefApp.isSupported()) JBCefBrowser.createBuilder().setOffScreenRendering(false).build() else null
+    }.getOrNull()
     private val httpServer = HttpServerManager(project)
     private val cards = JPanel(CardLayout())
     private val statusLabel = JLabel("正在加载 Capybara AI...", SwingConstants.CENTER)
@@ -49,15 +59,15 @@ class AICodingPanel(
         val minimumPanelSize = Dimension(MIN_PANEL_WIDTH, MIN_PANEL_HEIGHT)
         minimumSize = minimumPanelSize
         preferredSize = Dimension(640, 720)
-        browser.component.minimumSize = minimumPanelSize
-        browser.component.preferredSize = preferredSize
+        browser?.component?.minimumSize = minimumPanelSize
+        browser?.component?.preferredSize = preferredSize
         cards.minimumSize = minimumPanelSize
         cards.preferredSize = preferredSize
         toolWindow.component.minimumSize = minimumPanelSize
         statusLabel.font = statusLabel.font.deriveFont(Font.PLAIN, 12f)
         statusLabel.foreground = Color.GRAY
         statusLabel.border = BorderFactory.createEmptyBorder(16, 16, 16, 16)
-        cards.add(browser.component, "browser")
+        browser?.let { cards.add(it.component, "browser") }
         cards.add(statusLabel, "status")
         add(cards, BorderLayout.CENTER)
         installLoadHandler()
@@ -67,15 +77,20 @@ class AICodingPanel(
     }
 
     private fun startFrontend() {
-        if (!JBCefApp.isSupported()) {
-            showStatus("当前 IDEA 运行时不支持 JCEF，无法显示前端界面。")
+        val browser = browser ?: run {
+            showStatus(
+                "当前 IDEA 无法提供 JCEF 浏览器组件，前端界面无法显示。\n" +
+                    "请在 设置 → 插件 → 已安装 中确认「Web Browser (JCEF)」已启用后重启 IDEA。",
+            )
             return
         }
 
         try {
             project.basePath?.let(httpServer::setProjectPath)
             httpServer.start()
-            frontendUrl = "http://127.0.0.1:${httpServer.getPort()}/"
+            // Cache-busted per IDE run: a JCEF profile that already cached the old index.html
+            // would otherwise keep serving it even after the plugin is reinstalled.
+            frontendUrl = "http://127.0.0.1:${httpServer.getPort()}/?build=${System.currentTimeMillis()}"
             println("Capybara JCEF loading $frontendUrl")
             browser.loadURL(frontendUrl)
         } catch (error: Exception) {
@@ -113,6 +128,7 @@ class AICodingPanel(
     }
 
     private fun installLoadHandler() {
+        val browser = browser ?: return
         browser.jbCefClient.addLoadHandler(object : CefLoadHandlerAdapter() {
             override fun onLoadingStateChange(
                 cefBrowser: CefBrowser,
@@ -166,7 +182,7 @@ class AICodingPanel(
     }
 
     override fun dispose() {
-        browser.dispose()
+        browser?.dispose()
         httpServer.stop()
     }
 }

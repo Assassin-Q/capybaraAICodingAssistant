@@ -17,6 +17,12 @@ repositories {
 }
 
 val buildFrontend by tasks.registering(org.gradle.api.tasks.Exec::class) {
+    // Vite hashes its output names, so a renamed or dropped chunk would otherwise linger and be
+    // packed into the jar forever. Note the bundle is legitimately ~310 files: Shiki emits one
+    // chunk per grammar and theme. Clearing the directory keeps it honest, it does not shrink it.
+    doFirst {
+        file("src/main/resources/static/assets").deleteRecursively()
+    }
     workingDir(file("../frontend"))
     commandLine(if (System.getProperty("os.name").startsWith("Windows")) "pnpm.cmd" else "pnpm", "build:skip")
     inputs.dir(file("../frontend/src"))
@@ -38,8 +44,10 @@ val intellijLocalPath = providers.gradleProperty("intellijLocalPath").orNull
 
 intellij {
     if (intellijLocalPath.isNullOrBlank()) {
-        version.set("2023.2.4")
-        type.set("IC") // IntelliJ Community Edition
+        // -PintellijVersion / -PintellijType let a compatibility check run against a newer SDK
+        // without touching the shipping baseline.
+        version.set(providers.gradleProperty("intellijVersion").orNull ?: "2023.2.4")
+        type.set(providers.gradleProperty("intellijType").orNull ?: "IC")
     } else {
         localPath.set(intellijLocalPath)
     }
@@ -71,6 +79,20 @@ tasks {
         enabled = false
     }
 
+    // Compiled against 2023.2.4 only, while untilBuild is open-ended — the verifier is the only
+    // way to know whether the IDE APIs this plugin reaches still exist on newer builds.
+    runPluginVerifier {
+        // Every major release the manifest claims: sinceBuild is 232 and untilBuild is open, so
+        // anything less than the full sweep leaves most of the promise untested. 2026.x only
+        // exists on the Ultimate line (build 261/262); Community stops at 2025.3.
+        ideVersions.set(
+            listOf(
+                "IC-2023.2.5", "IC-2023.3.8", "IC-2024.1.7", "IC-2024.2.6", "IC-2024.3.5",
+                "IC-2025.1.5", "IC-2025.2", "IC-2025.3", "IU-2026.1", "IU-2026.2",
+            ),
+        )
+    }
+
     publishPlugin {
         token.set(System.getenv("PUBLISH_TOKEN"))
     }
@@ -81,3 +103,4 @@ tasks {
         password.set(System.getenv("PRIVATE_KEY_PASSWORD"))
     }
 }
+

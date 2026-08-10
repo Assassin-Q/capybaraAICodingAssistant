@@ -2,7 +2,7 @@ package com.aicoding.plugin.services
 
 import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffDialogHints
-import com.intellij.diff.DiffManager
+import com.intellij.diff.DiffManagerEx
 import com.intellij.diff.comparison.ComparisonManager
 import com.intellij.diff.comparison.ComparisonPolicy
 import com.intellij.diff.requests.SimpleDiffRequest
@@ -96,7 +96,10 @@ class IdeaDiffService(private val project: Project) {
                 "当前实际文件内容",
                 "该轮 AI 修改后",
             )
-            DiffManager.getInstance().showDiff(project, diffRequest, DiffDialogHints.FRAME)
+            // MODAL, not FRAME. FRAME is only a request: DiffManagerImpl consults
+            // DiffEditorTabFilesManager and still routes to an editor tab, which is what kept the
+            // comparison docked inside the IDE. A dialog is never turned into a tab.
+            DiffManagerEx.getInstance().showDiffBuiltin(project, diffRequest, DiffDialogHints.MODAL)
         }
     }.fold(
         onSuccess = { IdeaDiffResponse(success = true) },
