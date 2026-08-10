@@ -27,6 +27,14 @@ export function PermissionInline({
 }) {
   const details = actionDetails(request.action);
   const Icon = details.icon;
+  /**
+   * What "本轮都允许" covers, in the request's own words.
+   *
+   * The panel answers matching requests itself for the rest of this run and never asks OpenCode to
+   * remember anything, so this is a scope note rather than the warning it used to be: the old
+   * button wrote a permanent project-wide rule, and websearch and edit both declare a `*` pattern.
+   */
+  const alwaysScope = request.action ? `本轮其余「${details.label}」` : "";
   // Deliberately not a modal. A dialog stole focus, could not be left open while switching
   // sessions, and dismissing it by clicking outside answered "reject" — which is the opposite of
   // what a stray click means. As a card it sits under the conversation and simply waits; the
@@ -54,9 +62,14 @@ export function PermissionInline({
             </div>
           </div>
         </ConfirmationRequest>
-        <ConfirmationActions className="mt-3 flex-wrap justify-end self-stretch">
+        <ConfirmationActions className="mt-3 flex-wrap items-center justify-end self-stretch">
+          {alwaysScope && (
+            <span className="mr-auto text-[11px] text-muted-foreground">
+              「本轮都允许」自动放行{alwaysScope}，本次任务结束后失效
+            </span>
+          )}
           <ConfirmationAction onClick={() => onReply("reject")} variant="ghost">拒绝</ConfirmationAction>
-          <ConfirmationAction onClick={() => onReply("always")} variant="outline">始终允许</ConfirmationAction>
+          <ConfirmationAction onClick={() => onReply("always")} variant="outline">本轮都允许</ConfirmationAction>
           <ConfirmationAction onClick={() => onReply("once")}>允许一次</ConfirmationAction>
         </ConfirmationActions>
       </Confirmation>

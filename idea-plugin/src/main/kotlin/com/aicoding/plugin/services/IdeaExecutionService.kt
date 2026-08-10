@@ -71,6 +71,8 @@ data class IdeaBridgeStatus(
     val location: String,
     val mavenAvailable: Boolean,
     val gradleAvailable: Boolean,
+    /** Evidence that OpenCode is really running this bridge; null means the hook never fired. */
+    val lastApprovalHook: String? = null,
     val message: String? = null,
 )
 
@@ -250,6 +252,7 @@ class IdeaExecutionService(private val project: Project) : Disposable {
             location = if (enabled) active.toString() else disabled.toString(),
             mavenAvailable = pluginEnabled(MAVEN_PLUGIN_ID),
             gradleAvailable = pluginEnabled(GRADLE_PLUGIN_ID),
+            lastApprovalHook = project.getService(ApprovalModeService::class.java)?.lastHookCall,
         )
     }
 
@@ -335,7 +338,7 @@ class IdeaExecutionService(private val project: Project) : Disposable {
         import path from "node:path"
         import os from "node:os"
 
-        export const CapybaraIdea = async ({ directory }) => {
+        export const CapybaraIdea = async ({ directory, serverUrl }) => {
           const bridgePortFile = path.join(directory, ".idea", "capybara-ai-port")
           const request = async (prefix, route, init = {}) => {
             const port = (await fs.readFile(bridgePortFile, "utf8")).trim()
@@ -426,39 +429,110 @@ class IdeaExecutionService(private val project: Project) : Disposable {
             "## The built-in browser (idea_browser)",
             "A real Chromium window inside IDEA that you control. Use it whenever the task involves a web page: a dev server, a page the user mentions, a UI you just changed.",
             "Do NOT wait to be told to use it. If the work is about a page, open it yourself.",
+            "NEVER open a URL or an HTML file with a shell command - no 'start', 'open', 'xdg-open', " +
+            "'cmd /c start', 'Start-Process', and no spawning a static file server. Those launch the " +
+            "user's external browser, which you cannot inspect, script or screenshot, so the task " +
+            "silently becomes unverifiable. A local file works too: call open with a file:// URL.",
             "1. Call idea_browser action 'status' first. If browserOpen is false, call action 'open' with the url — that opens the window; the user does not have to touch a menu.",
             "2. Call 'listPicks' before changing any UI. The user marks elements in the browser and writes what they want changed; those annotations are the real requirement and each carries a CSS selector you can trace back to the source.",
             "3. After editing frontend code, reload with 'navigate' and verify with 'getText' or 'screenshot' instead of asserting it works.",
             "Actions: status, open, navigate, click, type, getText, getHtml, waitFor, executeScript, screenshot, listPicks, clearPicks, openDevTools.",
             "",
+            "## Task list",
+            "If you opened a todo list, keep it truthful. Mark each item completed as you finish it, not in one batch at the end.",
+            "Never finish a turn with an item still 'in_progress' - the panel shows that list to the user, so a stale entry tells them work is still running when it is not. If you abandoned an item, mark it cancelled and say why.",
+            "",
             "## Restraint",
             "Do not call IDEA tools ceremonially. When a plain file read or shell command answers the question, use that. Pick the capability that gives the clearest result with the least disruption to the user's IDE.",
           ].join("\n")
+          /**
+           * Resolve one approval against the owning project. Returns "allow" / "ask" / null,
+           * plus the port that answered, so the caller can report a pending ask back to it.
+           */
+          const resolveApproval = async (sessionID, type) => {
+            const route =
+              `/approval-mode/decide?sessionID=${'$'}{encodeURIComponent(sessionID || "")}` +
+              `&type=${'$'}{encodeURIComponent(type || "")}`
+            // Ask every running plugin server and prefer the one that owns this session: a single
+            // OpenCode process can serve several IDEA projects, and the mode lives in whichever
+            // project opened the session.
+            let decision = null
+            let ownerPort = null
+            for (const port of await allBridgePorts()) {
+              try {
+                const parsed = JSON.parse(await callPort(port, route))
+                if (!decision) decision = parsed
+                if (parsed && parsed.known) { decision = parsed; ownerPort = port; break }
+              } catch (error) { /* that project may have been closed */ }
+            }
+            return { decision, ownerPort }
+          }
+
           return {
-            // OpenCode 1.18.x accepts `permission` on PATCH /session and PATCH /config, returns
-            // 200, then discards it — so the composer's approval mode is enforced here instead.
-            // If the IDEA server is unreachable we leave OpenCode's own decision untouched.
+            /**
+             * The real enforcement point.
+             *
+             * `permission.ask` is documented by OpenCode 1.18.12 but never dispatched — the string
+             * appears exactly once in the binary, inside the docs blob, with no call site. The
+             * `permission.asked` bus event is what its own TUI listens to, and that one is real.
+             *
+             * The reply goes out over plain HTTP rather than through the SDK client, which has no
+             * `permission` namespace at all — `client.permission.reply(...)` threw a TypeError that,
+             * with no try/catch, killed the handler before anything was sent.
+             *
+             * Route and body are both taken from the server's own API surface and confirmed against
+             * a live instance: `POST /permission/{requestID}/reply` with `{"reply":"once"}` clears
+             * the request and the tool proceeds. `POST /session/{id}/permissions/{permissionID}`
+             * with `{"response":...}`, which the generated SDK types describe, answers 200 and
+             * leaves the permission pending — so even an `ok` check could not catch that mistake.
+             * `GET /permission` lists what is still outstanding, which is how that was proven.
+             */
+            event: async ({ event }) => {
+              if (!event || event.type !== "permission.asked") return
+              const request = event.properties || {}
+              try {
+                const { decision, ownerPort } = await resolveApproval(request.sessionID, request.permission)
+                if (decision && decision.status === "allow") {
+                  const route = `permission/${'$'}{encodeURIComponent(request.id)}/reply` +
+                    `?directory=${'$'}{encodeURIComponent(directory)}`
+                  const response = await fetch(new URL(route, serverUrl), {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    // "once" rather than "always": the mode is per session and the user can lower
+                    // it mid-run, so a persisted rule would outlive the consent it came from.
+                    body: JSON.stringify({ reply: "once" }),
+                  })
+                  if (!response.ok) throw new Error(`permission reply HTTP ${'$'}{response.status}`)
+                  return
+                }
+                // Left for the user to answer. This hook is the only place that sees asks for every
+                // session, so it is what lets the session list flag a run blocked in the background.
+                if (request.sessionID && ownerPort) {
+                  await callPort(ownerPort, "/approval-mode/pending", {
+                    method: "POST",
+                    body: JSON.stringify({ sessionID: request.sessionID, pending: true }),
+                  }).catch(() => {})
+                }
+              } catch (error) {
+                // Without this the handler died silently and the run just sat on a prompt.
+                try {
+                  const ports = await allBridgePorts()
+                  if (ports.length > 0) {
+                    await callPort(ports[0], "/approval-mode/hook-error", {
+                      method: "POST",
+                      body: JSON.stringify({ message: String((error && error.message) || error) }),
+                    })
+                  }
+                } catch (ignored) { /* nothing left to report to */ }
+              }
+            },
+            // Kept for the OpenCode build that starts dispatching it. Harmless meanwhile: when it
+            // does fire and allows, no `permission.asked` event follows, so the two cannot collide.
             "permission.ask": async (input, output) => {
               try {
-                const route =
-                  `/approval-mode/decide?sessionID=${'$'}{encodeURIComponent(input.sessionID || "")}` +
-                  `&type=${'$'}{encodeURIComponent(input.type || "")}`
-                // Ask every running plugin server and prefer the one that owns this session:
-                // a single OpenCode process can serve several IDEA projects, and the mode lives
-                // in whichever project opened the session.
-                let decision = null
-                let ownerPort = null
-                for (const port of await allBridgePorts()) {
-                  try {
-                    const parsed = JSON.parse(await callPort(port, route))
-                    if (!decision) decision = parsed
-                    if (parsed && parsed.known) { decision = parsed; ownerPort = port; break }
-                  } catch (error) { /* that project may have been closed */ }
-                }
+                const { decision, ownerPort } = await resolveApproval(input.sessionID, input.type)
                 if (decision && typeof decision.status === "string") {
                   output.status = decision.status
-                  // This hook is the only place that sees asks for every session, so it is what
-                  // lets the session list flag a run that is blocked in the background.
                   if (decision.status === "ask" && input.sessionID && ownerPort) {
                     await callPort(ownerPort, "/approval-mode/pending", {
                       method: "POST",
@@ -467,7 +541,19 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                   }
                 }
               } catch (error) {
-                // IDEA closed or the server moved: fall back to OpenCode's default handling.
+                // An empty catch here made a hook that fires-and-fails indistinguishable from one
+                // that never fires at all. Report the failure so the Plugins page can say which.
+                try {
+                  const ports = await allBridgePorts()
+                  if (ports.length > 0) {
+                    await callPort(ports[0], "/approval-mode/hook-error", {
+                      method: "POST",
+                      body: JSON.stringify({ message: String((error && error.message) || error) }),
+                    })
+                  }
+                } catch (ignored) {
+                  // Nothing left to report to.
+                }
               }
             },
             "experimental.chat.system.transform": async (input, output) => {

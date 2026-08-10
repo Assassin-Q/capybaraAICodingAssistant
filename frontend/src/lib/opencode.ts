@@ -247,6 +247,9 @@ const toAssistantPart = (
       content: state.content,
       error: state.error,
       input: state.input,
+      // The `task` tool reports its subagent session here as `sessionId`, and it is populated
+      // while the tool is still running — the only place that link exists before the tool ends.
+      metadata: asRecord(state.metadata),
       outputPaths: stringArray(state.outputPaths),
       result: state.result ?? state.output,
       status: stateStatus === "running" || stateStatus === "completed" || stateStatus === "error"
@@ -273,6 +276,28 @@ const toSessionMessage = (value: unknown): SessionMessage | undefined => {
   const role = stringValue(info.role);
   const type = stringValue(info.type);
   const parts = recordArray(record.parts ?? record.content ?? info.parts ?? info.content);
+  /**
+   * Compaction is not a message type, despite reading like one.
+   *
+   * OpenCode marks it as a *user* message carrying a part of type `compaction`, and puts the
+   * summary on the assistant reply. Verified against the shipped runtime, which selects it with
+   * `info.role !== "user" || !parts.some(p => p.type === "compaction")`. Left alone it fell into
+   * the branch below and rendered as an empty user bubble, because it has no text parts.
+   */
+  const compactionPart = parts.find((part) => part.type === "compaction");
+  if (compactionPart) {
+    return {
+      // `auto` separates the pass OpenCode runs when the window fills from one the user asked
+      // for. Only the automatic one needs explaining — nobody wonders why the history changed
+      // right after they pressed compact. Verified on a live session: the part carries
+      // { type: "compaction", auto: boolean }, and the summary text is the *next* assistant
+      // message (info.summary === true), which renders on its own.
+      auto: compactionPart.auto === true,
+      id,
+      time: { created: numberValue(time?.created, Date.now()) },
+      type: "compaction",
+    };
+  }
   if (role === "user" || type === "user") {
     const textParts = parts.filter((part) => part.type === "text");
     const subtask = parts.find((part) => part.type === "subtask");
@@ -555,6 +580,34 @@ export const openCodeApi = {
       .filter((item): item is SessionInfo => item !== undefined && !item.parentID);
   },
 
+  /**
+   * Subagent sessions spawned by the `task` tool.
+   *
+   * These are deliberately absent from `listSessions`, which drops anything with a parentID so the
+   * session list stays a list of conversations the user started. They are reached from the task
+   * card that created them instead.
+   */
+  listChildSessions: async (parentID: string, directory?: string): Promise<SessionInfo[]> => {
+    const response = await request<unknown>(
+      `/session/${encodeURIComponent(parentID)}/children`,
+      undefined,
+      directoryParams(directory)
+    );
+    return recordArray(unwrapData<unknown>(response))
+      .map((item) => toSession(item, directory))
+      .filter((item): item is SessionInfo => item !== undefined);
+  },
+
+  /** Reads one session by id, which is how a child is opened without being in any list. */
+  getSession: async (sessionID: string, directory?: string): Promise<SessionInfo | undefined> => {
+    const response = await request<unknown>(
+      `/session/${encodeURIComponent(sessionID)}`,
+      undefined,
+      directoryParams(directory)
+    );
+    return toSession(unwrapData<unknown>(response), directory);
+  },
+
   createSession: async (directory?: string, model?: ModelRef, agent?: string) => {
     const response = await request<unknown>("/api/session", {
       body: JSON.stringify({
@@ -650,6 +703,26 @@ export const openCodeApi = {
     request<unknown>(`/session/${encodeURIComponent(sessionID)}/unrevert`, {
       method: "POST",
     }, directoryParams(directory)),
+
+  /**
+   * Compacts the session — the same thing OpenCode's own `session.compact` binding does.
+   *
+   * `auto: false` marks it as user-requested rather than the automatic pass that fires when the
+   * context window fills up. The model is taken from the caller so the summary is not written by
+   * whatever default OpenCode would otherwise pick.
+   */
+  compactSession: (
+    sessionID: string,
+    input: { directory?: string; modelID?: string; providerID?: string } = {}
+  ) =>
+    request<unknown>(`/session/${encodeURIComponent(sessionID)}/summarize`, {
+      body: JSON.stringify({
+        auto: false,
+        ...(input.providerID ? { providerID: input.providerID } : {}),
+        ...(input.modelID ? { modelID: input.modelID } : {}),
+      }),
+      method: "POST",
+    }, directoryParams(input.directory)),
 
   /** Copies the session up to `messageID` into a new one, leaving the original untouched. */
   forkSession: async (sessionID: string, messageID: string, directory?: string): Promise<SessionInfo> => {
@@ -787,11 +860,41 @@ export const openCodeApi = {
     return recordArray(unwrapData<unknown>(response)).map(toPermission).filter((item): item is PermissionRequest => Boolean(item));
   },
 
-  replyPermission: (sessionID: string, requestID: string, reply: PermissionReply, directory?: string) =>
-    request<void>(`/api/session/${encodeURIComponent(sessionID)}/permission/${encodeURIComponent(requestID)}/reply`, {
-      body: JSON.stringify({ reply }),
-      method: "POST",
-    }, directoryParams(directory)),
+  /**
+   * OpenCode runs two permission systems side by side, and a request lands in exactly one.
+   *
+   * Verified against a live server: a pending `bash` request appeared in `GET /permission` while
+   * `GET /api/session/{id}/permission` reported an empty list for the very same session, and each
+   * system only answers to its own reply route. Listing one and replying through the other is why
+   * a card could vanish without the run continuing — the reply 404'd against the wrong registry.
+   *
+   * So the global route is tried first and the session-scoped one is the fallback. Whichever
+   * system owns the request accepts it; a 404 from the first only means "not mine".
+   */
+  replyPermission: async (sessionID: string, requestID: string, reply: PermissionReply, directory?: string) => {
+    try {
+      await request<void>(`/permission/${encodeURIComponent(requestID)}/reply`, {
+        body: JSON.stringify({ reply }),
+        method: "POST",
+      }, directoryParams(directory));
+      return;
+    } catch (error) {
+      if (!/not found/i.test(error instanceof Error ? error.message : String(error))) throw error;
+    }
+    await request<void>(
+      `/api/session/${encodeURIComponent(sessionID)}/permission/${encodeURIComponent(requestID)}/reply`,
+      { body: JSON.stringify({ reply }), method: "POST" },
+      directoryParams(directory)
+    );
+  },
+
+  /** Pending requests across all sessions — the registry the session-scoped list does not see. */
+  listPendingPermissions: async (directory?: string): Promise<PermissionRequest[]> => {
+    const response = await request<unknown>("/permission", undefined, directoryParams(directory));
+    return recordArray(unwrapData<unknown>(response))
+      .map(toPermission)
+      .filter((item): item is PermissionRequest => Boolean(item));
+  },
 
   listQuestions: async (sessionID: string, directory?: string): Promise<QuestionRequest[]> => {
     const response = await request<unknown>(`/api/session/${encodeURIComponent(sessionID)}/question`, undefined, directoryParams(directory));

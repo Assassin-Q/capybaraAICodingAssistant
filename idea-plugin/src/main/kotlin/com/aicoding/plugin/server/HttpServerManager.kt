@@ -1,6 +1,7 @@
 package com.aicoding.plugin.server
 
 import com.aicoding.plugin.services.ApprovalDecision
+import com.aicoding.plugin.services.ApprovalHookErrorRequest
 import com.aicoding.plugin.services.ApprovalModeRequest
 import com.aicoding.plugin.services.ApprovalModeResponse
 import com.aicoding.plugin.services.ApprovalModeService
@@ -11,7 +12,12 @@ import com.aicoding.plugin.services.ChatMessage
 import com.aicoding.plugin.services.DevelopmentEnvironmentsRequest
 import com.aicoding.plugin.services.GitCommitDialogRequest
 import com.aicoding.plugin.services.GitFileDiffRequest
+import com.aicoding.plugin.services.FileAttachRequest
+import com.aicoding.plugin.services.FrontendLogRequest
+import com.aicoding.plugin.services.FrontendLogService
+import com.aicoding.plugin.services.FileSearchRequest
 import com.aicoding.plugin.services.GitStatusService
+import com.aicoding.plugin.services.IdeaFileSearchService
 import com.aicoding.plugin.services.IdeThemeMappingRequest
 import com.aicoding.plugin.services.IdeThemeRequest
 import com.aicoding.plugin.services.IdeThemeService
@@ -129,6 +135,18 @@ class HttpServerManager(private val project: Project) {
     }
 
     private val json = Json { encodeDefaults = false; ignoreUnknownKeys = true }
+
+    /**
+     * Responses always carry every field, including defaults.
+     *
+     * Dropping them has broken the client four separate times: an empty `files` list made
+     * `status.files.length` throw and took down the whole panel, `page` of 1 vanished and turned
+     * paging into NaN, and a `success` of true read as undefined. The client cannot distinguish
+     * "absent because it equals the default" from "absent because something went wrong", so the
+     * wire format stops asking it to. `json` above keeps the old behaviour for reads and for the
+     * config files, where emitting defaults would write keys the user never set.
+     */
+    private val responseJson = Json { encodeDefaults = true; ignoreUnknownKeys = true }
     private val messageService = project.getService(MessageService::class.java)
     private val openCodeServer = OpenCodeServerManager(project.basePath)
     private val memorySystem = MemorySystemService(project, openCodeServer)
@@ -139,6 +157,8 @@ class HttpServerManager(private val project: Project) {
     private val pluginService = PluginManagementService(project)
     private val executionService = IdeaExecutionService(project)
     private val insightService = IdeaInsightService(project)
+    private val fileSearchService = IdeaFileSearchService(project)
+    private val frontendLogService = FrontendLogService()
     private val approvalModeService = project.getService(ApprovalModeService::class.java)
     private val browserService = project.getService(BrowserControlService::class.java)
     private val gitStatusService = project.getService(GitStatusService::class.java)
@@ -155,11 +175,11 @@ class HttpServerManager(private val project: Project) {
     private val lafManagerListener = LafManagerListener {
         val theme = currentIdeaTheme()
         openCodeEndpoint = openCodeEndpoint.copy(ideaTheme = theme)
-        broadcastSse("ide.theme", json.encodeToString(IdeThemeEvent(theme)))
+        broadcastSse("ide.theme", responseJson.encodeToString(IdeThemeEvent(theme)))
     }
 
     private val messageListener: (ChatMessage) -> Unit = { message ->
-        broadcastSse("chat_message", json.encodeToString(message.toEvent()))
+        broadcastSse("chat_message", responseJson.encodeToString(message.toEvent()))
     }
 
     fun start() {
@@ -410,6 +430,16 @@ class HttpServerManager(private val project: Project) {
             }
 
             val contentType = contentType(if (safePath == "/") "/index.html" else safePath)
+            // index.html lives at a fixed URL and points at content-hashed bundles, so a cached
+            // copy pins the whole UI to an old build — reinstalling the plugin changes nothing
+            // because the cache lives in JCEF's profile, not in the jar. Assets carry a hash in
+            // their name, so they are safe to cache forever.
+            if (safePath.startsWith("/assets/")) {
+                exchange.responseHeaders.add("Cache-Control", "public, max-age=31536000, immutable")
+            } else {
+                exchange.responseHeaders.add("Cache-Control", "no-store, must-revalidate")
+                exchange.responseHeaders.add("Pragma", "no-cache")
+            }
             resource.use {
                 val body = it.readBytes()
                 if (exchange.requestMethod == "HEAD") {
@@ -539,7 +569,7 @@ class HttpServerManager(private val project: Project) {
             ideaTheme = currentIdeaTheme(),
         )
         // Lets any other connected view refresh without polling.
-        broadcastSse("opencode.restarted", json.encodeToString(openCodeEndpoint))
+        broadcastSse("opencode.restarted", responseJson.encodeToString(openCodeEndpoint))
         writeJson(exchange, 200, openCodeEndpoint)
     }
 
@@ -570,7 +600,7 @@ class HttpServerManager(private val project: Project) {
                 if (approvalModeService.setPending(request.sessionID, request.pending)) {
                     broadcastSse(
                         "approval.pending",
-                        json.encodeToString(ApprovalPendingEvent(approvalModeService.pendingSessions())),
+                        responseJson.encodeToString(ApprovalPendingEvent(approvalModeService.pendingSessions())),
                     )
                 }
                 writeJson(exchange, 200, ApprovalPendingEvent(approvalModeService.pendingSessions()))
@@ -586,6 +616,12 @@ class HttpServerManager(private val project: Project) {
                         known = approvalModeService.knows(sessionID),
                     ),
                 )
+            }
+            route == "/hook-error" && method == "POST" -> {
+                // A hook that fires and then throws used to be indistinguishable from one that never
+                // fires, because the bridge's catch was empty. Now the failure has somewhere to go.
+                approvalModeService.recordHookError(body<ApprovalHookErrorRequest>(exchange).message)
+                writeJson(exchange, 200, ApprovalPendingEvent(approvalModeService.pendingSessions()))
             }
             route == "" && method == "GET" -> {
                 val sessionID = queryParam(exchange, "sessionID").orEmpty()
@@ -658,7 +694,7 @@ class HttpServerManager(private val project: Project) {
                     if (previous != null && current != null && previous != current) {
                         broadcastSse(
                             "git.branch-changed",
-                            json.encodeToString(BranchChangedEvent(from = previous, to = current)),
+                            responseJson.encodeToString(BranchChangedEvent(from = previous, to = current)),
                         )
                     }
                 }
@@ -711,6 +747,18 @@ class HttpServerManager(private val project: Project) {
                 writeJson(exchange, 200, insightService.symbol(body<IdeaSymbolRequest>(exchange)))
             route == "/navigate" && method == "POST" ->
                 writeJson(exchange, 200, insightService.navigate(body<IdeaNavigateRequest>(exchange)))
+            route == "/client-log" && method == "POST" ->
+                writeJson(exchange, 200, frontendLogService.append(body<FrontendLogRequest>(exchange)))
+            route == "/client-log" && method == "GET" -> {
+                val limit = queryParam(exchange, "limit")?.toIntOrNull() ?: 200
+                writeJson(exchange, 200, frontendLogService.tail(limit))
+            }
+            route == "/client-log" && method == "DELETE" ->
+                writeJson(exchange, 200, frontendLogService.clear())
+            route == "/file-attach" && method == "POST" ->
+                writeJson(exchange, 200, fileSearchService.attach(body<FileAttachRequest>(exchange)))
+            route == "/file-search" && method == "POST" ->
+                writeJson(exchange, 200, fileSearchService.search(body<FileSearchRequest>(exchange)))
             route == "/refresh" && method == "POST" -> writeJson(exchange, 200, insightService.refresh())
             route == "/bridge" && method == "GET" -> writeJson(exchange, 200, executionService.bridgeStatus())
             route == "/bridge/enabled" && method == "POST" ->
@@ -735,7 +783,7 @@ class HttpServerManager(private val project: Project) {
         sseClients.add(output)
         try {
             writeSse(output, "connected", "{\"status\":\"ok\"}")
-            writeSse(output, "ide.theme", json.encodeToString(IdeThemeEvent(currentIdeaTheme())))
+            writeSse(output, "ide.theme", responseJson.encodeToString(IdeThemeEvent(currentIdeaTheme())))
             while (server != null && !Thread.currentThread().isInterrupted) {
                 Thread.sleep(15000)
                 writeSse(output, null, "{\"type\":\"keep-alive\"}")
@@ -781,7 +829,7 @@ class HttpServerManager(private val project: Project) {
     }
 
     private inline fun <reified T> writeJson(exchange: HttpExchange, status: Int, value: T) {
-        writeResponse(exchange, status, json.encodeToString(value), "application/json; charset=utf-8")
+        writeResponse(exchange, status, responseJson.encodeToString(value), "application/json; charset=utf-8")
     }
 
     private fun writeResponse(exchange: HttpExchange, status: Int, body: String, contentType: String) {

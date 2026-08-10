@@ -132,6 +132,27 @@ export const normalizePermissionRules = (value: unknown): PermissionRule[] => {
 export const configForApprovalMode = (mode: ApprovalMode): LegacyPermissionConfig =>
   legacyPermissionConfig(rulesForApprovalMode(mode));
 
+/** Read-only inspection. Everything else waits for the mode to say otherwise. */
+const alwaysAllowed = new Set(["read", "glob", "grep", "list", "lsp", "todowrite", "question"]);
+
+/**
+ * Whether this mode answers a permission request on the user's behalf.
+ *
+ * Deliberately mirrors ApprovalModeService.decide on the plugin side. The two exist because they
+ * answer at different moments: the plugin catches requests raised while no panel is watching,
+ * this one answers the moment the event lands in a panel that is. Keeping the rules identical is
+ * what stops the same request being auto-allowed in one place and queued in the other.
+ *
+ * Unknown permission kinds fall through to "ask" so a newly added OpenCode tool is never
+ * auto-approved by a build that has not heard of it.
+ */
+export const approvalModeAllows = (mode: ApprovalMode, permission: string): boolean => {
+  if (mode === "full") return true;
+  const kind = permission.trim().toLowerCase();
+  if (alwaysAllowed.has(kind)) return true;
+  return kind === "edit" && mode === "auto";
+};
+
 const lastEffect = (rules: PermissionRule[], action: string): PermissionEffect | undefined =>
   [...rules].reverse().find((item) =>
     item.resource === "*" && (item.action === action || item.action === "*")

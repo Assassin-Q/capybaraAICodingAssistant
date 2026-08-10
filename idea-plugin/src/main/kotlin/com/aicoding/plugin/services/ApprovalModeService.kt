@@ -22,6 +22,9 @@ data class ApprovalDecision(
 )
 
 @Serializable
+data class ApprovalHookErrorRequest(val message: String)
+
+@Serializable
 data class ApprovalModeRule(
     val id: String,
     val label: String,
@@ -96,8 +99,30 @@ class ApprovalModeService {
      * @param type the OpenCode permission kind, e.g. `websearch`, `bash`, `edit`.
      * Unknown kinds fall into the risky bucket so a new OpenCode tool is never auto-approved.
      */
+    /**
+     * Last time the bridge hook actually reached this method, and with what.
+     *
+     * The plugin side can be checked from outside with a plain HTTP call, but whether OpenCode is
+     * running a build of the bridge that calls it cannot — and a hook that silently never fires
+     * looks exactly like one that always answers "ask".
+     */
+    @Volatile
+    var lastHookCall: String? = null
+        private set
+
+    /**
+     * Records that the hook ran but blew up before it could reach [decide].
+     *
+     * Both failures look identical from the outside — the run just falls back to OpenCode's own
+     * prompt — so the diagnostic line has to say which one happened.
+     */
+    fun recordHookError(message: String) {
+        lastHookCall = "钩子异常: ${message.take(200)} · ${java.time.LocalTime.now().withNano(0)}"
+    }
+
     fun decide(sessionID: String, type: String): String {
         val mode = get(sessionID)
+        lastHookCall = "$type · mode=$mode · known=${knows(sessionID)} · ${java.time.LocalTime.now().withNano(0)}"
         if (mode == "full") return "allow"
         val kind = type.trim().lowercase()
         if (kind in ALWAYS_ALLOWED) return "allow"

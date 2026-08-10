@@ -47,7 +47,7 @@ import type { WorkspacePreferences } from "@/lib/preferences";
 import { appendTextAttachments } from "@/lib/textAttachments";
 import { restoreActiveRun } from "@/components/assistant/runRestoration";
 import { getContextUsage } from "@/lib/tokenUsage";
-import type { ApprovalMode } from "@/lib/approvalMode";
+import { approvalModeAllows, type ApprovalMode } from "@/lib/approvalMode";
 import { buildProfessionalRoleInstructions } from "@/lib/professionalRoles";
 interface QuestionAnswers { [requestID: string]: string[][]; }
 
@@ -72,9 +72,16 @@ function App() {
    * array every second, and that new identity rebuilt the conversation footer — which is what made
    * the approval card flicker while it was waiting for an answer.
    */
+  /**
+   * Set below, once projectPath and the reply helper exist. Every path that surfaces a permission
+   * funnels through this setter, so filtering here is what guarantees no auto-allowed request can
+   * reach the UI by some route that forgot to check.
+   */
+  const autoAnswerRef = useRef<((requests: PermissionRequest[]) => PermissionRequest[]) | undefined>(undefined);
   const setPermissions = useCallback((next: PermissionRequest[] | ((current: PermissionRequest[]) => PermissionRequest[])) => {
     setPermissionsState((current) => {
-      const value = typeof next === "function" ? next(current) : next;
+      const raw = typeof next === "function" ? next(current) : next;
+      const value = autoAnswerRef.current ? autoAnswerRef.current(raw) : raw;
       const same = value.length === current.length
         && value.every((item, index) => item.id === current[index]?.id);
       return same ? current : value;
@@ -90,6 +97,8 @@ function App() {
   const [questionAnswers, setQuestionAnswers] = useState<QuestionAnswers>({});
   const [contexts, setContexts] = useState<ContextChipData[]>([]);
   const [runStatus, setRunStatus] = useState<RunStatus>("ready");
+  /** Driven by session.status, so the automatic compaction pass shows up as well as a manual one. */
+  const [compacting, setCompacting] = useState(false);
   const [connected, setConnected] = useState<boolean | null>(null);
   const [booting, setBooting] = useState(true);
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
@@ -212,10 +221,15 @@ function App() {
   }, []);
 
   const loadPending = useCallback(async (sessionID: string) => {
-    const [nextPermissions, nextQuestions] = await Promise.all([
-      openCodeApi.listPermissions(sessionID, projectPath),
+    // Both registries are read because a request lands in exactly one of them and neither list
+    // sees the other's. Reading only the session-scoped one left genuinely blocked runs invisible.
+    const [scoped, global, nextQuestions] = await Promise.all([
+      openCodeApi.listPermissions(sessionID, projectPath).catch(() => []),
+      openCodeApi.listPendingPermissions(projectPath).catch(() => []),
       openCodeApi.listQuestions(sessionID, projectPath),
     ]);
+    const nextPermissions = [...scoped, ...global.filter((item) => item.sessionID === sessionID)]
+      .filter((item, index, all) => all.findIndex((other) => other.id === item.id) === index);
     setPermissions(nextPermissions);
     setPendingApprovalSessionIDs((current) => {
       const others = current.filter((id) => id !== sessionID);
@@ -493,6 +507,7 @@ function App() {
     projectPath,
     refs: eventStreamRefs,
     scheduleRefresh,
+    setCompacting,
     setConnected,
     setContexts,
     setError,
@@ -691,22 +706,94 @@ function App() {
     setQueuedPrompts([]);
   }, []);
 
+  /**
+   * Answers the requests the current mode already covers, so no card is shown for them.
+   *
+   * The panel is the only component that reliably knows the mode: it is the thing the user set it
+   * on. Routing the decision through the OpenCode plugin instead meant the answer depended on the
+   * bridge being loaded, on the hook being dispatched, and on the reply reaching the right route —
+   * three things that can each fail silently, and did. Deciding here removes all three from the
+   * common path; the bridge stays as the fallback for requests raised while no panel is open.
+   *
+   * Ref, not state: this runs inside a setState updater, where a stale closure over `approvalMode`
+   * would answer with whatever the mode was when the effect was created.
+   */
+  const approvalModeRef = useRef(approvalMode);
+  approvalModeRef.current = approvalMode;
+  const autoAnsweredRef = useRef(new Set<string>());
+  /**
+   * Permission kinds the user waved through for the run in progress.
+   *
+   * "Always" used to be sent to OpenCode, which stored a rule in its own database keyed by
+   * project — permanent, ranked above the approval mode, and invisible until we built a page to
+   * list it. Worse, websearch and edit declare a `*` pattern, so one click silently granted the
+   * whole category forever. Holding the decision here instead keeps it to the run the user was
+   * actually looking at and leaves OpenCode configuration untouched.
+   */
+  const runAllowancesRef = useRef(new Set<string>());
+  const allowanceKey = (sessionID: string, action: string) => sessionID + "|" + action.trim().toLowerCase();
+
+  const autoAnswerPermissions = useCallback((requests: PermissionRequest[]): PermissionRequest[] => {
+    if (!projectPath) return requests;
+    return requests.filter((request) => {
+      const allowedForRun = runAllowancesRef.current.has(allowanceKey(request.sessionID, request.action));
+      if (!allowedForRun && !approvalModeAllows(approvalModeRef.current, request.action)) return true;
+      // Replies are fire-and-forget, so the id is remembered: polling re-delivers a request until
+      // OpenCode drops it, and a second reply to the same id is an error rather than a no-op.
+      if (autoAnsweredRef.current.has(request.id)) return false;
+      autoAnsweredRef.current.add(request.id);
+      void openCodeApi
+        .replyPermission(request.sessionID, request.id, "once", projectPath)
+        .catch((error: unknown) => {
+          // The bridge plugin answers the same request when it gets there first, so losing that
+          // race is the expected outcome, not a failure — the run is unblocked either way. Only a
+          // genuine failure goes to the user, and it hands the request back for a manual answer.
+          if (/not found/i.test(errorMessage(error))) return;
+          autoAnsweredRef.current.delete(request.id);
+          setError(errorMessage(error));
+        });
+      return false;
+    });
+  }, [projectPath]);
+
+  // The allowance lasts exactly as long as the run the user granted it during.
+  useEffect(() => {
+    if (runStatus === "ready" || runStatus === "error") runAllowancesRef.current.clear();
+  }, [runStatus]);
+  useEffect(() => {
+    runAllowancesRef.current.clear();
+  }, [selectedSessionID]);
+
+  autoAnswerRef.current = autoAnswerPermissions;
+
   const handlePermissionReply = useCallback(async (request: PermissionRequest, reply: PermissionReply) => {
     if (!projectPath) return;
+    // "Always" never leaves the panel. It is remembered here for the rest of this run and sent to
+    // OpenCode as a plain "once", so nothing is written to its database and the approval mode
+    // stays the authority once the run is over.
+    const effective: PermissionReply = reply === "always" ? "once" : reply;
+    if (reply === "always") runAllowancesRef.current.add(allowanceKey(request.sessionID, request.action));
     try {
-      await openCodeApi.replyPermission(request.sessionID, request.id, reply, projectPath);
-      setPermissions((current) => {
-        const next = current.filter((item) => item.id !== request.id);
-        // Clear the session badge as soon as its last request is answered.
-        if (next.length === 0) {
-          setPendingApprovalSessionIDs((ids) => ids.filter((id) => id !== request.sessionID));
-          void ideaApi.setPendingApproval(request.sessionID, false).catch(() => undefined);
-        }
-        return next;
-      });
+      await openCodeApi.replyPermission(request.sessionID, request.id, effective, projectPath);
     } catch (replyError) {
-      setError(errorMessage(replyError));
+      // "Not found" means the request is already resolved — the run was stopped, the mode was
+      // raised to one that auto-allows, or the bridge answered first. The card is stale rather
+      // than broken, so it is dismissed silently; an error banner here blamed the user's click
+      // for something that had already gone the way they wanted.
+      if (!/not found/i.test(errorMessage(replyError))) {
+        setError(errorMessage(replyError));
+        return;
+      }
     }
+    setPermissions((current) => {
+      const next = current.filter((item) => item.id !== request.id);
+      // Clear the session badge as soon as its last request is answered.
+      if (next.length === 0) {
+        setPendingApprovalSessionIDs((ids) => ids.filter((id) => id !== request.sessionID));
+        void ideaApi.setPendingApproval(request.sessionID, false).catch(() => undefined);
+      }
+      return next;
+    });
   }, [projectPath]);
 
   const handleQuestionReply = useCallback(async (request: QuestionRequest) => {
@@ -904,6 +991,7 @@ function App() {
     connected={connected}
     contextUsage={contextUsage}
     contexts={contexts}
+    compacting={compacting}
     composerText={composerText}
     conversationTurns={conversationTurns}
     currentPermissions={currentPermissions}
