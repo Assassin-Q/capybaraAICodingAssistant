@@ -40,6 +40,7 @@ import {
   type SkillHubSearchRequest,
   type SkillHubSkill,
   type SkillHubStatus,
+  type ManagedSkillInfo,
 } from "@/lib/ideaIntegrations";
 import { cn } from "@/lib/utils";
 
@@ -144,6 +145,8 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
   const [apiKey, setApiKey] = useState("all");
   const [results, setResults] = useState<SkillHubSkill[]>();
   const [page, setPage] = useState(1);
+  /** What is already on disk, so the detail view can point at the installed release. */
+  const [installed, setInstalled] = useState<ManagedSkillInfo[]>([]);
   const [total, setTotal] = useState(0);
   const [detail, setDetail] = useState<SkillHubSkill>();
   const [loading, setLoading] = useState(false);
@@ -172,7 +175,9 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
           return;
         }
         setResults(response.results);
-        setPage(response.page);
+        // Falls back to what was asked for: a server that omits the echo must not be able to
+        // knock the pager into NaN, which is exactly what happened when the field was dropped.
+        setPage(response.page || nextPage);
         setTotal(response.total);
         setError("");
       } catch (loadError) {
@@ -183,6 +188,10 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
     },
     [apiKey, category, order, setError, sort, source]
   );
+
+  useEffect(() => {
+    void skillsApi.list().then(setInstalled).catch(() => setInstalled([]));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -203,6 +212,18 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
   const sources = Object.keys(sourceLabels);
   const visible = results ?? [];
   const pageCount = Math.max(1, Math.ceil(total / 20));
+
+  /**
+   * The locally installed release of a hub skill, if any.
+   *
+   * Matched by name rather than slug: the hub keys entries by "@owner/slug" while the installed
+   * copy only knows the name from its own SKILL.md, which is what the install writes to disk.
+   */
+  const installedVersion = (skill: SkillHubSkill): string | undefined => {
+    const wanted = (skill.name ?? skill.publicSlug ?? skill.slug).split("/").pop()?.toLowerCase();
+    if (!wanted) return undefined;
+    return installed.find((item) => item.name.toLowerCase() === wanted)?.version;
+  };
 
   const install = async (skill: SkillHubSkill, scope: ManagedScope) => {
     setBusy(skill.slug);
@@ -228,6 +249,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
     return (
       <SkillHubDetailView
         busy={busy !== ""}
+        installedVersion={installedVersion(detail)}
         namespace={detail.namespaceHandle ?? detail.owner ?? ""}
         onBack={() => setDetail(undefined)}
         onInstall={(scope: ManagedScope) => void install(detail, scope)}

@@ -26,6 +26,9 @@ interface ManagedSkillListProps {
   reloadToken?: number;
 }
 
+/** Windows hands back both separators and mixed case; comparison needs one shape. */
+const normalizePath = (value: string): string => value.replace(/\\/g, "/").toLowerCase();
+
 const sourceLabels: Record<string, string> = {
   agents: "Agents",
   claude: "Claude Code",
@@ -46,8 +49,8 @@ export function ManagedSkillList({
   reloadToken,
 }: ManagedSkillListProps) {
   const [skills, setSkills] = useState<ManagedSkillInfo[]>([]);
-  /** Skill names OpenCode has actually loaded, used to flag files that need a reload. */
-  const [loadedNames, setLoadedNames] = useState<Set<string>>(new Set());
+  /** Paths OpenCode has loaded; null means we could not reach it, which is not the same as none. */
+  const [loadedPaths, setLoadedPaths] = useState<Set<string> | null>(null);
   const [scope, setScope] = useState<ManagedScope | "all">("all");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -61,12 +64,15 @@ export function ManagedSkillList({
     try {
       const [onDisk, live] = await Promise.all([
         skillsApi.list(),
+        // null, not [] — swallowing the failure into an empty list made "we could not ask
+        // OpenCode" indistinguishable from "OpenCode loaded nothing", which flagged every
+        // enabled skill as needing a restart that would have changed nothing.
         projectPath
-          ? openCodeApi.listSkills(projectPath).catch(() => [])
-          : Promise.resolve([]),
+          ? openCodeApi.listSkills(projectPath).catch(() => null)
+          : Promise.resolve(null),
       ]);
       setSkills(onDisk);
-      setLoadedNames(new Set(live.map((skill) => skill.name)));
+      setLoadedPaths(live === null ? null : new Set(live.map((skill) => normalizePath(skill.location))));
       setError("");
     } catch (loadError) {
       setError(errorMessage(loadError));
@@ -135,10 +141,23 @@ export function ManagedSkillList({
       title: `删除技能「${skill.name}」`,
     });
 
-  /** Enabled on disk but not in OpenCode's live list — only a reload will pick these up. */
+  /**
+   * Matched on the file path, not the name.
+   *
+   * Two skills can share a name across scopes — a project copy and a ~/.claude copy of
+   * ui-ux-pro-max, say — and name matching then reported the unloaded one as loaded because its
+   * twin was. The path is what OpenCode actually loaded, so it is what gets compared.
+   */
+  const isLoaded = useCallback(
+    (skill: ManagedSkillInfo) =>
+      loadedPaths !== null && loadedPaths.has(normalizePath(skill.location)),
+    [loadedPaths]
+  );
+
+  /** Enabled on disk but absent from OpenCode's live list — a reload picks these up. */
   const pendingReload = useMemo(
-    () => skills.filter((skill) => skill.enabled && !loadedNames.has(skill.name)),
-    [loadedNames, skills]
+    () => skills.filter((skill) => skill.enabled && !isLoaded(skill)),
+    [isLoaded, skills]
   );
 
   const restartService = async () => {
@@ -162,7 +181,8 @@ export function ManagedSkillList({
 
   const loadState = (skill: ManagedSkillInfo) => {
     if (!skill.enabled) return { label: "已停用", variant: "outline" as const };
-    if (loadedNames.has(skill.name)) return { label: "已加载", variant: "secondary" as const };
+    if (loadedPaths === null) return { label: "无法确认（未连接服务）", variant: "outline" as const };
+    if (isLoaded(skill)) return { label: "已加载", variant: "secondary" as const };
     return { label: "待重启服务加载", variant: "outline" as const };
   };
 
@@ -181,7 +201,7 @@ export function ManagedSkillList({
             </Button>
           </>
         }
-        description="扫描 .opencode/skills、~/.config/opencode/skills，以及 Claude Code 兼容的 .claude/skills 和 .agents/skills。「待重启服务加载」表示文件已就位但 OpenCode 还没读到，可到「连接」页重启服务。"
+        description="扫描 .opencode/skills、~/.config/opencode/skills，以及 Claude Code 兼容的 .claude/skills 和 .agents/skills。仅列出 <根目录>/<名称>/SKILL.md 这一层——嵌套更深的目录 OpenCode 不会加载，因此不显示。「待重启服务加载」表示文件已就位但 OpenCode 还没读到，可到「连接」页重启服务。"
         loading={loading}
         onRefresh={() => void refresh()}
         title="技能"
@@ -203,6 +223,7 @@ export function ManagedSkillList({
           </Button>
         </div>
       )}
+
 
       <div className="flex flex-wrap items-center gap-2">
         {scopeFilters.map((item) => (
@@ -245,7 +266,7 @@ export function ManagedSkillList({
                   <Sparkles
                     className={cn(
                       "size-3.5",
-                      skill.enabled && loadedNames.has(skill.name) ? "text-emerald-500" : "text-muted-foreground"
+                      skill.enabled && isLoaded(skill) ? "text-emerald-500" : "text-muted-foreground"
                     )}
                   />
                 </div>

@@ -267,7 +267,8 @@ class OpenCodeServerManager(private val projectPath: String?) {
         else -> listOf(executable) + args
     }
 
-    private fun resolveExecutable(): String {
+    /** Internal so sibling services can drive the same CLI without duplicating the lookup. */
+    internal fun resolveExecutable(): String {
         val configured = System.getenv("OPENCODE_BIN_PATH")
         if (!configured.isNullOrBlank() && File(configured).exists()) {
             return configured

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronLeft, Download, ExternalLink, FileText, KeyRound, ShieldCheck, Star } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -58,12 +58,15 @@ function TraceDimension({ dimension }: { dimension: SkillHubTraceDimension }) {
 
 export function SkillHubDetailView({
   busy,
+  installedVersion,
   namespace,
   onBack,
   onInstall,
   slug,
 }: {
   busy: boolean;
+  /** Version already on disk, if this skill is installed — marks the matching row in 版本历史. */
+  installedVersion?: string;
   namespace: string;
   onBack: () => void;
   onInstall: (scope: ManagedScope) => void;
@@ -78,6 +81,15 @@ export function SkillHubDetailView({
   const [openPath, setOpenPath] = useState("");
   const [fileText, setFileText] = useState("");
   const [fileLoading, setFileLoading] = useState(false);
+  /**
+   * 概述 keeps its own copy of SKILL.md.
+   *
+   * Both views used to share openPath/fileText, so the overview auto-opening SKILL.md left the
+   * file browser already pointed at a file — opening the 文件 tab dropped the user straight into
+   * it instead of showing the tree they came to see.
+   */
+  const [overviewText, setOverviewText] = useState("");
+  const [overviewLoading, setOverviewLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,12 +128,31 @@ export function SkillHubDetailView({
     }
   }, [namespace, slug]);
 
-  // 概述 renders SKILL.md, which is where the actual instructions live.
+  /**
+   * 概述 renders SKILL.md, which is where the actual instructions live.
+   *
+   * The "already fetching" guard is a ref, not state. As a dependency it deadlocked the effect:
+   * setting it re-ran the effect, whose cleanup cancelled the request in flight, so the `finally`
+   * skipped clearing the flag and the next run bailed out on it — leaving 正在读取 forever.
+   */
+  const overviewRequestedFor = useRef("");
   useEffect(() => {
-    if (tab !== "overview" || !detail || openPath) return;
+    if (!detail) return;
+    const key = `${namespace}/${slug}`;
+    if (overviewRequestedFor.current === key) return;
     const entry = detail.files.find((file) => file.path.toLowerCase() === "skill.md");
-    if (entry) void openFile(entry.path);
-  }, [detail, openFile, openPath, tab]);
+    if (!entry) return;
+    overviewRequestedFor.current = key;
+    let cancelled = false;
+    setOverviewLoading(true);
+    void skillsApi.hubFile(slug, namespace, entry.path)
+      .then((result) => {
+        if (!cancelled && result.success) setOverviewText(result.text ?? "");
+      })
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setOverviewLoading(false); });
+    return () => { cancelled = true; };
+  }, [detail, namespace, slug]);
 
   if (loading) {
     return (
@@ -141,7 +172,10 @@ export function SkillHubDetailView({
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+    // The section itself must not scroll: the footer used to be a sticky child of the scroll
+    // container, which floats it over the content instead of sitting below it. Only the tab body
+    // scrolls now, so the install bar is always clear of whatever is being read.
+    <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <header className="flex items-start gap-3">
         <Button aria-label="返回列表" onClick={onBack} size="icon-sm" type="button" variant="ghost">
           <ArrowLeft className="size-4" />
@@ -214,12 +248,12 @@ export function SkillHubDetailView({
         ))}
       </nav>
 
-      <div className="min-h-32 flex-1">
+      <div className="min-h-32 min-h-0 flex-1 overflow-y-auto">
         {tab === "overview" && (
-          fileLoading
+          overviewLoading
             ? <p className="py-6 text-center text-xs text-muted-foreground">正在读取 SKILL.md…</p>
-            : fileText
-              ? <MarkdownResponse>{fileText}</MarkdownResponse>
+            : overviewText
+              ? <MarkdownResponse>{overviewText}</MarkdownResponse>
               : <p className="py-6 text-center text-xs text-muted-foreground">这个技能没有提供 SKILL.md</p>
         )}
 
@@ -266,6 +300,10 @@ export function SkillHubDetailView({
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs font-medium">v{version.version}</span>
                     {version.latest && <Badge variant="secondary">最新</Badge>}
+                    {/* Comparison ignores a leading v so "v1.1.9" and "1.1.9" are the same release. */}
+                    {installedVersion
+                      && version.version.replace(/^v/i, "") === installedVersion.replace(/^v/i, "")
+                      && <Badge className="border-emerald-500/50 text-emerald-600 dark:text-emerald-400" variant="outline">本机已安装</Badge>}
                     <span className="ml-auto text-[11px] text-muted-foreground">{formatDate(version.createdAt)}</span>
                   </div>
                   {version.changelog && (
@@ -304,7 +342,7 @@ export function SkillHubDetailView({
         ))}
       </div>
 
-      <footer className="sticky bottom-0 flex shrink-0 flex-wrap items-center gap-2 border-t border-border/50 bg-background pt-3">
+      <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border/50 bg-background pt-3">
         <Button disabled={busy} onClick={() => onInstall("project")} size="sm" type="button">
           <Download className="size-3.5" />安装到项目
         </Button>

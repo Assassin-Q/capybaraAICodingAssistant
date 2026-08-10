@@ -99,11 +99,11 @@ export function AppearanceSettings() {
   }, [load]);
 
   const lightThemes = useMemo(
-    () => settings?.themes.filter((theme) => !theme.dark) ?? [],
+    () => (settings?.themes ?? []).filter((theme) => !theme.dark),
     [settings]
   );
   const darkThemes = useMemo(
-    () => settings?.themes.filter((theme) => theme.dark) ?? [],
+    () => (settings?.themes ?? []).filter((theme) => theme.dark),
     [settings]
   );
   const dirty = Boolean(settings) && (

@@ -48,8 +48,8 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  const changeCount = status?.files.length ?? 0;
-  const untrackedCount = status?.files.filter((file) => file.status === "未跟踪").length ?? 0;
+  const changeCount = status?.files?.length ?? 0;
+  const untrackedCount = (status?.files ?? []).filter((file) => file.status === "未跟踪").length;
   const hasChanges = changeCount > 0;
 
   const run = async (label: string, action: () => Promise<{ success: boolean; message?: string }>) => {

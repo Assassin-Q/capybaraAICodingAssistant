@@ -16,7 +16,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   PROFESSIONAL_ROLE_PRESETS,
   type ProfessionalRoleConfig,
-  type ProfessionalRolePreferences,
 } from "@/lib/professionalRoles";
 import type { WorkspacePreferences } from "@/lib/preferences";
 import type { SkillInfo } from "@/lib/opencode";
@@ -104,10 +103,6 @@ export function ProfessionalRoleSettings({ mcpNames, onSave, preferences, skills
   const mcpOptions = useMemo(() => mcpNames.map((name) => ({ value: name })).sort((left, right) => left.value.localeCompare(right.value)), [mcpNames]);
   const dirty = JSON.stringify(roles) !== JSON.stringify(preferences.professionalRoles);
 
-  const update = (changes: Partial<ProfessionalRolePreferences>) => {
-    setSaved(false);
-    setRoles((current) => ({ ...current, ...changes }));
-  };
   const updateRole = (changes: Partial<ProfessionalRoleConfig>) => {
     setSaved(false);
     setRoles((current) => ({
@@ -118,6 +113,35 @@ export function ProfessionalRoleSettings({ mcpNames, onSave, preferences, skills
       },
     }));
   };
+  /**
+   * Switches are live settings, not draft edits.
+   *
+   * They used to only touch local state, so a role stayed off until "保存角色设置" was pressed —
+   * and the save button was the same one that commits skill/MCP selections. Writing through the
+   * persisted value keeps unsaved edits out and leaves the draft in step, so `dirty` stays honest.
+   */
+  const toggleEnabled = (enabled: boolean) => {
+    const next = onSave({ ...preferences, professionalRoles: { ...preferences.professionalRoles, enabled } });
+    setRoles((current) => ({ ...current, enabled: next.professionalRoles.enabled }));
+  };
+
+  const toggleRoleEnabled = (enabled: boolean) => {
+    const id = selectedPreset.id;
+    const persisted = preferences.professionalRoles;
+    const next = onSave({
+      ...preferences,
+      professionalRoles: {
+        ...persisted,
+        roles: { ...persisted.roles, [id]: { ...persisted.roles[id], enabled } },
+      },
+    });
+    const applied = next.professionalRoles.roles[id]?.enabled ?? enabled;
+    setRoles((current) => ({
+      ...current,
+      roles: { ...current.roles, [id]: { ...current.roles[id], enabled: applied } },
+    }));
+  };
+
   const save = () => {
     const availableSkills = new Set(skillOptions.map((option) => option.value));
     const availableMcps = new Set(mcpOptions.map((option) => option.value));
@@ -145,7 +169,7 @@ export function ProfessionalRoleSettings({ mcpNames, onSave, preferences, skills
           <p className="text-sm font-medium">启用专业角色</p>
           <p className="mt-0.5 text-xs text-muted-foreground">启用后，对话输入框底部才会显示角色选择器。</p>
         </div>
-        <Switch aria-label="启用专业角色" checked={roles.enabled} onCheckedChange={(enabled) => update({ enabled })} />
+        <Switch aria-label="启用专业角色" checked={preferences.professionalRoles.enabled} onCheckedChange={toggleEnabled} />
       </div>
 
       <div className="grid min-h-0 max-w-5xl gap-5 md:grid-cols-[13rem_minmax(0,1fr)]">
@@ -169,7 +193,7 @@ export function ProfessionalRoleSettings({ mcpNames, onSave, preferences, skills
         <div className="grid min-w-0 content-start gap-4">
           <div className="flex items-start justify-between gap-4">
             <div><p className="text-sm font-medium">{selectedPreset.name}</p><p className="mt-1 text-xs text-muted-foreground">提示词只描述关注点，不强制模型执行固定流程。</p></div>
-            <Switch aria-label={`启用${selectedPreset.name}`} checked={selectedRole.enabled} onCheckedChange={(enabled) => updateRole({ enabled })} />
+            <Switch aria-label={`启用${selectedPreset.name}`} checked={preferences.professionalRoles.roles[selectedPreset.id]?.enabled !== false} onCheckedChange={toggleRoleEnabled} />
           </div>
           <label className="grid gap-1.5 text-xs font-medium">简短专业提示词<Textarea className="min-h-28 resize-y leading-6" onChange={(event) => updateRole({ instructions: event.target.value })} value={selectedRole.instructions} /></label>
           <Button className="w-fit" onClick={() => updateRole({ instructions: selectedPreset.instructions })} size="sm" type="button" variant="ghost"><RotateCcw className="size-3.5" />恢复默认提示词</Button>

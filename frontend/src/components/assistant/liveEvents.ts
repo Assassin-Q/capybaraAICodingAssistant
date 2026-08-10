@@ -288,11 +288,11 @@ const nextPartID = (
   }
   if (createNew) {
     const message = messages.find((item): item is AssistantMessage => item.type === "assistant" && item.id === messageID);
-    const count = message?.content.filter((part) => part.type === type).length ?? 0;
+    const count = (message?.content ?? []).filter((part) => part.type === type).length;
     return `${type}:${messageID}:${count}`;
   }
   const message = messages.find((item): item is AssistantMessage => item.type === "assistant" && item.id === messageID);
-  const current = message?.content.filter((part) => part.type === type).at(-1);
+  const current = (message?.content ?? []).filter((part) => part.type === type).at(-1);
   return current?.id ?? `${type}:${messageID}`;
 };
 

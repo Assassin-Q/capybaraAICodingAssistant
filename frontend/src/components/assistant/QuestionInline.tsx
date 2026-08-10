@@ -54,7 +54,7 @@ export function QuestionInline({
   const question = request.questions[activeIndex];
   const selected = answers[activeIndex] ?? [];
   const optionLabels = useMemo(
-    () => new Set(question?.options.map((option) => option.label) ?? []),
+    () => new Set((question?.options ?? []).map((option) => option.label)),
     [question]
   );
   if (!question) return null;

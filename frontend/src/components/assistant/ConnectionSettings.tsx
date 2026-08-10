@@ -59,7 +59,9 @@ export function ConnectionSettings({ baseUrl, connected, onChanged, projectPath 
   };
 
   return (
-    <section className="flex max-w-3xl flex-col gap-5">
+    // `max-w-3xl` alone pinned the content left and left the rest of a wide panel empty. Every
+    // other section fills the width; this one now matches, with a cap so the lines stay readable.
+    <section className="mx-auto flex w-full max-w-5xl flex-col gap-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold">连接</h2>

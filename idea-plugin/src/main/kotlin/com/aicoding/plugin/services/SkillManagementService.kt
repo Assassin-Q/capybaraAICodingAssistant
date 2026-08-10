@@ -31,6 +31,12 @@ data class ManagedSkillInfo(
     val source: String,
     val enabled: Boolean,
     val editable: Boolean = true,
+    /** False when the file sits deeper than the single level OpenCode scans, so no restart helps. */
+    val autoLoadable: Boolean = true,
+    /** The containing directory, which is the key OpenCode registers the skill under. */
+    val directoryName: String = "",
+    /** From the SKILL.md frontmatter, so SkillHub can mark which release is installed locally. */
+    val version: String? = null,
 )
 
 @Serializable
@@ -162,8 +168,13 @@ data class SkillHubSearchResponse(
     val results: List<SkillHubSkill> = emptyList(),
     val warnings: List<String> = emptyList(),
     val total: Int = 0,
-    val page: Int = 1,
-    val pageSize: Int = 20,
+    /**
+     * No defaults on these two. The server serialises with `encodeDefaults = false`, so a page of 1
+     * or a size of 20 was omitted entirely; the client then read `undefined`, rendered "第 /5553 页",
+     * and computed `undefined + 1` for the next page — which is how paging broke.
+     */
+    val page: Int,
+    val pageSize: Int,
     val message: String? = null,
 )
 
@@ -185,11 +196,31 @@ data class SkillActionResponse(
 
 private data class SkillRoot(val path: Path, val scope: String, val source: String)
 
+/**
+ * Turns a network failure into something the user can act on.
+ *
+ * The raw text surfaced verbatim before, so a blocked connection reached the page as
+ * "Remote host terminated the handshake" — accurate, and useless to anyone reading it.
+ */
+internal fun networkFailureMessage(error: Throwable, fallback: String): String = when (error) {
+    is java.net.UnknownHostException -> "无法解析 SkillHub 域名，请检查网络或 DNS 设置"
+    is javax.net.ssl.SSLException ->
+        "与 SkillHub 建立安全连接失败，通常是代理或防火墙拦截了请求。" +
+            "若你使用代理，请在 设置 → 外观与行为 → 系统设置 → HTTP 代理 中配置后重启 IDEA"
+    is java.net.http.HttpConnectTimeoutException, is java.net.ConnectException ->
+        "连接 SkillHub 超时，请检查网络后重试"
+    else -> error.message ?: fallback
+}
+
 class SkillManagementService(private val project: Project) {
     private val json = Json { ignoreUnknownKeys = true }
     private val httpClient: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(6))
         .followRedirects(HttpClient.Redirect.NORMAL)
+        // Without this the client is NO_PROXY — it ignores even the system settings, so a user
+        // behind a proxy gets a connection reset that reads as a TLS handshake failure. IDEA
+        // publishes its own proxy configuration through the default selector.
+        .proxy(java.net.ProxySelector.getDefault())
         .build()
     private val home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize()
     private val projectRoot = project.basePath?.let(Path::of)?.toAbsolutePath()?.normalize()
@@ -205,7 +236,9 @@ class SkillManagementService(private val project: Project) {
                 .map { path -> parseSkill(path, root) }
                 .toList()
         }
-    }.distinctBy { it.location.lowercase() }.sortedWith(
+        // Anything OpenCode cannot reach is dropped rather than listed. Showing it only ever
+        // produced a row the user could toggle, restart for, and never actually load.
+    }.filter { it.autoLoadable }.distinctBy { it.location.lowercase() }.sortedWith(
         compareBy<ManagedSkillInfo> { it.scope }.thenBy { it.name.lowercase() },
     )
 
@@ -272,7 +305,7 @@ class SkillManagementService(private val project: Project) {
         SkillHubStatus(
             available = false,
             endpoint = CATALOG_ENDPOINT,
-            message = it.message ?: "无法连接 SkillHub",
+            message = networkFailureMessage(it, "无法连接 SkillHub"),
         )
     }
 
@@ -301,6 +334,10 @@ class SkillManagementService(private val project: Project) {
         SkillHubSearchResponse(
             success = true,
             query = query,
+            // The legacy endpoint has no paging of its own, so the caller is told so plainly
+            // rather than being handed a page number the results do not actually correspond to.
+            page = 1,
+            pageSize = limit,
             results = parsed.results.mapNotNull { item ->
                 val publicSlug = item.slug.ifBlank { item.publicSlug.orEmpty() }
                 if (publicSlug.isBlank()) return@mapNotNull null
@@ -330,7 +367,7 @@ class SkillManagementService(private val project: Project) {
                 )
             },
         )
-    }.getOrElse { SkillHubSearchResponse(false, message = it.message ?: "SkillHub 搜索失败") }
+    }.getOrElse { SkillHubSearchResponse(false, page = 1, pageSize = 20, message = networkFailureMessage(it, "SkillHub 搜索失败")) }
 
     fun searchSkillHub(request: SkillHubSearchRequest): SkillHubSearchResponse = runCatching {
         val query = request.query.trim()
@@ -400,7 +437,7 @@ class SkillManagementService(private val project: Project) {
             page = page,
             pageSize = limit,
         )
-    }.getOrElse { SkillHubSearchResponse(false, message = it.message ?: "SkillHub 搜索失败") }
+    }.getOrElse { SkillHubSearchResponse(false, page = 1, pageSize = 20, message = networkFailureMessage(it, "SkillHub 搜索失败")) }
 
     /**
      * Downloads the skill archive from `api/v1/download` and unpacks it into the chosen scope.
@@ -496,6 +533,11 @@ class SkillManagementService(private val project: Project) {
             val index = line.indexOf(':')
             if (index <= 0) null else line.take(index).trim() to line.drop(index + 1).trim().trim('"', '\'')
         }.toMap()
+        // OpenCode auto-loads exactly `<root>/<name>/SKILL.md` — one level, no deeper. We walk 8
+        // levels so a bundle like `gsap-skills-main/skills/gsap-core/SKILL.md` is still listed and
+        // manageable, but it will never appear in OpenCode's live list no matter how often the
+        // service restarts. Saying so here is what stops the UI promising a reload that cannot work.
+        val depth = runCatching { root.path.relativize(path.parent).nameCount }.getOrDefault(1)
         return ManagedSkillInfo(
             name = values["name"]?.ifBlank { null } ?: path.parent.name,
             description = values["description"]?.ifBlank { null },
@@ -503,6 +545,12 @@ class SkillManagementService(private val project: Project) {
             scope = root.scope,
             source = root.source,
             enabled = path.fileName.toString() == "SKILL.md",
+            autoLoadable = depth == 1,
+            version = values["version"]?.ifBlank { null },
+            // OpenCode keys its live list by directory, which is not always the frontmatter name:
+            // `frontend-design-v2-2.0.0/SKILL.md` declares `name: frontend-design`. Matching on one
+            // of the two alone leaves the skill looking permanently unloaded.
+            directoryName = path.parent.name,
         )
     }
 

@@ -44,24 +44,48 @@ function ToneRoleSettings({ onSave, preferences }: ToneRoleSettingsProps) {
     const preset = findPersonaPreset(presetId);
     if (!preset) return;
     setSaved(false);
-    setPersona({ enabled: true, instructions: preset.instructions, name: preset.name, presetId: preset.id });
+    // Picking a preset edits the draft content only. Whether the persona is on is the switch's
+    // business, and silently turning it on here would take a decision away from the user.
+    setPersona((current) => ({ ...current, instructions: preset.instructions, name: preset.name, presetId: preset.id }));
   };
   const customize = (changes: Partial<typeof persona>) => update({ ...changes, presetId: CUSTOM_PERSONA_ID });
-  const dirty = persona.enabled !== preferences.persona.enabled
-    || persona.name !== preferences.persona.name
+
+  /**
+   * The switch is a live setting, not part of the draft.
+   *
+   * It used to only mutate local state, so the persona was not actually enabled until the save
+   * button was pressed — and because `dirty` counted `enabled`, flipping it also lit up a button
+   * labelled "save the tone role", conflating "turn this on" with "commit my text edits".
+   * Merging onto the persisted persona keeps unsaved text out of the write.
+   */
+  const toggleEnabled = (enabled: boolean) => {
+    const next = onSave({ ...preferences, persona: { ...preferences.persona, enabled } });
+    setPersona((current) => ({ ...current, enabled: next.persona.enabled }));
+  };
+
+  const dirty = persona.name !== preferences.persona.name
     || persona.instructions !== preferences.persona.instructions
     || persona.presetId !== preferences.persona.presetId;
   const valid = persona.name.trim().length > 0 && persona.instructions.trim().length > 0;
   const save = () => {
     if (!valid) return;
-    const next = onSave({ ...preferences, persona: { ...persona, name: persona.name.trim(), instructions: persona.instructions.trim() } });
+    const next = onSave({
+      ...preferences,
+      persona: {
+        ...persona,
+        // Never written from the draft — only the switch owns it.
+        enabled: preferences.persona.enabled,
+        instructions: persona.instructions.trim(),
+        name: persona.name.trim(),
+      },
+    });
     setPersona(next.persona);
     setSaved(true);
   };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
-      <div className="flex items-center gap-3 border-b border-border pb-4"><div className="flex size-9 items-center justify-center rounded-md bg-muted"><Bot className="size-4" /></div><div className="min-w-0 flex-1"><p className="text-sm font-medium">启用语气角色</p><p className="mt-0.5 text-xs text-muted-foreground">只调整表达方式，不改变专业判断、权限和工具能力。</p></div><Switch checked={persona.enabled} onCheckedChange={(enabled) => update({ enabled })} /></div>
+      <div className="flex items-center gap-3 border-b border-border pb-4"><div className="flex size-9 items-center justify-center rounded-md bg-muted"><Bot className="size-4" /></div><div className="min-w-0 flex-1"><p className="text-sm font-medium">启用语气角色</p><p className="mt-0.5 text-xs text-muted-foreground">只调整表达方式，不改变专业判断、权限和工具能力。</p></div><Switch checked={preferences.persona.enabled} onCheckedChange={toggleEnabled} /></div>
 
       <div className="grid min-h-0 max-w-5xl gap-5 md:grid-cols-[13rem_minmax(0,1fr)]">
         <div className="min-w-0">

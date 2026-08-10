@@ -141,6 +141,14 @@ function IdeaBridgePanel() {
             </Button>
           </div>
           <p className="mb-2 break-all font-mono text-[10px] text-muted-foreground/75">{bridge?.location}</p>
+          {/* No longer a warning. The panel answers permissions itself the moment the event lands,
+              so on a healthy setup this hook is simply never reached — it now only covers requests
+              raised while no panel is open. "Never called" stopped being evidence of anything. */}
+          <p className="mb-2 text-[10px] text-muted-foreground">
+            审批兜底钩子：{bridge?.lastApprovalHook
+              ? <span className="font-mono">{bridge.lastApprovalHook}</span>
+              : <span>未触发（正常：面板打开时由面板直接放行）</span>}
+          </p>
           {/* Eleven tools rendered inline pushed every other plugin below the fold, so the list
               scrolls inside the card instead of growing it. */}
           <div className="max-h-56 overflow-y-auto overscroll-contain rounded-md bg-background/45">

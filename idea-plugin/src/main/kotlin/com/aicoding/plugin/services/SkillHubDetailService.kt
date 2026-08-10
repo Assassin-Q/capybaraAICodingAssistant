@@ -118,6 +118,8 @@ class SkillHubDetailService(private val project: Project) {
     private val json = Json { ignoreUnknownKeys = true }
     private val httpClient: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(10))
+        // See SkillManagementService: the default client is NO_PROXY and ignores IDEA proxy setup.
+        .proxy(java.net.ProxySelector.getDefault())
         // `/file` answers with a 302 to object storage.
         .followRedirects(HttpClient.Redirect.NORMAL)
         .build()
@@ -162,7 +164,7 @@ class SkillHubDetailService(private val project: Project) {
         )
     }.getOrElse { error ->
         logger.info("SkillHub detail failed: ${error.message}")
-        SkillHubDetail(success = false, message = error.message ?: "读取技能详情失败")
+        SkillHubDetail(success = false, message = networkFailureMessage(error, "读取技能详情失败"))
     }
 
     fun file(request: SkillHubFileRequest): SkillHubFileContent = runCatching {
@@ -181,7 +183,7 @@ class SkillHubDetailService(private val project: Project) {
         )
     }.getOrElse { error ->
         logger.info("SkillHub file failed: ${error.message}")
-        SkillHubFileContent(success = false, message = error.message ?: "读取文件失败")
+        SkillHubFileContent(success = false, message = networkFailureMessage(error, "读取文件失败"))
     }
 
     private fun files(slug: String, namespace: String): List<SkillHubFileEntry> = runCatching {

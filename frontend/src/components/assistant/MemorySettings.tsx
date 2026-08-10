@@ -387,7 +387,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
             默认使用本地向量存储的 OpenCode Mem。检测到其他社区记忆插件时会保留并展示，不会覆盖用户现有方案。
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            {status?.plugins.map((plugin) => (
+            {(status?.plugins ?? []).map((plugin) => (
               <div className="min-w-44 rounded-md bg-muted/50 px-3 py-2" key={plugin.id}>
                 <div className="flex items-center gap-2"><span className="text-xs font-medium">{plugin.name}</span>{plugin.fullIntegration && <Badge variant="secondary">已接管设置</Badge>}</div>
                 <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{plugin.description}</p>
@@ -458,7 +458,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
 
       <section className="border-b border-border/50 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><div className="flex items-center gap-2"><HardDrive className="size-4 text-muted-foreground" /><h3 className="text-sm font-semibold">本机开发环境</h3></div><p className="mt-1 text-xs text-muted-foreground">上次扫描 {formatDate(status?.lastEnvironmentScan)}，共 {status?.environments.length ?? 0} 项。</p></div>
+          <div><div className="flex items-center gap-2"><HardDrive className="size-4 text-muted-foreground" /><h3 className="text-sm font-semibold">本机开发环境</h3></div><p className="mt-1 text-xs text-muted-foreground">上次扫描 {formatDate(status?.lastEnvironmentScan)}，共 {status?.environments?.length ?? 0} 项。</p></div>
           <div className="flex items-center gap-1">
             <Button disabled={!integrated || Boolean(busy)} onClick={() => openEnvironmentEditor()} size="sm" type="button" variant="ghost"><Plus className="size-3.5" />新增环境</Button>
             <Button disabled={!integrated || Boolean(busy)} onClick={() => void scan()} size="sm" type="button" variant="ghost">{busy === "scan" ? <LoaderCircle className="size-3.5 animate-spin" /> : <ScanSearch className="size-3.5" />}扫描并同步</Button>
@@ -467,7 +467,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
         <EnvironmentVariables className="mt-4 overflow-hidden border-border/50 bg-muted/10" defaultShowValues>
           <EnvironmentVariablesHeader className="border-border/40 px-3 py-2"><EnvironmentVariablesTitle>工具与路径</EnvironmentVariablesTitle><EnvironmentVariablesToggle /></EnvironmentVariablesHeader>
           <EnvironmentVariablesContent className="max-h-80 divide-border/40 overflow-y-auto">
-            {status?.environments.map((environment) => (
+            {(status?.environments ?? []).map((environment) => (
               <EnvironmentVariable className="group items-start px-3 py-2.5" key={environment.id} name={environment.name} value={environment.paths.join(" · ")}>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2"><EnvironmentVariableName className="text-xs font-medium" />{environment.version && <span className="truncate text-[11px] text-muted-foreground">{environment.version}</span>}</div>
@@ -480,7 +480,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
                 </div>
               </EnvironmentVariable>
             ))}
-            {status?.environments.length === 0 && <p className="px-3 py-5 text-xs text-muted-foreground">尚未扫描开发环境</p>}
+            {(status?.environments ?? []).length === 0 && <p className="px-3 py-5 text-xs text-muted-foreground">尚未扫描开发环境</p>}
           </EnvironmentVariablesContent>
         </EnvironmentVariables>
         <p className="mt-2 text-[11px] leading-4 text-muted-foreground">编辑自动发现的条目后会转为手动维护，后续重新扫描不会覆盖；手动新增项也会参与跨项目环境记忆。</p>
@@ -507,7 +507,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-xs font-medium">环境名称<Input autoFocus onChange={(event) => setEnvironmentDraft((current) => current ? { ...current, name: event.target.value } : current)} placeholder="例如 Android Studio" value={environmentDraft?.name ?? ""} /></label>
             <label className="grid gap-1.5 text-xs font-medium">版本（可选）<Input onChange={(event) => setEnvironmentDraft((current) => current ? { ...current, version: event.target.value } : current)} placeholder="例如 2025.1" value={environmentDraft?.version ?? ""} /></label>
-            <label className="grid gap-1.5 text-xs font-medium sm:col-span-2">安装或可执行文件路径<Textarea className="min-h-28 resize-y font-mono text-xs leading-5" onChange={(event) => setEnvironmentDraft((current) => current ? { ...current, paths: event.target.value.split(/\r?\n/) } : current)} placeholder={"每行一个路径，例如：\nC:\\Program Files\\Example\nC:\\Users\\me\\bin\\example.exe"} value={environmentDraft?.paths.join("\n") ?? ""} /></label>
+            <label className="grid gap-1.5 text-xs font-medium sm:col-span-2">安装或可执行文件路径<Textarea className="min-h-28 resize-y font-mono text-xs leading-5" onChange={(event) => setEnvironmentDraft((current) => current ? { ...current, paths: event.target.value.split(/\r?\n/) } : current)} placeholder={"每行一个路径，例如：\nC:\\Program Files\\Example\nC:\\Users\\me\\bin\\example.exe"} value={(environmentDraft?.paths ?? []).join("\n")} /></label>
           </div>
           <DialogFooter>
             <Button onClick={() => setEnvironmentDraft(null)} type="button" variant="ghost">取消</Button>
@@ -522,7 +522,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
             <DialogTitle>删除这个开发环境？</DialogTitle>
             <DialogDescription>它会从全局环境索引中移除。自动发现的工具在下次扫描时可能再次出现。</DialogDescription>
           </DialogHeader>
-          <div className="rounded-md bg-muted/50 px-3 py-2 text-xs"><p className="font-medium">{environmentDeleteTarget?.name}</p><p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">{environmentDeleteTarget?.paths.join(" · ")}</p></div>
+          <div className="rounded-md bg-muted/50 px-3 py-2 text-xs"><p className="font-medium">{environmentDeleteTarget?.name}</p><p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">{(environmentDeleteTarget?.paths ?? []).join(" · ")}</p></div>
           <DialogFooter>
             <Button onClick={() => setEnvironmentDeleteTarget(null)} type="button" variant="ghost">取消</Button>
             <Button disabled={busy === "environment"} onClick={() => void deleteEnvironment()} type="button" variant="destructive">{busy === "environment" && <LoaderCircle className="size-3.5 animate-spin" />}删除环境</Button>

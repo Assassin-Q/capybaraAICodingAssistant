@@ -11,6 +11,12 @@ export interface ManagedSkillInfo {
   source: string;
   enabled: boolean;
   editable?: boolean;
+  /** False when the file is nested deeper than the one level OpenCode scans — no restart helps. */
+  autoLoadable?: boolean;
+  /** Containing directory, which is the key OpenCode registers the skill under. */
+  directoryName?: string;
+  /** From the SKILL.md frontmatter; used to mark the installed release on SkillHub. */
+  version?: string;
 }
 
 export interface SkillHubStatus {
@@ -115,6 +121,8 @@ export interface IdeaExecutionResponse {
 }
 
 export interface IdeaBridgeStatus {
+  /** Null until OpenCode's permission.ask hook has actually reached the plugin. */
+  lastApprovalHook?: string;
   success: boolean;
   installed: boolean;
   enabled: boolean;
@@ -297,6 +305,38 @@ export const gitApi = {
   /** Opens IDEA's native diff for one file: HEAD on the left, working tree on the right. */
   openFileDiff: (path: string) =>
     post<{ success: boolean; message?: string }>("/git/file-diff", { path }),
+};
+
+export interface FileSearchHit {
+  path: string;
+  relativePath: string;
+  name: string;
+  /** Content matches only: 1-based line of the first hit. */
+  line?: number;
+  /** Content matches only: the matching line. */
+  preview?: string;
+}
+
+export interface FileSearchResponse {
+  success: boolean;
+  hits: FileSearchHit[];
+  /** IDEA is still indexing, so results are partial. */
+  indexing?: boolean;
+  /** The scan stopped at its time or file budget. */
+  truncated?: boolean;
+  message?: string;
+}
+
+/**
+ * File lookup through IDEA's project model, so the results match Ctrl+N rather than a raw
+ * directory walk — excluded folders and build output never show up.
+ */
+export const ideaFileSearchApi = {
+  search: (query: string, mode: "name" | "content" = "name", limit = 30) =>
+    post<FileSearchResponse>("/ide/file-search", { limit, mode, query }),
+
+  /** Attaches the file as context through the same channel as the editor's right-click action. */
+  attach: (path: string) => post<FileSearchResponse>("/ide/file-attach", { path }),
 };
 
 export const ideaExecutionApi = {
