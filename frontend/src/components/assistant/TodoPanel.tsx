@@ -1,7 +1,6 @@
 import { Check, ChevronUp, Circle, ListTodo, LoaderCircle } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Progress } from "@/components/ui/progress";
 import type { TodoInfo } from "@/lib/opencode";
 
 const priorityLabel: Record<string, string> = {
@@ -20,14 +19,12 @@ const statusLabel: Record<string, string> = {
 const isFinished = (todo: TodoInfo): boolean =>
   todo.status === "completed" || todo.status === "cancelled";
 
-export function TodoPanel({ todos }: { todos: TodoInfo[] }) {
+export function TodoPanel({ active = true, todos }: { active?: boolean; todos: TodoInfo[] }) {
   const unfinished = todos.filter((todo) => !isFinished(todo));
   if (todos.length === 0 || unfinished.length === 0) return null;
 
-  const finishedCount = todos.length - unfinished.length;
   const activeTodo = todos.find((todo) => todo.status === "in_progress") ?? unfinished[0];
   const activeIndex = Math.max(0, todos.indexOf(activeTodo));
-  const progress = Math.round((finishedCount / todos.length) * 100);
 
   return (
     <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-[calc(100%-1.5rem)] max-w-xl -translate-x-1/2">
@@ -53,23 +50,18 @@ export function TodoPanel({ todos }: { todos: TodoInfo[] }) {
           side="top"
           sideOffset={8}
         >
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold">任务清单</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">{`${finishedCount}/${todos.length} 已处理`}</p>
-            </div>
-            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{progress}%</span>
-          </div>
-          <Progress className="mb-3 h-1 bg-muted" value={progress} />
           <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
             {todos.map((todo, index) => {
               const completed = todo.status === "completed";
-              const active = todo.status === "in_progress";
+              // Models routinely end a turn without calling todowrite again, leaving an item
+              // marked in_progress forever. Once the run is over that spinner is simply false, so
+              // the item is shown as unfinished instead of as work still happening.
+              const running = todo.status === "in_progress" && active;
               const cancelled = todo.status === "cancelled";
-              const Icon = completed ? Check : active ? LoaderCircle : Circle;
+              const Icon = completed ? Check : running ? LoaderCircle : Circle;
               return (
                 <div className="flex items-start gap-2 rounded-md px-1.5 py-1.5 text-xs" key={todo.id ?? `${todo.content}-${index}`}>
-                  <Icon className={`mt-0.5 size-3.5 shrink-0 ${active ? "animate-spin text-primary" : completed ? "text-emerald-500" : "text-muted-foreground"}`} />
+                  <Icon className={`mt-0.5 size-3.5 shrink-0 ${running ? "animate-spin text-primary" : completed ? "text-emerald-500" : "text-muted-foreground"}`} />
                   <span className={completed || cancelled ? "min-w-0 flex-1 text-muted-foreground line-through" : "min-w-0 flex-1"}>
                     {todo.content}
                   </span>

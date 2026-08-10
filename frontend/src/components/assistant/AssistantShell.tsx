@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, CircleAlert, History, MessageSquarePlus, Moon, Pencil, RefreshCw, Settings2, Sun, X } from "lucide-react";
+import { Bot, ChevronLeft, CircleAlert, History, MessageSquarePlus, Moon, Pencil, RefreshCw, Settings2, Sun, X } from "lucide-react";
 import { BorderBeam } from "border-beam";
 
 import { ConversationEmptyState } from "@/components/ai-elements/conversation";
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AssistantMessage, AssistantThinking } from "@/components/assistant/AssistantMessage";
 import { ContextChip } from "@/components/assistant/ContextChip";
+import { ConversationDivider } from "@/components/assistant/ConversationDivider";
 import { ErrorBoundary } from "@/components/assistant/ErrorBoundary";
 import { GitStatusButton } from "@/components/assistant/GitStatusButton";
 import { ContextUsageIndicator } from "@/components/assistant/TokenUsage";
@@ -41,10 +42,11 @@ import { SlashCommandMenu } from "@/components/assistant/SlashCommandMenu";
 import { TodoPanel } from "@/components/assistant/TodoPanel";
 import { UserMessage } from "@/components/assistant/UserMessage";
 import { VirtualConversation } from "@/components/assistant/VirtualConversation";
-import { sessionName } from "@/components/assistant/shared";
+import { errorMessage, sessionName } from "@/components/assistant/shared";
 import type { ContextChip as ContextChipData, RunStatus } from "@/components/assistant/shared";
 import { WorkspaceDialog, type SectionID as WorkspaceSectionID } from "@/components/assistant/WorkspaceDialog";
-import { getOpenCodeBaseUrl } from "@/lib/opencode";
+import { ideaFileSearchApi } from "@/lib/ideaIntegrations";
+import { getOpenCodeBaseUrl, openCodeApi } from "@/lib/opencode";
 import type {
   AgentInfo,
   AssistantMessage as AssistantMessageData,
@@ -85,6 +87,8 @@ export interface AssistantShellProps {
   hasStreamingAssistantContent: boolean;
   mcpNames: string[];
   approvalMode: ApprovalMode;
+  /** True while OpenCode is compacting this session, whether we asked for it or it decided to. */
+  compacting: boolean;
   preferences: WorkspacePreferences;
   projectPath?: string;
   questionAnswers: Record<string, string[][]>;
@@ -138,6 +142,35 @@ export interface AssistantShellProps {
   onWorkspaceOpenChange: (open: boolean) => void;
 }
 
+/**
+ * Every session-level event gets a label, because dropping one means the transcript silently
+ * disagrees with what happened — compaction in particular rewrites the history, and OpenCode runs
+ * it on its own when the context fills up. A session that shrinks with no explanation looks broken.
+ */
+const SESSION_EVENT_LABELS: Record<Exclude<ConversationTurn["type"], "user" | "assistant">, string> = {
+  "agent-switched": "已切换子智能体",
+  compaction: "上下文已压缩",
+  "model-switched": "已切换模型",
+  shell: "终端命令",
+  synthetic: "系统补充上下文",
+  system: "系统消息",
+};
+
+/** The event detail worth putting on the divider, when the payload carries one. */
+const sessionEventDetail = (turn: ConversationTurn): string | undefined => {
+  if (turn.type === "user" || turn.type === "assistant") return undefined;
+  if (turn.type === "agent-switched") return turn.agent;
+  if (turn.type === "model-switched") return turn.model?.id;
+  // The summary itself arrives as the following assistant message, so there is nothing to repeat
+  // here — only whether this was OpenCode's own doing, which is the part a user cannot infer.
+  if (turn.type === "compaction") return turn.auto ? "上下文写满，自动触发" : undefined;
+  return turn.text?.trim().replace(/\s+/g, " ") || undefined;
+};
+
+/** Characters that open the composer picker. Kept beside the placeholder hint that advertises them. */
+const TRIGGER_CHARACTERS = ["/", "@", "$"];
+const COMPOSER_HINT = "输入任务…  / 命令与文件   @ 子智能体   $ 技能与 MCP";
+
 function StatusDot({ connected }: { connected: boolean | null }) {
   const color = connected === true
     ? "bg-emerald-500"
@@ -150,7 +183,36 @@ function StatusDot({ connected }: { connected: boolean | null }) {
 
 export function AssistantShell(props: AssistantShellProps) {
   const [composerHovered, setComposerHovered] = useState(false);
+  /** One-line feedback for composer actions that do not produce a message of their own. */
+  const [composerNotice, setComposerNotice] = useState("");
   const { annotations: browserAnnotations, clear: clearBrowserAnnotations } = useBrowserAnnotations();
+
+  /**
+   * Picking a file goes through the plugin, not the browser, so it lands as the same context
+   * chip the editor's right-click action produces — one channel, one set of truncation rules.
+   */
+  const attachProjectFile = (path: string) => {
+    void ideaFileSearchApi.attach(path).then((result) => {
+      if (!result.success && result.message) setComposerNotice(result.message);
+    }).catch((error: unknown) => setComposerNotice(errorMessage(error)));
+  };
+
+  /**
+   * Progress belongs in the transcript, not in a toast beside the composer.
+   *
+   * Compaction rewrites the conversation, so a divider at the point it happens is the only place
+   * that stays meaningful after the fact — the notice bar vanished and left no trace of why the
+   * history changed. The flag clears when OpenCode emits its own compaction message, which is the
+   * event that turns the live divider into the permanent one.
+   */
+  const compactSession = () => {
+    if (!selectedSessionID) return;
+    void openCodeApi.compactSession(selectedSessionID, {
+      directory: projectPath,
+      modelID: selectedModel?.id,
+      providerID: selectedModel?.providerID,
+    }).catch((error: unknown) => setComposerNotice(errorMessage(error)));
+  };
 
   /**
    * Browser annotations ride along with the next prompt and are cleared once it is accepted —
@@ -211,6 +273,7 @@ export function AssistantShell(props: AssistantShellProps) {
     connected,
     contextUsage,
     contexts,
+    compacting,
     composerText,
     conversationTurns,
     currentPermissions,
@@ -305,12 +368,20 @@ export function AssistantShell(props: AssistantShellProps) {
             isStreaming={messageIsStreaming}
             runActive={isGenerating && index === conversationTurns.length - 1}
             message={message as AssistantMessageData}
+            onOpenSession={onSelectSession}
             onRecover={onRecoverTurn}
           />
         </ErrorBoundary>,
       ];
     }
-    return [];
+    const label = SESSION_EVENT_LABELS[message.type];
+    const detail = sessionEventDetail(message);
+    return [
+      <ConversationDivider
+        key={message.id}
+        label={detail ? `${label} · ${detail.slice(0, 80)}` : label}
+      />,
+    ];
   });
 
   const lastTurn = conversationTurns[conversationTurns.length - 1];
@@ -337,6 +408,7 @@ export function AssistantShell(props: AssistantShellProps) {
   // Passed as `undefined` when there is nothing pending so the conversation can
   // fall back to its empty state instead of rendering an empty footer block.
   const footerNodes = [
+    compacting ? <ConversationDivider busy key="compacting" label="正在压缩上下文" /> : null,
     // Between two assistant messages OpenCode reports "generating" with nothing streaming yet.
     // Showing the placeholder on that gap left a spinner parked under a finished turn, so it only
     // appears while the newest turn genuinely has no content of its own.
@@ -396,6 +468,23 @@ export function AssistantShell(props: AssistantShellProps) {
 
         {error && <div className="flex shrink-0 items-start gap-2 border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"><CircleAlert className="mt-0.5 size-3.5 shrink-0" /><span className="min-w-0 flex-1 break-words">{error}</span><Button aria-label="关闭错误提示" className="size-5 shrink-0" onClick={onClearError} size="icon" type="button" variant="ghost"><X className="size-3" /></Button></div>}
 
+        {/* A subagent session is not in the session list, so this bar is the only way back out. */}
+        {currentSession?.parentID && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-border/60 bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
+            <Button
+              className="h-6 gap-1 px-1.5 text-xs font-normal"
+              onClick={() => onSelectSession(currentSession.parentID as string)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <ChevronLeft className="size-3.5" />
+              返回上级会话
+            </Button>
+            <span className="min-w-0 flex-1 truncate">当前正在查看子智能体会话</span>
+          </div>
+        )}
+
         <BorderBeam
           active={!booting && isGenerating}
           className="flex min-h-0 flex-1 overflow-hidden"
@@ -415,12 +504,31 @@ export function AssistantShell(props: AssistantShellProps) {
             footer={footerNodes.length > 0 ? <>{footerNodes}</> : undefined}
             items={renderedTurns}
             pinToBottom={pinToBottom}
+            raiseScrollButton={todos.length > 0}
           />
         </BorderBeam>
 
         <div className="relative z-10 shrink-0 bg-background/95 px-3 pb-3 pt-0 shadow-[0_-10px_28px_-24px_hsl(var(--foreground)/0.55)] backdrop-blur-sm">
-          <TodoPanel todos={todos} />
-          {(composerText.startsWith("/") || composerText.startsWith("$") || composerText.startsWith("@")) && <SlashCommandMenu agents={agents} commands={commands} disabledSkillNames={preferences.disabledSkillNames} mcpNames={mcpNames} onInsert={onSetComposerText} query={composerText} skills={skills} />}
+          <TodoPanel active={isGenerating} todos={todos} />
+          {TRIGGER_CHARACTERS.includes(composerText.slice(0, 1)) && (
+            <SlashCommandMenu
+              agents={agents}
+              commands={commands}
+              disabledSkillNames={preferences.disabledSkillNames}
+              mcpNames={mcpNames}
+              onAttachFile={attachProjectFile}
+              onCompact={compactSession}
+              onInsert={onSetComposerText}
+              query={composerText}
+              skills={skills}
+            />
+          )}
+          {composerNotice && (
+            <div className="mb-2 flex items-center gap-2 rounded-md bg-muted/60 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+              <span className="min-w-0 flex-1 truncate">{composerNotice}</span>
+              <Button aria-label="关闭提示" className="size-5 shrink-0" onClick={() => setComposerNotice("")} size="icon" type="button" variant="ghost"><X className="size-3" /></Button>
+            </div>
+          )}
           <PromptQueue items={queuedPrompts} onClear={onQueueClear} onDelete={onQueueDelete} onEdit={onQueueEdit} />
           {browserAnnotations.length > 0 && (
             <div className="mb-2 flex min-w-0 flex-wrap items-center gap-1.5">
@@ -444,7 +552,7 @@ export function AssistantShell(props: AssistantShellProps) {
           >
             <PromptInput className="rounded-[10px] border border-border/60 bg-card shadow-none" onSubmit={submitPrompt} onTextChange={onSetComposerText} text={composerText}>
               <PromptInputAttachments />
-              <PromptInputTextarea className="min-h-10 max-h-28 py-2 text-sm" disabled={booting || !selectedSessionID} placeholder={contexts.length > 0 ? "补充任务说明..." : "输入任务..."} />
+              <PromptInputTextarea className="min-h-10 max-h-28 py-2 text-sm" disabled={booting || !selectedSessionID} placeholder={contexts.length > 0 ? "补充任务说明…" : COMPOSER_HINT} />
               <PromptInputFooter className="px-1.5 pb-1 pt-0.5">
                 <PromptInputTools className="flex min-w-0 flex-wrap gap-0.5">
                   <PromptInputAttachmentButton />

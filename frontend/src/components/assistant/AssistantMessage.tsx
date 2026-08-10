@@ -15,8 +15,8 @@ import type {
 
 function ThinkingLine() {
   return (
-    <div aria-label="思考中" className="px-0.5 py-1 text-xs text-muted-foreground">
-      <Shimmer duration={1}>思考中</Shimmer>
+    <div aria-label="处理中" className="px-0.5 py-1 text-xs text-muted-foreground">
+      <Shimmer duration={1}>处理中</Shimmer>
     </div>
   );
 }
@@ -57,6 +57,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   message,
   isStreaming,
   diffs = [],
+  onOpenSession,
   onRecover,
   runActive = false,
 }: {
@@ -71,6 +72,8 @@ export const AssistantMessage = memo(function AssistantMessage({
   message: AssistantMessageData;
   /** Offered on a failed turn so a provider rejection cannot poison the rest of the session. */
   onRecover?: (action: "revert" | "fork", messageID: string) => void;
+  /** Opens the subagent session a task call created. */
+  onOpenSession?: (sessionID: string) => void;
 }) {
   const visibleError = visibleMessageError(message.error);
   const lastProcessIndex = message.content.reduce(
@@ -124,10 +127,10 @@ export const AssistantMessage = memo(function AssistantMessage({
           </div>
         )}
         {isStreaming && !hasProcess && !hasConclusion && <ThinkingLine />}
-        <AssistantProcess conclusionPartID={conclusionPart?.id} isStreaming={isStreaming || runActive} message={message} />
+        <AssistantProcess conclusionPartID={conclusionPart?.id} isStreaming={isStreaming || runActive} message={message} onOpenSession={onOpenSession} />
         {conclusion.trim() && <MarkdownResponse isAnimating={false} mode={isStreaming ? "streaming" : "static"}>{conclusion}</MarkdownResponse>}
-        {!isStreaming && <SessionDiffSummary diffs={diffs} />}
-        {!isStreaming && <TokenUsageSummary model={message.model} usage={message.tokens} />}
+        {!isStreaming && !runActive && <SessionDiffSummary diffs={diffs} />}
+        {!isStreaming && !runActive && <TokenUsageSummary model={message.model} usage={message.tokens} />}
       </MessageContent>
     </Message>
   );

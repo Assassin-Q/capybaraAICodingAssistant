@@ -277,6 +277,8 @@ export interface AssistantToolPart {
   state: {
     status: "pending" | "running" | "completed" | "error";
     input?: unknown;
+    /** Tool-specific extras; `task` puts its subagent `sessionId` here. */
+    metadata?: Record<string, unknown>;
     structured?: unknown;
     content?: unknown;
     result?: unknown;
@@ -331,6 +333,8 @@ export interface AssistantMessage {
 export interface SystemMessage {
   id: string;
   type: "system" | "synthetic" | "shell" | "compaction" | "agent-switched" | "model-switched";
+  /** Compaction only: true when OpenCode compacted on its own because the context filled up. */
+  auto?: boolean;
   agent?: string;
   model?: ModelRef;
   text?: string;

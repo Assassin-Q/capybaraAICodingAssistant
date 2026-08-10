@@ -1,4 +1,4 @@
-import { Check, Circle, LoaderCircle } from "lucide-react";
+import { Check, Circle, CornerDownRight, LoaderCircle } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 
 import {
@@ -9,6 +9,7 @@ import {
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Tool, ToolContent, ToolHeader, ToolOutput } from "@/components/ai-elements/tool";
+import { Button } from "@/components/ui/button";
 import { MarkdownResponse } from "@/components/assistant/MarkdownResponse";
 import { formatToolValue, toolState } from "@/components/assistant/shared";
 import { ToolCallInput, ToolCallOutput } from "@/components/assistant/ToolCallDetails";
@@ -197,15 +198,36 @@ const formatDuration = (created: number, completed?: number): string => {
   return `${rest}秒`;
 };
 
+/**
+ * The subagent session a `task` call created, if it announced one.
+ *
+ * Read from `state.metadata.sessionId`, verified against a live server: the value matches the id
+ * returned by `/session/{parent}/children` exactly, and it is already there while the tool is
+ * still running. The `task_id:` line in the output is the documented handle for *resuming* a
+ * subagent and only appears once the tool finishes, so it is kept as a fallback rather than the
+ * primary source — a running task would otherwise offer no way in.
+ */
+const childSessionID = (part: AssistantToolPart): string | undefined => {
+  if (part.name.toLowerCase() !== "task") return undefined;
+  const fromMetadata = part.state.metadata?.sessionId;
+  if (typeof fromMetadata === "string" && fromMetadata) return fromMetadata;
+  const raw = part.state.structured ?? part.state.result ?? part.state.content;
+  const text = typeof raw === "string" ? raw : formatToolValue(raw);
+  return /(?:^|\n)\s*task_id:\s*(\S+)/.exec(text)?.[1];
+};
+
 function ToolEntry({
   onOpenChange,
+  onOpenSession,
   open,
   part,
 }: {
   onOpenChange?: (open: boolean) => void;
+  onOpenSession?: (sessionID: string) => void;
   open?: boolean;
   part: AssistantToolPart;
 }) {
+  const childID = childSessionID(part);
   const outputValue = part.state.structured ?? part.state.result ?? part.state.content;
   const output = outputValue === undefined || outputValue === null || outputValue === ""
     ? undefined
@@ -224,6 +246,18 @@ function ToolEntry({
       <ToolContent className="ml-5 mt-0.5">
         {todos.length > 0 ? <TodoSnapshot todos={todos} /> : <ToolCallInput input={part.state.input} name={part.name} />}
         <ToolOutput errorText={errorText} output={output} />
+        {childID && onOpenSession && (
+          <Button
+            className="ml-1 h-7 gap-1.5 px-2 text-xs font-normal"
+            onClick={() => onOpenSession(childID)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            <CornerDownRight className="size-3.5" />
+            进入子会话
+          </Button>
+        )}
       </ToolContent>
     </Tool>
   );
@@ -244,34 +278,42 @@ const sameToolPart = (left: AssistantToolPart, right: AssistantToolPart): boolea
 
 const ToolGroup = memo(function ToolGroup({
   onOpenChange,
+  onOpenSession,
   open,
   tools,
 }: {
   onOpenChange: (open: boolean) => void;
+  onOpenSession?: (sessionID: string) => void;
   open: boolean;
   tools: AssistantToolPart[];
 }) {
   if (tools.length === 1) {
-    return <ToolEntry onOpenChange={onOpenChange} open={open} part={tools[0]} />;
+    return <ToolEntry onOpenChange={onOpenChange} onOpenSession={onOpenSession} open={open} part={tools[0]} />;
   }
   const activeTool = [...tools].reverse().find((tool) => tool.state.status === "pending" || tool.state.status === "running");
-  const failed = tools.some((tool) => tool.state.status === "error");
-  const groupState = failed ? "error" : activeTool ? "running" : "completed";
+  const failedCount = tools.filter((tool) => tool.state.status === "error").length;
+  const groupState = failedCount > 0 ? "error" : activeTool ? "running" : "completed";
   // Driven by the tools' own state rather than by "is this the last block", which flipped
   // the moment the next reasoning block appeared and made the header flash between
   // "正在…" and the collapsed summary while a tool was still running.
   const title = activeTool ? `正在${toolTitle(activeTool.name)}` : actionGroupTitle(tools);
+  // The collapsed header said only 执行失败, which reads as "the group failed" whether one call of
+  // twelve failed or all of them did. The count is what tells the user whether to go looking.
+  const detail = [
+    `${tools.length} 个操作`,
+    failedCount > 0 ? `${failedCount} 个失败` : "",
+  ].filter(Boolean).join(" · ");
   return (
     <Tool onOpenChange={onOpenChange} open={open}>
       <ToolHeader
-        detail={activeTool ? undefined : `${tools.length} 个操作`}
+        detail={activeTool ? undefined : detail}
         state={toolState(groupState)}
         title={title}
         toolName="tool-group"
         type="dynamic-tool"
       />
       <ToolContent className="ml-5 mt-0.5 bg-transparent p-0">
-        <div className="space-y-0.5">{tools.map((part) => <ToolEntry key={part.id} part={part} />)}</div>
+        <div className="space-y-0.5">{tools.map((part) => <ToolEntry key={part.id} onOpenSession={onOpenSession} part={part} />)}</div>
       </ToolContent>
     </Tool>
   );
@@ -317,11 +359,13 @@ const Narrative = memo(function Narrative({
 function ProcessBlocks({
   blocks,
   isStreaming,
+  onOpenSession,
   onToolGroupOpenChange,
   toolGroupOpen,
 }: {
   blocks: ProcessBlock[];
   isStreaming: boolean;
+  onOpenSession?: (sessionID: string) => void;
   onToolGroupOpenChange: (groupID: string, open: boolean) => void;
   toolGroupOpen: Record<string, boolean>;
 }) {
@@ -346,6 +390,7 @@ function ProcessBlocks({
           <ToolGroup
             key={groupID}
             onOpenChange={(nextOpen) => onToolGroupOpenChange(groupID, nextOpen)}
+            onOpenSession={onOpenSession}
             open={toolGroupOpen[groupID] ?? false}
             tools={block.tools}
           />
@@ -359,7 +404,9 @@ export function AssistantProcess({
   conclusionPartID,
   isStreaming,
   message,
+  onOpenSession,
 }: {
+  onOpenSession?: (sessionID: string) => void;
   conclusionPartID?: string;
   isStreaming: boolean;
   message: AssistantMessage;
@@ -385,6 +432,7 @@ export function AssistantProcess({
     <ProcessBlocks
       blocks={blocks}
       isStreaming={isStreaming}
+      onOpenSession={onOpenSession}
       onToolGroupOpenChange={handleToolGroupOpenChange}
       toolGroupOpen={toolGroupOpen}
     />

@@ -45,6 +45,8 @@ interface UseOpenCodeEventStreamOptions {
   scheduleRefresh: (includeMessages?: boolean) => void;
   setConnected: Dispatch<SetStateAction<boolean | null>>;
   setContexts: Dispatch<SetStateAction<ContextChipData[]>>;
+  /** True while OpenCode reports the session as compacting, including its automatic passes. */
+  setCompacting: Dispatch<SetStateAction<boolean>>;
   setError: Dispatch<SetStateAction<string>>;
   setQuestions: Dispatch<SetStateAction<QuestionRequest[]>>;
   setRunStatus: Dispatch<SetStateAction<RunStatus>>;
@@ -70,6 +72,7 @@ export function useOpenCodeEventStream({
   scheduleRefresh,
   setConnected,
   setContexts,
+  setCompacting,
   setError,
   setQuestions,
   setRunStatus,
@@ -110,6 +113,12 @@ export function useOpenCodeEventStream({
           : undefined;
         const status = event.properties?.status;
         const statusType = Boolean(status) && typeof status === "object" ? (status as { type?: string }).type : undefined;
+        // Compaction also runs on its own when the context window fills, and that pass rewrites
+        // the history without the user having asked for anything. Driving the indicator from the
+        // session status rather than from our own request is what makes the automatic one visible.
+        if (isCurrentSession && type === "session.status") {
+          setCompacting(statusType === "compacting");
+        }
         // OpenCode can briefly report idle between a completed tool and the
         // next assistant step. Treating that transition as the end of the run
         // remounts the whole process panel and causes a visible collapse/flash.
@@ -224,6 +233,7 @@ export function useOpenCodeEventStream({
     selectedSessionIDRef,
     setConnected,
     setContexts,
+    setCompacting,
     setError,
     setQuestions,
     setRunStatus,

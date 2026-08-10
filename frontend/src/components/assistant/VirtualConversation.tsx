@@ -20,6 +20,14 @@ interface VirtualConversationProps {
   pinToBottom?: number;
   /** Changes when a different conversation is shown, so the view can re-anchor to the bottom. */
   conversationKey?: string;
+  /**
+   * Lifts the scroll-to-bottom button clear of the task capsule.
+   *
+   * Raising its z-index cannot help: the composer is `relative z-10` and therefore its own
+   * stacking context, so everything inside it — the capsule included — paints above this button
+   * no matter what value it carries. Moving it is the only thing that actually works.
+   */
+  raiseScrollButton?: boolean;
 }
 
 /**
@@ -35,11 +43,14 @@ export function VirtualConversation({
   conversationKey,
   items,
   pinToBottom,
+  raiseScrollButton = false,
 }: VirtualConversationProps) {
   const listRef = useRef<VirtuosoHandle>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const atBottomRef = useRef(true);
+  /** State, not a ref: the scroll listener below has to re-attach once Virtuoso hands it over. */
+  const [scrollerEl, setScrollerEl] = useState<HTMLElement | null>(null);
   // Rebuilding this map on every footer change handed Virtuoso a new component *type*, which
   // unmounts and remounts the whole footer subtree — that is what made the approval dialog replay
   // its open animation on every poll. The types are created once and the content arrives through
@@ -56,6 +67,10 @@ export function VirtualConversation({
   // scroller itself reaches the true bottom.
   const scrollToBottom = useCallback(() => {
     listRef.current?.scrollTo({ behavior: "auto", top: Number.MAX_SAFE_INTEGER });
+    // Virtuoso's handle can lag its own scroller by a frame during a re-measure, and the footer
+    // lives outside the item list entirely, so the element is pinned directly as well.
+    const scroller = scrollerRef.current;
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }, []);
 
   // Opening a session must land at the newest message. `initialTopMostItemIndex` only positions
@@ -93,21 +108,64 @@ export function VirtualConversation({
     return () => window.clearTimeout(timer);
   }, [footer, items.length, lastItemKey, scrollToBottom]);
 
-  // Virtuoso reports "not at bottom" for a frame while it re-measures a grown item, which used to
-  // latch the follow logic off for the rest of the run. Re-arm it whenever the scroller really is
-  // within a pixel of the end.
+  /**
+   * Following is a user intention, so only the user may revoke it.
+   *
+   * Neither position nor direction can establish that on their own. Virtuoso drops `atBottom` past
+   * a 72px gap, which one streamed code fence clears in a frame; and it also *lowers* scrollTop
+   * itself when something above re-measures shorter — a tool card collapsing, a markdown block
+   * reflowing — so "scrolled up" is not evidence of a user either. Both readings turned normal
+   * streaming into a permanent loss of follow.
+   *
+   * A real gesture is the only reliable signal, so following is released only when the scroll
+   * follows one closely enough in time to have caused it. Programmatic scrolls and re-measures
+   * arrive with no gesture behind them and are ignored.
+   */
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      const scroller = scrollerRef.current;
-      if (!scroller || atBottomRef.current) return;
-      const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
-      if (distance <= 4) {
+    const scroller = scrollerEl;
+    if (!scroller) return;
+    let previousTop = scroller.scrollTop;
+    let gestureAt = 0;
+    const markGesture = () => { gestureAt = Date.now(); };
+    const onScroll = () => {
+      const top = scroller.scrollTop;
+      const movedUp = top < previousTop - 2;
+      previousTop = top;
+      if (scroller.scrollHeight - top - scroller.clientHeight <= 72) {
         atBottomRef.current = true;
         setAtBottom(true);
+        return;
       }
-    }, 400);
-    return () => window.clearInterval(timer);
-  }, []);
+      // 180ms covers the gap between a wheel notch and the scroll it produces, including the
+      // tail of a smooth-scroll, without letting an unrelated later reflow inherit the gesture.
+      if (movedUp && Date.now() - gestureAt < 180) {
+        atBottomRef.current = false;
+        setAtBottom(false);
+      }
+    };
+    // React effects fire on render, but the height a streamed block settles at arrives later and
+    // without one. Observing the content is what keeps the view pinned through that final growth.
+    const content = scroller.firstElementChild;
+    const observer = content && typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => { if (atBottomRef.current) scrollToBottom(); })
+      : undefined;
+    if (content && observer) observer.observe(content);
+
+    // pointerdown covers dragging the scrollbar itself, which fires no wheel or key event.
+    scroller.addEventListener("wheel", markGesture, { passive: true });
+    scroller.addEventListener("touchmove", markGesture, { passive: true });
+    scroller.addEventListener("pointerdown", markGesture, { passive: true });
+    scroller.addEventListener("keydown", markGesture);
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      observer?.disconnect();
+      scroller.removeEventListener("wheel", markGesture);
+      scroller.removeEventListener("touchmove", markGesture);
+      scroller.removeEventListener("pointerdown", markGesture);
+      scroller.removeEventListener("keydown", markGesture);
+      scroller.removeEventListener("scroll", onScroll);
+    };
+  }, [scrollToBottom, scrollerEl]);
 
   if (items.length === 0 && !footer) {
     return <div className={cn("relative min-h-0 flex-1", className)}>{empty}</div>;
@@ -117,8 +175,11 @@ export function VirtualConversation({
     <div className={cn("relative min-h-0 flex-1", className)} role="log">
       <Virtuoso
         atBottomStateChange={(value) => {
-          atBottomRef.current = value;
-          setAtBottom(value);
+          // Only ever re-arms. Virtuoso derives this from position, so letting it clear the flag
+          // would reintroduce the very bug the scroll listener above exists to prevent.
+          if (!value) return;
+          atBottomRef.current = true;
+          setAtBottom(true);
         }}
         atBottomThreshold={72}
         className="h-full overscroll-contain"
@@ -131,12 +192,20 @@ export function VirtualConversation({
         initialTopMostItemIndex={items.length > 0 ? items.length - 1 : 0}
         itemContent={(_, item) => <div className="px-3 pb-5">{item}</div>}
         ref={listRef}
-        scrollerRef={(element) => { scrollerRef.current = element as HTMLElement | null; }}
+        scrollerRef={(element) => {
+          scrollerRef.current = element as HTMLElement | null;
+          setScrollerEl(element as HTMLElement | null);
+        }}
       />
       {!atBottom && items.length > 0 && (
         <Button
           aria-label="滚动到底部"
-          className="absolute bottom-3 left-1/2 size-8 -translate-x-1/2 rounded-full border-0 bg-background/92 shadow-sm ring-1 ring-border/45 hover:bg-muted focus-visible:ring-1"
+          // Right-aligned rather than centred: the todo capsule is centred on the same bottom edge
+          // and covered this button whenever a run had a task list.
+          className={cn(
+            "absolute right-3 z-30 size-8 rounded-full border-0 bg-background/92 shadow-sm ring-1 ring-border/45 hover:bg-muted focus-visible:ring-1",
+            raiseScrollButton ? "bottom-24" : "bottom-3"
+          )}
           onClick={scrollToBottom}
           size="icon"
           title="滚动到底部"
