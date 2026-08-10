@@ -17,6 +17,7 @@ import {
   useSettingsFeedback,
 } from "@/components/assistant/settingsShared";
 import { errorMessage } from "@/components/assistant/shared";
+import { t } from "@/lib/i18n";
 import {
   ideaExecutionApi,
   pluginsApi,
@@ -46,17 +47,17 @@ interface DraftState {
 }
 
 const bridgeTools = [
-  { description: "列出并启动本项目的 Run/Debug 配置", icon: Play, name: "idea_run_configuration" },
-  { description: "读取 Run、Debug、Maven、Gradle 控制台输出", icon: ScrollText, name: "idea_read_run_log" },
-  { description: "读取 SDK、模块、源码根、依赖和当前打开文件", icon: FolderTree, name: "idea_project_context" },
-  { description: "读取当前编辑器光标、选区和附近源码", icon: FileCode2, name: "idea_editor_context" },
-  { description: "读取 IDEA 实时错误、警告和 Inspection", icon: TriangleAlert, name: "idea_diagnostics" },
-  { description: "通过 PSI 和 IDEA 索引查找符号引用与实现", icon: SearchCode, name: "idea_symbol" },
-  { description: "在 IDEA 编辑器中为用户定位文件和代码行", icon: Navigation, name: "idea_navigate" },
-  { description: "保存文档并刷新 VFS 索引和项目树", icon: RefreshCw, name: "idea_refresh_project" },
-  { description: "用 IDEA 内置 Maven Runner 执行目标", icon: Hammer, name: "idea_maven" },
-  { description: "用 IDEA 外部构建系统执行 Gradle 任务", icon: Hammer, name: "idea_gradle" },
-  { description: "主动打开并控制独立 JCEF 浏览器，读取用户页面标注", icon: Globe, name: "idea_browser" },
+  { description: t("s_054f5caff5"), icon: Play, name: "idea_run_configuration" },
+  { description: t("s_9d18262d07"), icon: ScrollText, name: "idea_read_run_log" },
+  { description: t("s_124a851d69"), icon: FolderTree, name: "idea_project_context" },
+  { description: t("s_fbba759af4"), icon: FileCode2, name: "idea_editor_context" },
+  { description: t("s_12da0c7ab0"), icon: TriangleAlert, name: "idea_diagnostics" },
+  { description: t("s_f38e84e5d8"), icon: SearchCode, name: "idea_symbol" },
+  { description: t("s_7e866ab457"), icon: Navigation, name: "idea_navigate" },
+  { description: t("s_cac494be60"), icon: RefreshCw, name: "idea_refresh_project" },
+  { description: t("s_ae83382c0c"), icon: Hammer, name: "idea_maven" },
+  { description: t("s_a8ecf176f3"), icon: Hammer, name: "idea_gradle" },
+  { description: t("s_70f24b5ac8"), icon: Globe, name: "idea_browser" },
 ];
 
 function IdeaBridgePanel() {
@@ -92,7 +93,7 @@ function IdeaBridgePanel() {
     try {
       const result = await ideaExecutionApi.setBridgeEnabled(enabled);
       setBridge(result);
-      report(result, enabled ? "IDEA 原生桥接已启用" : "IDEA 原生桥接已停用");
+      report(result, enabled ? t("s_62952e1974") : t("s_d33470489a"));
       setOpen(true);
     } catch (toggleError) {
       setError(errorMessage(toggleError));
@@ -109,21 +110,21 @@ function IdeaBridgePanel() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <h3 className="truncate text-sm font-medium">IDEA 原生桥接</h3>
-            <Badge className="shrink-0" variant="secondary">内置</Badge>
+            <h3 className="truncate text-sm font-medium">{t("s_6a0fe5e5d9")}</h3>
+            <Badge className="shrink-0" variant="secondary">{t("s_09ceea7644")}</Badge>
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            向 OpenCode 提供项目索引、编辑器、诊断、运行与构建能力
+            {t("s_8dbf44f5e0")}
           </p>
         </div>
         <Switch
-          aria-label="启用 IDEA 原生桥接"
+          aria-label={t("s_f0b4d9b727")}
           checked={bridge?.enabled ?? false}
           disabled={loading}
           onCheckedChange={(enabled) => void toggle(enabled)}
         />
         <CollapsibleTrigger asChild>
-          <Button aria-label={open ? "收起桥接能力" : "展开桥接能力"} size="icon-sm" type="button" variant="ghost">
+          <Button aria-label={open ? t("s_7ed4c0d159") : t("s_43d6ca49ae")} size="icon-sm" type="button" variant="ghost">
             <ChevronRight className={`size-4 text-muted-foreground transition-transform ${open ? "rotate-90" : ""}`} />
           </Button>
         </CollapsibleTrigger>
@@ -132,11 +133,11 @@ function IdeaBridgePanel() {
         <div className="border-t border-border/40 bg-muted/10 px-3 py-3">
           <SettingsMessage error={error} notice={notice} />
           <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-            <Badge variant={bridge?.enabled ? "secondary" : "outline"}>{bridge?.enabled ? "已启用" : "已停用"}</Badge>
-            <Badge variant={bridge?.mavenAvailable ? "secondary" : "outline"}>Maven {bridge?.mavenAvailable ? "可用" : "不可用"}</Badge>
-            <Badge variant={bridge?.gradleAvailable ? "secondary" : "outline"}>Gradle {bridge?.gradleAvailable ? "可用" : "不可用"}</Badge>
-            <Badge variant="outline">Run/Debug {configurationCount ?? "—"} 项</Badge>
-            <Button aria-label="刷新桥接状态" disabled={loading} onClick={() => void refresh()} size="icon-sm" type="button" variant="ghost">
+            <Badge variant={bridge?.enabled ? "secondary" : "outline"}>{bridge?.enabled ? t("s_25d2843150") : t("s_6c7dcbb73a")}</Badge>
+            <Badge variant={bridge?.mavenAvailable ? "secondary" : "outline"}>Maven {bridge?.mavenAvailable ? t("s_e91365cf9e") : t("s_beff4a1cd1")}</Badge>
+            <Badge variant={bridge?.gradleAvailable ? "secondary" : "outline"}>Gradle {bridge?.gradleAvailable ? t("s_e91365cf9e") : t("s_beff4a1cd1")}</Badge>
+            <Badge variant="outline">Run/Debug {configurationCount ?? "—"} {t("s_64728a7727")}</Badge>
+            <Button aria-label={t("s_f366a46f4b")} disabled={loading} onClick={() => void refresh()} size="icon-sm" type="button" variant="ghost">
               <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
             </Button>
           </div>
@@ -145,9 +146,9 @@ function IdeaBridgePanel() {
               so on a healthy setup this hook is simply never reached — it now only covers requests
               raised while no panel is open. "Never called" stopped being evidence of anything. */}
           <p className="mb-2 text-[10px] text-muted-foreground">
-            审批兜底钩子：{bridge?.lastApprovalHook
+            {t("s_969df6db58")}{bridge?.lastApprovalHook
               ? <span className="font-mono">{bridge.lastApprovalHook}</span>
-              : <span>未触发（正常：面板打开时由面板直接放行）</span>}
+              : <span>{t("s_cfe4d74e3c")}</span>}
           </p>
           {/* Eleven tools rendered inline pushed every other plugin below the fold, so the list
               scrolls inside the card instead of growing it. */}
@@ -224,21 +225,21 @@ export function PluginSettings() {
           overwrite: Boolean(draft.location),
           scope: draft.scope,
         }),
-      "插件已保存"
+      t("s_5134898e14")
     );
     if (ok) setDraft(undefined);
   };
 
   const remove = (plugin: ManagedPluginFile) =>
     confirm.ask({
-      confirmLabel: "删除插件",
-      description: `将删除文件 ${plugin.location}，操作不可撤销。`,
+      confirmLabel: t("s_cdb4524480"),
+      description: t("s_d3ba914add", { p0: plugin.location }),
       destructive: true,
       onConfirm: async () => {
         confirm.close();
-        await runAction(() => pluginsApi.remove(plugin.location), "插件已删除");
+        await runAction(() => pluginsApi.remove(plugin.location), t("s_c447f39bc7"));
       },
-      title: `删除插件「${plugin.name}」`,
+      title: t("s_8f5993c2c3", { p0: plugin.name }),
     });
 
   return (
@@ -254,24 +255,24 @@ export function PluginSettings() {
               variant="outline"
             >
               <FilePlus2 className="size-3.5" />
-              新建
+              {t("s_0cda8d1c71")}
             </Button>
             <Button
               disabled={busy}
-              onClick={() => void runAction(() => pluginsApi.import("project"), "插件已导入")}
+              onClick={() => void runAction(() => pluginsApi.import("project"), t("s_6796451ada"))}
               size="sm"
               type="button"
               variant="outline"
             >
               <Download className="size-3.5" />
-              导入
+              {t("s_60e2bcad85")}
             </Button>
           </>
         }
-        description="管理 .opencode/plugins 与 ~/.config/opencode/plugins 下的 OpenCode 插件文件。保存后需要重新加载 OpenCode 才会生效。"
+        description={t("s_ab76c86e28")}
         loading={loading}
         onRefresh={() => void refresh()}
-        title="插件"
+        title={t("s_76fcd73275")}
       />
 
       <SettingsMessage error={error} notice={notice} />
@@ -284,29 +285,29 @@ export function PluginSettings() {
             <Input
               className="w-56"
               onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-              placeholder="插件文件名，例如 my-plugin.ts"
+              placeholder={t("s_834fb3d8c9")}
               value={draft.name}
             />
             <Select
               onValueChange={(value) => setDraft({ ...draft, scope: value as ManagedScope })}
               value={draft.scope}
             >
-              <SelectTrigger aria-label="插件范围" className="h-9 w-32" disabled={Boolean(draft.location)}>
+              <SelectTrigger aria-label={t("s_926c54e983")} className="h-9 w-32" disabled={Boolean(draft.location)}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="project">项目</SelectItem>
-                <SelectItem value="global">全局</SelectItem>
+                <SelectItem value="project">{t("s_22336e6b89")}</SelectItem>
+                <SelectItem value="global">{t("s_a5644f4bbf")}</SelectItem>
               </SelectContent>
             </Select>
             <div className="ml-auto flex items-center gap-2">
               <Button disabled={busy} onClick={() => void save()} size="sm" type="button">
                 <Save className="size-3.5" />
-                保存
+                {t("s_fadf24dbc5")}
               </Button>
               <Button onClick={() => setDraft(undefined)} size="sm" type="button" variant="ghost">
                 <X className="size-3.5" />
-                取消
+                {t("s_4d0b4688c7")}
               </Button>
             </div>
           </div>
@@ -320,7 +321,7 @@ export function PluginSettings() {
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border/50 bg-muted/10">
           {plugins.length === 0 ? (
-            <EmptyState icon={<PlugZap className="size-5" />}>还没有安装 OpenCode 插件</EmptyState>
+            <EmptyState icon={<PlugZap className="size-5" />}>{t("s_ef3a86b765")}</EmptyState>
           ) : (
             plugins.map((plugin) => (
               <article
@@ -333,7 +334,7 @@ export function PluginSettings() {
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <h3 className="truncate text-sm font-medium">{plugin.name}</h3>
-                    <Badge variant="secondary">{plugin.scope === "project" ? "项目" : "全局"}</Badge>
+                    <Badge variant="secondary">{plugin.scope === "project" ? t("s_22336e6b89") : t("s_a5644f4bbf")}</Badge>
                     <Badge variant="outline">{plugin.language}</Badge>
                   </div>
                   <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/80">
@@ -354,25 +355,25 @@ export function PluginSettings() {
                   type="button"
                   variant="ghost"
                 >
-                  编辑
+                  {t("s_a7f814c0a4")}
                 </Button>
                 <Switch
-                  aria-label={`启用 ${plugin.name}`}
+                  aria-label={t("s_7873b24627", { p0: plugin.name })}
                   checked={plugin.enabled}
                   disabled={busy}
                   onCheckedChange={(enabled) =>
                     void runAction(
                       () => pluginsApi.setEnabled(plugin.location, enabled),
-                      enabled ? "插件已启用" : "插件已停用"
+                      enabled ? t("s_a5a705c50b") : t("s_4a561e9358")
                     )
                   }
                 />
                 <Button
-                  aria-label={`删除 ${plugin.name}`}
+                  aria-label={t("s_05cefdc56b", { p0: plugin.name })}
                   disabled={busy}
                   onClick={() => remove(plugin)}
                   size="icon-sm"
-                  title="删除插件"
+                  title={t("s_cdb4524480")}
                   type="button"
                   variant="ghost"
                 >

@@ -63,7 +63,9 @@ import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import type { WorkspacePreferences } from "@/lib/preferences";
 import type { ContextUsageInfo } from "@/lib/tokenUsage";
 import type { ApprovalMode } from "@/lib/approvalMode";
+import type { UpdateStatus } from "@/lib/updateCheck";
 import type { IdeaTheme } from "@/hooks/useIdeaTheme";
+import { t } from "@/lib/i18n";
 
 export interface AssistantShellProps {
   agents: AgentInfo[];
@@ -89,6 +91,8 @@ export interface AssistantShellProps {
   approvalMode: ApprovalMode;
   /** True while OpenCode is compacting this session, whether we asked for it or it decided to. */
   compacting: boolean;
+  /** Undefined until the release check answers; drives the amber state on the header dot. */
+  updateStatus?: UpdateStatus;
   preferences: WorkspacePreferences;
   projectPath?: string;
   questionAnswers: Record<string, string[][]>;
@@ -148,12 +152,12 @@ export interface AssistantShellProps {
  * it on its own when the context fills up. A session that shrinks with no explanation looks broken.
  */
 const SESSION_EVENT_LABELS: Record<Exclude<ConversationTurn["type"], "user" | "assistant">, string> = {
-  "agent-switched": "已切换子智能体",
-  compaction: "上下文已压缩",
-  "model-switched": "已切换模型",
-  shell: "终端命令",
-  synthetic: "系统补充上下文",
-  system: "系统消息",
+  "agent-switched": t("s_252776162d"),
+  compaction: t("s_062189d7b1"),
+  "model-switched": t("s_ead4831a76"),
+  shell: t("s_cf0b5df0dd"),
+  synthetic: t("s_78bf71686a"),
+  system: t("s_f581d83fe2"),
 };
 
 /** The event detail worth putting on the divider, when the payload carries one. */
@@ -163,21 +167,26 @@ const sessionEventDetail = (turn: ConversationTurn): string | undefined => {
   if (turn.type === "model-switched") return turn.model?.id;
   // The summary itself arrives as the following assistant message, so there is nothing to repeat
   // here — only whether this was OpenCode's own doing, which is the part a user cannot infer.
-  if (turn.type === "compaction") return turn.auto ? "上下文写满，自动触发" : undefined;
+  if (turn.type === "compaction") return turn.auto ? t("s_ab8b04b5db") : undefined;
   return turn.text?.trim().replace(/\s+/g, " ") || undefined;
 };
 
 /** Characters that open the composer picker. Kept beside the placeholder hint that advertises them. */
 const TRIGGER_CHARACTERS = ["/", "@", "$"];
-const COMPOSER_HINT = "输入任务…  / 命令与文件   @ 子智能体   $ 技能与 MCP";
+const COMPOSER_HINT = t("s_1484fbdcaf");
 
-function StatusDot({ connected }: { connected: boolean | null }) {
+function StatusDot({ connected, update }: { connected: boolean | null; update?: UpdateStatus }) {
+  // An available release outranks the plain connected state: the dot is the only always-visible
+  // surface, so it is where a pending update has to show up.
+  if (connected === true && update?.hasUpdate) {
+    return <span aria-label={t("update.tooltip")} className="size-2 shrink-0 rounded-full bg-amber-500" title={t("update.available", { p0: update.latestVersion })} />;
+  }
   const color = connected === true
     ? "bg-emerald-500"
     : connected === false
       ? "bg-red-500"
       : "bg-muted-foreground";
-  const label = connected === true ? "OpenCode 已连接" : connected === false ? "OpenCode 未连接" : "正在检查 OpenCode";
+  const label = connected === true ? t("s_aeeba1b5f4") : connected === false ? t("s_4ca5bf9106") : t("s_5c79c82dde");
   return <span aria-label={label} className={`size-2 shrink-0 rounded-full ${color}`} title={label} />;
 }
 
@@ -274,6 +283,7 @@ export function AssistantShell(props: AssistantShellProps) {
     contextUsage,
     contexts,
     compacting,
+    updateStatus,
     composerText,
     conversationTurns,
     currentPermissions,
@@ -350,7 +360,7 @@ export function AssistantShell(props: AssistantShellProps) {
     if (message.type === "user") {
       latestUserMessageID = message.id;
       return [
-        <ErrorBoundary key={message.id} label="用户消息">
+        <ErrorBoundary key={message.id} label={t("s_146671b0a1")}>
           <UserMessage message={message} />
         </ErrorBoundary>,
       ];
@@ -362,7 +372,7 @@ export function AssistantShell(props: AssistantShellProps) {
         || Boolean(streamingAssistantParentID && message.parentID === streamingAssistantParentID)
       );
       return [
-        <ErrorBoundary key={message.id} label="助手消息">
+        <ErrorBoundary key={message.id} label={t("s_e37a7fa521")}>
           <AssistantMessage
             diffs={diffsByMessageID[diffMessageID]}
             isStreaming={messageIsStreaming}
@@ -408,7 +418,7 @@ export function AssistantShell(props: AssistantShellProps) {
   // Passed as `undefined` when there is nothing pending so the conversation can
   // fall back to its empty state instead of rendering an empty footer block.
   const footerNodes = [
-    compacting ? <ConversationDivider busy key="compacting" label="正在压缩上下文" /> : null,
+    compacting ? <ConversationDivider busy key="compacting" label={t("s_9b8d3e7c4d")} /> : null,
     // Between two assistant messages OpenCode reports "generating" with nothing streaming yet.
     // Showing the placeholder on that gap left a spinner parked under a finished turn, so it only
     // appears while the newest turn genuinely has no content of its own.
@@ -432,13 +442,13 @@ export function AssistantShell(props: AssistantShellProps) {
     <TooltipProvider>
       <div className="assistant-shell flex h-full min-h-[480px] min-w-[640px] w-full flex-col bg-background text-foreground">
         <header className="flex min-h-11 shrink-0 items-center gap-1 border-b border-border/60 px-2">
-          <Button aria-label="打开会话历史" className="size-8 shrink-0" onClick={() => onSessionDialogOpenChange(true)} size="icon" title="会话历史" type="button" variant="ghost">
+          <Button aria-label={t("s_378d943e1d")} className="size-8 shrink-0" onClick={() => onSessionDialogOpenChange(true)} size="icon" title={t("s_b7e8848103")} type="button" variant="ghost">
             <History className="size-3.5" />
           </Button>
           <div className="min-w-0 flex-1">
             {editingSessionTitle ? (
               <input
-                aria-label="会话名称"
+                aria-label={t("s_864aff361d")}
                 autoFocus
                 className="h-7 w-full min-w-0 rounded-md bg-muted px-2 text-xs outline-none ring-1 ring-ring/40"
                 onBlur={onSessionTitleSave}
@@ -450,23 +460,23 @@ export function AssistantShell(props: AssistantShellProps) {
                 value={sessionTitleDraft}
               />
             ) : (
-              <button className="group inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-1 text-left hover:bg-accent" onClick={onSessionTitleEdit} title="重命名会话" type="button">
+              <button className="group inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-1 text-left hover:bg-accent" onClick={onSessionTitleEdit} title={t("s_757cc06ee1")} type="button">
                 <span className="truncate text-xs font-medium">{currentSession ? sessionName(currentSession) : "OpenCode"}</span>
                 <Pencil className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
               </button>
             )}
           </div>
-          <StatusDot connected={connected} />
+          <StatusDot connected={connected} update={updateStatus} />
           <GitStatusButton model={selectedModel} projectPath={projectPath} variant={selectedVariant} />
-          <Button aria-label="新建会话" className="size-8 shrink-0" onClick={onCreateSession} size="icon" title="新建会话" type="button" variant="ghost"><MessageSquarePlus className="size-3.5" /></Button>
-          <Button aria-label={theme === "dark" ? "切换为浅色主题" : "切换为深色主题"} aria-pressed={theme === "dark"} className="size-8 shrink-0" onClick={onThemeToggle} size="icon" title={theme === "dark" ? "切换为浅色主题" : "切换为深色主题"} type="button" variant="ghost">
+          <Button aria-label={t("s_3da224c43d")} className="size-8 shrink-0" onClick={onCreateSession} size="icon" title={t("s_3da224c43d")} type="button" variant="ghost"><MessageSquarePlus className="size-3.5" /></Button>
+          <Button aria-label={theme === "dark" ? t("s_2b4ef16e71") : t("s_b54f498c7c")} aria-pressed={theme === "dark"} className="size-8 shrink-0" onClick={onThemeToggle} size="icon" title={theme === "dark" ? t("s_2b4ef16e71") : t("s_b54f498c7c")} type="button" variant="ghost">
             {theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
           </Button>
-          <Button aria-label="打开工作区设置" className="size-8 shrink-0" onClick={() => onWorkspaceOpenChange(true)} size="icon" title="工作区设置" type="button" variant="ghost"><Settings2 className="size-3.5" /></Button>
-          <Button aria-label="刷新会话和模型" className="size-8 shrink-0" disabled={refreshing} onClick={onRefresh} size="icon" title="刷新会话和模型" type="button" variant="ghost"><RefreshCw className={refreshing ? "size-3.5 animate-spin" : "size-3.5"} /></Button>
+          <Button aria-label={t("s_abc65f3093")} className="size-8 shrink-0" onClick={() => onWorkspaceOpenChange(true)} size="icon" title={t("s_52e823f821")} type="button" variant="ghost"><Settings2 className="size-3.5" /></Button>
+          <Button aria-label={t("s_269a8a2642")} className="size-8 shrink-0" disabled={refreshing} onClick={onRefresh} size="icon" title={t("s_269a8a2642")} type="button" variant="ghost"><RefreshCw className={refreshing ? "size-3.5 animate-spin" : "size-3.5"} /></Button>
         </header>
 
-        {error && <div className="flex shrink-0 items-start gap-2 border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"><CircleAlert className="mt-0.5 size-3.5 shrink-0" /><span className="min-w-0 flex-1 break-words">{error}</span><Button aria-label="关闭错误提示" className="size-5 shrink-0" onClick={onClearError} size="icon" type="button" variant="ghost"><X className="size-3" /></Button></div>}
+        {error && <div className="flex shrink-0 items-start gap-2 border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"><CircleAlert className="mt-0.5 size-3.5 shrink-0" /><span className="min-w-0 flex-1 break-words">{error}</span><Button aria-label={t("s_7cc3cc83d6")} className="size-5 shrink-0" onClick={onClearError} size="icon" type="button" variant="ghost"><X className="size-3" /></Button></div>}
 
         {/* A subagent session is not in the session list, so this bar is the only way back out. */}
         {currentSession?.parentID && (
@@ -479,9 +489,9 @@ export function AssistantShell(props: AssistantShellProps) {
               variant="ghost"
             >
               <ChevronLeft className="size-3.5" />
-              返回上级会话
+              {t("s_83f1d1adf1")}
             </Button>
-            <span className="min-w-0 flex-1 truncate">当前正在查看子智能体会话</span>
+            <span className="min-w-0 flex-1 truncate">{t("s_cea18f5d12")}</span>
           </div>
         )}
 
@@ -498,8 +508,8 @@ export function AssistantShell(props: AssistantShellProps) {
               conversationKey={selectedSessionID}
             className="h-full w-full"
             empty={booting
-              ? <ConversationEmptyState description="正在连接 OpenCode" icon={<RefreshCw className="size-5 animate-spin" />} title="准备工作区" />
-              : <ConversationEmptyState description="在下方输入任务，或从编辑器添加代码片段" icon={<Bot className="size-6" />} title="开始一次编码对话" />}
+              ? <ConversationEmptyState description={t("s_918003d07c")} icon={<RefreshCw className="size-5 animate-spin" />} title={t("s_02625a8ef2")} />
+              : <ConversationEmptyState description={t("s_2849a22e35")} icon={<Bot className="size-6" />} title={t("s_99503f97be")} />}
             followOutput={isGenerating}
             footer={footerNodes.length > 0 ? <>{footerNodes}</> : undefined}
             items={renderedTurns}
@@ -526,7 +536,7 @@ export function AssistantShell(props: AssistantShellProps) {
           {composerNotice && (
             <div className="mb-2 flex items-center gap-2 rounded-md bg-muted/60 px-2.5 py-1.5 text-[11px] text-muted-foreground">
               <span className="min-w-0 flex-1 truncate">{composerNotice}</span>
-              <Button aria-label="关闭提示" className="size-5 shrink-0" onClick={() => setComposerNotice("")} size="icon" type="button" variant="ghost"><X className="size-3" /></Button>
+              <Button aria-label={t("s_c620893e29")} className="size-5 shrink-0" onClick={() => setComposerNotice("")} size="icon" type="button" variant="ghost"><X className="size-3" /></Button>
             </div>
           )}
           <PromptQueue items={queuedPrompts} onClear={onQueueClear} onDelete={onQueueDelete} onEdit={onQueueEdit} />
@@ -552,7 +562,7 @@ export function AssistantShell(props: AssistantShellProps) {
           >
             <PromptInput className="rounded-[10px] border border-border/60 bg-card shadow-none" onSubmit={submitPrompt} onTextChange={onSetComposerText} text={composerText}>
               <PromptInputAttachments />
-              <PromptInputTextarea className="min-h-10 max-h-28 py-2 text-sm" disabled={booting || !selectedSessionID} placeholder={contexts.length > 0 ? "补充任务说明…" : COMPOSER_HINT} />
+              <PromptInputTextarea className="min-h-10 max-h-28 py-2 text-sm" disabled={booting || !selectedSessionID} placeholder={contexts.length > 0 ? t("s_0e75c177e7") : COMPOSER_HINT} />
               <PromptInputFooter className="px-1.5 pb-1 pt-0.5">
                 <PromptInputTools className="flex min-w-0 flex-wrap gap-0.5">
                   <PromptInputAttachmentButton />
@@ -572,7 +582,7 @@ export function AssistantShell(props: AssistantShellProps) {
                 </PromptInputTools>
                 <div className="flex shrink-0 items-center gap-0.5">
                   <ContextUsageIndicator context={contextUsage} />
-                  <PromptInputSubmit aria-label={isGenerating ? "停止生成" : "发送消息"} disabled={booting || !selectedSessionID} onStop={onStop} status={runStatus} />
+                  <PromptInputSubmit aria-label={isGenerating ? t("s_76349aa64a") : t("s_94306b2fc3")} disabled={booting || !selectedSessionID} onStop={onStop} status={runStatus} />
                 </div>
               </PromptInputFooter>
             </PromptInput>
@@ -580,7 +590,7 @@ export function AssistantShell(props: AssistantShellProps) {
         </div>
       </div>
       <SessionDialog deletingSessionID={deletingSessionID} pendingApprovalSessionIDs={pendingApprovalSessionIDs} onCreate={onCreateSession} onDelete={onDeleteSession} onOpenChange={onSessionDialogOpenChange} onSelect={onSelectSession} open={sessionDialogOpen} selectedSessionID={selectedSessionID} sessions={sessions} />
-      <WorkspaceDialog baseUrl={getOpenCodeBaseUrl()} connected={connected === true} initialSection={workspaceSection} mcpNames={mcpNames} models={selectableModels} onConfigurationChanged={onConfigurationChanged} onOpenChange={onWorkspaceOpenChange} onPreferencesChanged={onPreferencesChanged} open={workspaceDialogOpen} projectID={currentSession?.projectID} projectPath={projectPath} skills={skills} />
+      <WorkspaceDialog updateStatus={updateStatus} baseUrl={getOpenCodeBaseUrl()} connected={connected === true} initialSection={workspaceSection} mcpNames={mcpNames} models={selectableModels} onConfigurationChanged={onConfigurationChanged} onOpenChange={onWorkspaceOpenChange} onPreferencesChanged={onPreferencesChanged} open={workspaceDialogOpen} projectID={currentSession?.projectID} projectPath={projectPath} skills={skills} />
     </TooltipProvider>
   );
 }

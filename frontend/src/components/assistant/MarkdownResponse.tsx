@@ -14,6 +14,7 @@ import {
 } from "@/components/ai-elements/code-block";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 const languageAliases: Record<string, BundledLanguage> = {
   bash: "shellscript",
@@ -62,7 +63,7 @@ const CodeFence = ({ children }: ComponentProps<"pre"> & ExtraProps) => {
     <CodeBlock code={code} language={language} showLineNumbers>
       <CodeBlockHeader>
         <CodeBlockTitle><Code2 className="size-3.5" /><CodeBlockFilename>{rawLanguage}</CodeBlockFilename></CodeBlockTitle>
-        <CodeBlockActions><CodeBlockCopyButton aria-label="复制代码" title="复制代码" /></CodeBlockActions>
+        <CodeBlockActions><CodeBlockCopyButton aria-label={t("s_3b1fde4d23")} title={t("s_3b1fde4d23")} /></CodeBlockActions>
       </CodeBlockHeader>
     </CodeBlock>
   );

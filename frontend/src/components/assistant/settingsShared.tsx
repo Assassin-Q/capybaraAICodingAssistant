@@ -4,6 +4,7 @@ import { CircleAlert, CircleCheck, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ConfirmRequest } from "@/components/assistant/ConfirmDialog";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface SettingsHeaderProps {
   actions?: ReactNode;
@@ -30,11 +31,11 @@ export function SettingsHeader({
         {actions}
         {onRefresh && (
           <Button
-            aria-label={`刷新${title}`}
+            aria-label={t("s_f45360177a", { p0: title })}
             disabled={loading}
             onClick={onRefresh}
             size="icon-sm"
-            title="刷新"
+            title={t("s_38108eaa1d")}
             type="button"
             variant="ghost"
           >

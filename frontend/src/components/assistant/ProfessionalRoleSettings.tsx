@@ -20,6 +20,7 @@ import {
 import type { WorkspacePreferences } from "@/lib/preferences";
 import type { SkillInfo } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface ProfessionalRoleSettingsProps {
   mcpNames: string[];
@@ -53,13 +54,13 @@ function AssociationPicker({ emptyLabel, label, onChange, options, placeholder, 
       <Popover>
         <PopoverTrigger asChild>
           <Button className="h-9 min-w-0 justify-between px-3 font-normal" type="button" variant="outline">
-            <span className="truncate text-xs">{values.length > 0 ? `已关联 ${values.length} 项` : placeholder}</span>
+            <span className="truncate text-xs">{values.length > 0 ? t("s_834ca35ccf", { p0: values.length }) : placeholder}</span>
             <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[min(22rem,calc(100vw-2rem))] p-0">
           <Command>
-            <CommandInput placeholder={`搜索${label}`} />
+            <CommandInput placeholder={t("s_c32673a25e", { p0: label })} />
             <CommandList className="max-h-64">
               <CommandEmpty>{emptyLabel}</CommandEmpty>
               <CommandGroup>
@@ -166,15 +167,15 @@ export function ProfessionalRoleSettings({ mcpNames, onSave, preferences, skills
       <div className="flex items-center gap-3 border-b border-border pb-4">
         <div className="flex size-9 items-center justify-center rounded-md bg-muted"><BriefcaseBusiness className="size-4" /></div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">启用专业角色</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">启用后，对话输入框底部才会显示角色选择器。</p>
+          <p className="text-sm font-medium">{t("s_913a79d06d")}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{t("s_81f0ef69bb")}</p>
         </div>
-        <Switch aria-label="启用专业角色" checked={preferences.professionalRoles.enabled} onCheckedChange={toggleEnabled} />
+        <Switch aria-label={t("s_913a79d06d")} checked={preferences.professionalRoles.enabled} onCheckedChange={toggleEnabled} />
       </div>
 
       <div className="grid min-h-0 max-w-5xl gap-5 md:grid-cols-[13rem_minmax(0,1fr)]">
         <div className="min-w-0">
-          <p className="mb-2 text-xs font-medium text-muted-foreground">常用专业角色</p>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">{t("s_50282b519b")}</p>
           <div className="flex gap-2 overflow-x-auto pb-1 md:max-h-[34rem] md:flex-col md:overflow-x-hidden md:overflow-y-auto md:pr-1">
             {PROFESSIONAL_ROLE_PRESETS.map((preset) => {
               const selected = preset.id === selectedPreset.id;
@@ -183,7 +184,7 @@ export function ProfessionalRoleSettings({ mcpNames, onSave, preferences, skills
                 <button className={cn("min-w-44 rounded-md px-3 py-2.5 text-left transition-colors md:min-w-0", selected ? "bg-secondary text-secondary-foreground" : "hover:bg-muted")} key={preset.id} onClick={() => setSelectedId(preset.id)} type="button">
                   <span className="flex items-center gap-2 text-sm font-medium"><span className="min-w-0 flex-1 truncate">{preset.name}</span>{selected && <Check className="size-3.5" />}</span>
                   <span className="mt-1 block text-xs leading-5 text-muted-foreground">{preset.description}</span>
-                  {!enabled && <span className="mt-1 block text-[11px] text-muted-foreground">已从选择器隐藏</span>}
+                  {!enabled && <span className="mt-1 block text-[11px] text-muted-foreground">{t("s_445eca8593")}</span>}
                 </button>
               );
             })}
@@ -192,21 +193,21 @@ export function ProfessionalRoleSettings({ mcpNames, onSave, preferences, skills
 
         <div className="grid min-w-0 content-start gap-4">
           <div className="flex items-start justify-between gap-4">
-            <div><p className="text-sm font-medium">{selectedPreset.name}</p><p className="mt-1 text-xs text-muted-foreground">提示词只描述关注点，不强制模型执行固定流程。</p></div>
-            <Switch aria-label={`启用${selectedPreset.name}`} checked={preferences.professionalRoles.roles[selectedPreset.id]?.enabled !== false} onCheckedChange={toggleRoleEnabled} />
+            <div><p className="text-sm font-medium">{selectedPreset.name}</p><p className="mt-1 text-xs text-muted-foreground">{t("s_c1a25f359a")}</p></div>
+            <Switch aria-label={t("s_647bfb55fe", { p0: selectedPreset.name })} checked={preferences.professionalRoles.roles[selectedPreset.id]?.enabled !== false} onCheckedChange={toggleRoleEnabled} />
           </div>
-          <label className="grid gap-1.5 text-xs font-medium">简短专业提示词<Textarea className="min-h-28 resize-y leading-6" onChange={(event) => updateRole({ instructions: event.target.value })} value={selectedRole.instructions} /></label>
-          <Button className="w-fit" onClick={() => updateRole({ instructions: selectedPreset.instructions })} size="sm" type="button" variant="ghost"><RotateCcw className="size-3.5" />恢复默认提示词</Button>
+          <label className="grid gap-1.5 text-xs font-medium">{t("s_ae83a2fb6b")}<Textarea className="min-h-28 resize-y leading-6" onChange={(event) => updateRole({ instructions: event.target.value })} value={selectedRole.instructions} /></label>
+          <Button className="w-fit" onClick={() => updateRole({ instructions: selectedPreset.instructions })} size="sm" type="button" variant="ghost"><RotateCcw className="size-3.5" />{t("s_a4bb684cee")}</Button>
           <div className="grid gap-4 sm:grid-cols-2">
-            <AssociationPicker emptyLabel="当前没有可关联的 Skill" label="关联 Skill" onChange={(skillNames) => updateRole({ skillNames })} options={skillOptions} placeholder="选择已安装 Skill" values={selectedRole.skillNames} />
-            <AssociationPicker emptyLabel="当前没有配置 MCP" label="关联 MCP" onChange={(names) => updateRole({ mcpNames: names })} options={mcpOptions} placeholder="选择已配置 MCP" values={selectedRole.mcpNames} />
+            <AssociationPicker emptyLabel={t("s_5f508476c2")} label={t("s_291761aeed")} onChange={(skillNames) => updateRole({ skillNames })} options={skillOptions} placeholder={t("s_e5f255e5cb")} values={selectedRole.skillNames} />
+            <AssociationPicker emptyLabel={t("s_2b4da332e8")} label={t("s_da6018568a")} onChange={(names) => updateRole({ mcpNames: names })} options={mcpOptions} placeholder={t("s_ecbf64eaf8")} values={selectedRole.mcpNames} />
           </div>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button disabled={!dirty} onClick={save} size="sm" type="button"><Save className="size-3.5" />保存角色设置</Button>
-        {saved && <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-500"><CheckCircle2 className="size-3.5" />已保存，下一条消息起生效</span>}
+        <Button disabled={!dirty} onClick={save} size="sm" type="button"><Save className="size-3.5" />{t("s_39745d2625")}</Button>
+        {saved && <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-500"><CheckCircle2 className="size-3.5" />{t("s_78ad9737dc")}</span>}
       </div>
     </div>
   );

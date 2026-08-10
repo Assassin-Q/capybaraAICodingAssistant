@@ -18,6 +18,7 @@ import { variantLabel } from "@/components/assistant/modelVariants";
 import { modelKey } from "@/components/assistant/shared";
 import type { AgentInfo, ModelInfo } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface ModelPickerProps {
   className?: string;
@@ -52,16 +53,16 @@ export function ModelPicker({ className, models, onManage, onChange, value }: Mo
   return (
     <ModelSelector onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setHasInteracted(false); }} open={open}>
       <ModelSelectorTrigger asChild>
-        <Button aria-label="选择模型" className={cn("h-7 min-w-0 max-w-[13rem] gap-1 rounded-md bg-transparent px-1.5 text-[11px] hover:bg-muted/70", className)} size="sm" title="选择模型" type="button" variant="ghost">
+        <Button aria-label={t("s_4e769dd289")} className={cn("h-7 min-w-0 max-w-[13rem] gap-1 rounded-md bg-transparent px-1.5 text-[11px] hover:bg-muted/70", className)} size="sm" title={t("s_4e769dd289")} type="button" variant="ghost">
           <Cpu className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate">{selected?.name ?? "选择模型"}</span>
+          <span className="truncate">{selected?.name ?? t("s_4e769dd289")}</span>
           <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
         </Button>
       </ModelSelectorTrigger>
-      <ModelSelectorContent onKeyDown={(event) => { if (["ArrowDown", "ArrowUp", "Enter"].includes(event.key)) setHasInteracted(true); }} title="选择模型">
-        <ModelSelectorInput autoFocus placeholder="搜索模型" />
+      <ModelSelectorContent onKeyDown={(event) => { if (["ArrowDown", "ArrowUp", "Enter"].includes(event.key)) setHasInteracted(true); }} title={t("s_4e769dd289")}>
+        <ModelSelectorInput autoFocus placeholder={t("s_df55862785")} />
         <ModelSelectorList className="max-h-[min(56vh,24rem)] py-1">
-          <ModelSelectorEmpty>没有可用模型</ModelSelectorEmpty>
+          <ModelSelectorEmpty>{t("s_c4955439d0")}</ModelSelectorEmpty>
           {grouped.map(([id, providerModels]) => (
             <ModelSelectorGroup heading={providerLabel(id)} key={id}>
               {providerModels.map((model) => {
@@ -69,7 +70,7 @@ export function ModelPicker({ className, models, onManage, onChange, value }: Mo
                   return (
                     <ModelSelectorItem className={cn("min-h-9", open && !hasInteracted && "data-[selected=true]:bg-transparent data-[selected=true]:text-foreground")} key={key} onMouseMove={() => setHasInteracted(true)} onSelect={() => { onChange(key); setOpen(false); }} value={model.name + " " + key}>
                       <ModelSelectorName>{model.name}</ModelSelectorName>
-                      {model.status === "active" && id.includes("free") && <Badge className="h-5 px-1.5 text-[10px]" variant="secondary">免费</Badge>}
+                      {model.status === "active" && id.includes("free") && <Badge className="h-5 px-1.5 text-[10px]" variant="secondary">{t("s_aa571eee00")}</Badge>}
                       {model.family && <span className="max-w-24 truncate text-[10px] text-muted-foreground">{model.family}</span>}
                       {key === value && <Check className="ml-1 size-3.5 shrink-0" />}
                     </ModelSelectorItem>
@@ -82,7 +83,7 @@ export function ModelPicker({ className, models, onManage, onChange, value }: Mo
           <div className="border-t border-border/50 p-1">
             <Button className="h-8 w-full justify-start gap-2 px-2 text-xs" onClick={() => { setOpen(false); onManage(); }} type="button" variant="ghost">
               <SlidersHorizontal className="size-3.5" />
-              管理模型
+              {t("s_1d1e297e8c")}
             </Button>
           </div>
         )}
@@ -114,15 +115,15 @@ export function VariantPicker({ className, hasDefault = false, labels = {}, onCh
   return (
     <ModelSelector onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setHasInteracted(false); }} open={open}>
       <ModelSelectorTrigger asChild>
-        <Button aria-label="选择思考强度" className={cn("h-7 min-w-14 gap-1 rounded-md bg-transparent px-1.5 text-[11px] hover:bg-muted/70", className)} size="sm" title="选择思考强度" type="button" variant="ghost">
+        <Button aria-label={t("s_00487b9418")} className={cn("h-7 min-w-14 gap-1 rounded-md bg-transparent px-1.5 text-[11px] hover:bg-muted/70", className)} size="sm" title={t("s_00487b9418")} type="button" variant="ghost">
           <Gauge className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate">{displayLabel(selectedValue)}</span>
           <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
         </Button>
       </ModelSelectorTrigger>
-      <ModelSelectorContent className="w-[calc(100vw-1rem)] max-w-xs" onKeyDown={(event) => { if (["ArrowDown", "ArrowUp", "Enter"].includes(event.key)) setHasInteracted(true); }} title="选择思考强度">
+      <ModelSelectorContent className="w-[calc(100vw-1rem)] max-w-xs" onKeyDown={(event) => { if (["ArrowDown", "ArrowUp", "Enter"].includes(event.key)) setHasInteracted(true); }} title={t("s_00487b9418")}>
         <ModelSelectorList>
-          <ModelSelectorGroup heading="思考强度">
+          <ModelSelectorGroup heading={t("s_6164ce65e8")}>
             {options.map((option) => (
               <ModelSelectorItem className={cn(open && !hasInteracted && "data-[selected=true]:bg-transparent data-[selected=true]:text-foreground")} key={option} onMouseMove={() => setHasInteracted(true)} onSelect={() => { onChange(option === "default" ? undefined : option); setOpen(false); }} value={option}>
                 <ModelSelectorName>{displayLabel(option)}</ModelSelectorName>
@@ -160,11 +161,11 @@ export function AgentPicker({ agents, className, onChange, value }: AgentPickerP
   const statusColor = selected.id.toLowerCase().includes("plan") ? "bg-amber-500" : "bg-emerald-500";
   return (
     <Button
-      aria-label={`切换主智能体，当前为 ${selected.id}`}
+      aria-label={t("s_ec6202b53b", { p0: selected.id })}
       className={cn("h-7 max-w-[9rem] gap-1.5 rounded-full bg-muted/55 px-2 text-[11px] font-normal hover:bg-muted", className)}
       onClick={cycle}
       size="sm"
-      title={primaryAgents.length > 1 ? "切换主智能体" : `当前智能体：${selected.id}`}
+      title={primaryAgents.length > 1 ? t("s_5e14bf4cc7") : t("s_536ba1bd61", { p0: selected.id })}
       type="button"
       variant="ghost"
     >

@@ -13,10 +13,11 @@ import { AttachmentPreviewDialog } from "@/components/ai-elements/attachment-pre
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import type { AttachmentData } from "@/components/ai-elements/attachments";
 import type { UserMessage as UserMessageData } from "@/lib/opencode";
+import { t } from "@/lib/i18n";
 
 const attachmentData = (message: UserMessageData): AttachmentData[] =>
   (message.files ?? []).map((file, index) => ({
-    filename: file.name ?? `附件 ${index + 1}`,
+    filename: file.name ?? t("s_15ff0a654b", { p0: index + 1 }),
     id: `${message.id}-file-${index}`,
     mediaType: file.mime ?? "application/octet-stream",
     type: "file" as const,
@@ -27,10 +28,10 @@ const isIdeaAttachment = (file: AttachmentData): boolean =>
   file.type === "file" && Boolean(file.mediaType?.startsWith("text/x-idea-") || file.mediaType === "application/x-idea-binary");
 
 const attachmentDescription = (file: AttachmentData): string => {
-  if (file.mediaType === "text/x-idea-directory") return "文件夹";
-  if (file.mediaType === "text/x-idea-selection") return "代码片段";
-  if (file.mediaType === "application/x-idea-binary") return "二进制文件";
-  return file.filename?.split(".").pop()?.toUpperCase() ?? "文件";
+  if (file.mediaType === "text/x-idea-directory") return t("s_46ecac2910");
+  if (file.mediaType === "text/x-idea-selection") return t("s_41f497eb47");
+  if (file.mediaType === "application/x-idea-binary") return t("s_a1a0e61a02");
+  return file.filename?.split(".").pop()?.toUpperCase() ?? t("s_49deaf7da2");
 };
 
 export function UserMessage({ message }: { message: UserMessageData }) {
@@ -56,7 +57,7 @@ export function UserMessage({ message }: { message: UserMessageData }) {
         <Attachments className="ml-auto max-w-full justify-end" variant="grid">
           {imageFiles.map((file) => (
             <Attachment
-              aria-label={`预览 ${file.filename ?? "附件"}`}
+              aria-label={t("s_f14ca938f0", { p0: file.filename ?? t("s_99f6fe6c41") })}
               className="cursor-pointer"
               data={file}
               key={file.id}
@@ -96,7 +97,7 @@ export function UserMessage({ message }: { message: UserMessageData }) {
               };
             return (
               <Attachment
-                aria-label={ideaAttachment ? `${file.filename ?? "附件"}，${attachmentDescription(file)}` : `预览 ${file.filename ?? "附件"}`}
+                aria-label={ideaAttachment ? `${file.filename ?? t("s_99f6fe6c41")}，${attachmentDescription(file)}` : t("s_f14ca938f0", { p0: file.filename ?? t("s_99f6fe6c41") })}
                 data={file}
                 key={file.id}
                 {...attachmentProps}

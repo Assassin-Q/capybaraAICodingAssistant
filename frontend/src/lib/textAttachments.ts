@@ -1,4 +1,5 @@
 import type { PromptAttachment } from "@/lib/opencodeTypes";
+import { t } from "@/lib/i18n";
 
 export interface EmbeddedTextAttachment {
   content: string;
@@ -36,7 +37,7 @@ export const extractTextAttachments = (text: string): { files: PromptAttachment[
       const mime = decodeAttribute(encodedMime) || "text/plain";
       files.push({
         mime,
-        name: decodeAttribute(encodedName) || "粘贴内容.txt",
+        name: decodeAttribute(encodedName) || t("s_3e6dbb3182"),
         uri: `data:${mime};charset=utf-8,${encodeURIComponent(content)}`,
       });
       return "";

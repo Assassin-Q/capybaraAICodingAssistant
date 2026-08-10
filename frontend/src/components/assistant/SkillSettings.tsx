@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ManagedSkillList } from "@/components/assistant/ManagedSkillList";
 import { SkillHubPanel } from "@/components/assistant/SkillHubPanel";
+import { t } from "@/lib/i18n";
 
 interface SkillSettingsProps {
   disabledSkillNames: string[];
@@ -21,7 +22,7 @@ export function SkillSettings(props: SkillSettingsProps) {
   return (
     <Tabs className="flex min-h-0 flex-1 flex-col overflow-hidden" defaultValue="installed">
       <TabsList>
-        <TabsTrigger value="installed">已安装</TabsTrigger>
+        <TabsTrigger value="installed">{t("s_eb88ff57c9")}</TabsTrigger>
         <TabsTrigger value="hub">SkillHub</TabsTrigger>
       </TabsList>
       <TabsContent className="flex min-h-0 flex-1 flex-col overflow-hidden" value="installed">

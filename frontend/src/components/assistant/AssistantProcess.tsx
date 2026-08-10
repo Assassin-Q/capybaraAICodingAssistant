@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { MarkdownResponse } from "@/components/assistant/MarkdownResponse";
 import { formatToolValue, toolState } from "@/components/assistant/shared";
 import { ToolCallInput, ToolCallOutput } from "@/components/assistant/ToolCallDetails";
+import { t } from "@/lib/i18n";
 import type {
   AssistantMessage,
   AssistantReasoningPart,
@@ -22,60 +23,60 @@ import type {
 } from "@/lib/opencode";
 
 const toolLabels: Record<string, string> = {
-  apply_patch: "应用补丁",
-  bash: "执行命令",
-  edit: "编辑文件",
-  glob: "查找文件",
-  grep: "搜索内容",
-  idea_diagnostics: "读取 IDEA 诊断",
-  idea_editor_context: "读取编辑器上下文",
-  idea_browser: "控制内置浏览器",
-  idea_gradle: "运行 IDEA Gradle",
-  idea_maven: "运行 IDEA Maven",
-  idea_navigate: "定位代码",
-  idea_project_context: "读取项目结构",
-  idea_read_run_log: "读取运行日志",
-  idea_refresh_project: "刷新 IDEA 项目",
-  idea_run_configuration: "运行 IDEA 配置",
-  idea_symbol: "查询符号关系",
-  list: "列出文件",
-  question: "等待回答",
-  read: "读取文件",
-  task: "执行任务",
-  todo: "更新任务清单",
-  todowrite: "更新任务清单",
-  write: "写入文件",
+  apply_patch: t("s_80e1ecebdb"),
+  bash: t("s_bf162782f5"),
+  edit: t("s_fa65902674"),
+  glob: t("s_acf33b0f89"),
+  grep: t("s_9131beb744"),
+  idea_diagnostics: t("s_205dc38bbd"),
+  idea_editor_context: t("s_db9ccfc42f"),
+  idea_browser: t("s_c7f43c2a38"),
+  idea_gradle: t("s_91f9f469b5"),
+  idea_maven: t("s_1a64e6ede4"),
+  idea_navigate: t("s_4385b51155"),
+  idea_project_context: t("s_333b0ae2f7"),
+  idea_read_run_log: t("s_1c1deb0506"),
+  idea_refresh_project: t("s_194fa9eeda"),
+  idea_run_configuration: t("s_1005ab48e2"),
+  idea_symbol: t("s_f1908323b6"),
+  list: t("s_64e86e0d07"),
+  question: t("s_ac6995265c"),
+  read: t("s_dc995cddfa"),
+  task: t("s_d3c1926c04"),
+  todo: t("s_94464c4619"),
+  todowrite: t("s_94464c4619"),
+  write: t("s_e620fd4b1f"),
 };
 
 const toolActions: Record<string, string> = {
-  apply_patch: "编辑了文件",
-  bash: "运行了命令",
-  edit: "编辑了文件",
-  glob: "搜索了文件",
-  grep: "搜索了内容",
-  idea_diagnostics: "检查了 IDEA 诊断",
-  idea_editor_context: "读取了编辑器上下文",
-  idea_browser: "操作了内置浏览器",
-  idea_gradle: "运行了 Gradle 任务",
-  idea_maven: "运行了 Maven 任务",
-  idea_navigate: "定位了代码",
-  idea_project_context: "读取了项目结构",
-  idea_read_run_log: "读取了运行日志",
-  idea_refresh_project: "刷新了 IDEA 项目",
-  idea_run_configuration: "运行了 IDEA 配置",
-  idea_symbol: "查询了符号关系",
-  list: "浏览了文件",
-  question: "等待了回答",
-  read: "读取了文件",
-  task: "调用了子智能体",
-  todo: "更新了任务清单",
-  todowrite: "更新了任务清单",
-  write: "编辑了文件",
+  apply_patch: t("s_b4ddc6bbab"),
+  bash: t("s_f3f2330801"),
+  edit: t("s_b4ddc6bbab"),
+  glob: t("s_aee0becc24"),
+  grep: t("s_fd45887b39"),
+  idea_diagnostics: t("s_7fbd257a26"),
+  idea_editor_context: t("s_55b6ee2057"),
+  idea_browser: t("s_f90322ecb1"),
+  idea_gradle: t("s_8291a51792"),
+  idea_maven: t("s_32e40b46a8"),
+  idea_navigate: t("s_0744fd62cd"),
+  idea_project_context: t("s_3f771e4374"),
+  idea_read_run_log: t("s_82cb98360c"),
+  idea_refresh_project: t("s_026da51d8f"),
+  idea_run_configuration: t("s_43f6d04083"),
+  idea_symbol: t("s_a9d9dcd1a6"),
+  list: t("s_33dce06cc1"),
+  question: t("s_2be24f9324"),
+  read: t("s_be2848d624"),
+  task: t("s_ffc4e1cfb3"),
+  todo: t("s_13b6dc6f05"),
+  todowrite: t("s_13b6dc6f05"),
+  write: t("s_b4ddc6bbab"),
 };
 
 const toolTitle = (name: string): string => toolLabels[name.toLowerCase()] ?? name;
 
-const toolAction = (name: string): string => toolActions[name.toLowerCase()] ?? `调用了 ${name}`;
+const toolAction = (name: string): string => toolActions[name.toLowerCase()] ?? t("s_536714e7dd", { p0: name });
 
 const normalizedToolValue = (value: unknown): unknown => {
   if (typeof value !== "string") return value;
@@ -114,10 +115,10 @@ const toolInlineDetail = (name: string, value: unknown): string => {
   if (lowerName === "grep") return compactValue(input.pattern ?? input.query ?? input.path);
   if (lowerName === "glob") return compactValue(input.pattern ?? input.path);
   if (["idea_editor_context", "idea_diagnostics"].includes(lowerName)) {
-    return compactValue(input.path) || "当前编辑器";
+    return compactValue(input.path) || t("s_da166942c7");
   }
   if (["idea_navigate", "idea_symbol"].includes(lowerName)) {
-    const path = compactValue(input.path) || "当前编辑器";
+    const path = compactValue(input.path) || t("s_da166942c7");
     const line = compactValue(input.line);
     return line ? `${path}:${line}` : path;
   }
@@ -183,7 +184,7 @@ const actionGroupTitle = (tools: AssistantToolPart[]): string => {
   const counts = new Map<string, number>();
   tools.forEach((tool) => counts.set(toolAction(tool.name), (counts.get(toolAction(tool.name)) ?? 0) + 1));
   return [...counts.entries()]
-    .map(([label, count]) => count > 1 ? `${label} ${count} 次` : label)
+    .map(([label, count]) => count > 1 ? t("s_d8a1a5ace4", { p0: label, p1: count }) : label)
     .join("，");
 };
 
@@ -193,9 +194,9 @@ const formatDuration = (created: number, completed?: number): string => {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const rest = seconds % 60;
-  if (hours > 0) return `${hours}小时 ${minutes}分`;
-  if (minutes > 0) return `${minutes}分 ${rest}秒`;
-  return `${rest}秒`;
+  if (hours > 0) return t("s_1ef1d4c74a", { p0: hours, p1: minutes });
+  if (minutes > 0) return t("s_02b5a41527", { p0: minutes, p1: rest });
+  return t("s_ad7dee82f4", { p0: rest });
 };
 
 /**
@@ -255,7 +256,7 @@ function ToolEntry({
             variant="ghost"
           >
             <CornerDownRight className="size-3.5" />
-            进入子会话
+            {t("s_125e64b339")}
           </Button>
         )}
       </ToolContent>
@@ -296,12 +297,12 @@ const ToolGroup = memo(function ToolGroup({
   // Driven by the tools' own state rather than by "is this the last block", which flipped
   // the moment the next reasoning block appeared and made the header flash between
   // "正在…" and the collapsed summary while a tool was still running.
-  const title = activeTool ? `正在${toolTitle(activeTool.name)}` : actionGroupTitle(tools);
+  const title = activeTool ? t("s_18b31b08ed", { p0: toolTitle(activeTool.name) }) : actionGroupTitle(tools);
   // The collapsed header said only 执行失败, which reads as "the group failed" whether one call of
   // twelve failed or all of them did. The count is what tells the user whether to go looking.
   const detail = [
-    `${tools.length} 个操作`,
-    failedCount > 0 ? `${failedCount} 个失败` : "",
+    t("s_242075c58d", { p0: tools.length }),
+    failedCount > 0 ? t("s_649dc604d5", { p0: failedCount }) : "",
   ].filter(Boolean).join(" · ");
   return (
     <Tool onOpenChange={onOpenChange} open={open}>
@@ -338,7 +339,7 @@ const Narrative = memo(function Narrative({
     return (
       <Reasoning autoClose={false} defaultOpen={false} isStreaming={reasoningStreaming}>
         <ReasoningTrigger
-          getThinkingMessage={(streaming) => streaming ? <Shimmer duration={1}>思考中</Shimmer> : "思考完成"}
+          getThinkingMessage={(streaming) => streaming ? <Shimmer duration={1}>{t("s_138d5364bb")}</Shimmer> : t("s_edab852efe")}
         />
         <ReasoningContent streaming={reasoningStreaming}>{part.text}</ReasoningContent>
       </Reasoning>
@@ -451,7 +452,7 @@ export function AssistantProcess({
       {!isStreaming && (
         <ChainOfThoughtHeader className="inline-flex h-6 w-fit max-w-full items-center gap-1.5 px-0.5 py-0 text-[11px] leading-none">
           <span className="inline-flex h-4 min-w-0 items-center leading-none">
-            {`已处理 ${formatDuration(message.time.created, message.time.completed)}`}
+            {t("s_c1ca09f80e", { p0: formatDuration(message.time.created, message.time.completed) })}
           </span>
         </ChainOfThoughtHeader>
       )}

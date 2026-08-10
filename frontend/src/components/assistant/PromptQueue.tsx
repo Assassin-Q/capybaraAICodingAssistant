@@ -2,6 +2,7 @@ import { CornerDownRight, FileText, Pencil, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { PromptInputFile, PromptInputMessage } from "@/components/ai-elements/prompt-input";
+import { t } from "@/lib/i18n";
 
 export interface QueuedPrompt extends PromptInputMessage {
   id: string;
@@ -17,8 +18,8 @@ interface PromptQueueProps {
 const previewText = (item: QueuedPrompt): string => {
   const text = item.text.trim();
   if (text) return text;
-  if (item.files.length === 1) return item.files[0].filename ?? "附件";
-  return `${item.files.length} 个附件`;
+  if (item.files.length === 1) return item.files[0].filename ?? t("s_99f6fe6c41");
+  return t("s_a4a8c0f56c", { p0: item.files.length });
 };
 
 const fileLabel = (file: PromptInputFile): string => file.filename ?? file.file.name;
@@ -39,12 +40,12 @@ export function PromptQueue({ items, onClear, onDelete, onEdit }: PromptQueuePro
   if (items.length === 0) return null;
 
   return (
-    <section aria-label="待发送消息" className="mb-2 space-y-1">
+    <section aria-label={t("s_221811cad0")} className="mb-2 space-y-1">
       {items.length > 1 && (
         <div className="flex h-6 items-center justify-between px-1 text-[10px] text-muted-foreground">
-          <span>待发送 {items.length} 条</span>
-          <Button aria-label="清空待发送消息" className="h-6 gap-1 px-1.5 text-[10px]" onClick={onClear} size="sm" type="button" variant="ghost">
-            <X className="size-3" />清空
+          <span>{t("s_13bc7a77c4")} {items.length} {t("s_bce2ef6151")}</span>
+          <Button aria-label={t("s_4a5a1c9614")} className="h-6 gap-1 px-1.5 text-[10px]" onClick={onClear} size="sm" type="button" variant="ghost">
+            <X className="size-3" />{t("s_84fcd70d42")}
           </Button>
         </div>
       )}
@@ -60,12 +61,12 @@ export function PromptQueue({ items, onClear, onDelete, onEdit }: PromptQueuePro
             )}
           </div>
           <span className="hidden shrink-0 items-center gap-1 text-[10px] text-muted-foreground sm:inline-flex">
-            <CornerDownRight className="size-3" />排队
+            <CornerDownRight className="size-3" />{t("s_cfb281f66b")}
           </span>
-          <Button aria-label="编辑待发送消息" className="size-7 shrink-0 text-muted-foreground opacity-70 hover:bg-background/70 hover:text-foreground group-hover/queue:opacity-100" onClick={() => onEdit(item)} size="icon" title="编辑" type="button" variant="ghost">
+          <Button aria-label={t("s_1bfc99157e")} className="size-7 shrink-0 text-muted-foreground opacity-70 hover:bg-background/70 hover:text-foreground group-hover/queue:opacity-100" onClick={() => onEdit(item)} size="icon" title={t("s_a7f814c0a4")} type="button" variant="ghost">
             <Pencil className="size-3.5" />
           </Button>
-          <Button aria-label="删除待发送消息" className="size-7 shrink-0 text-muted-foreground opacity-70 hover:bg-background/70 hover:text-foreground group-hover/queue:opacity-100" onClick={() => onDelete(item.id)} size="icon" title="删除" type="button" variant="ghost">
+          <Button aria-label={t("s_a015a34564")} className="size-7 shrink-0 text-muted-foreground opacity-70 hover:bg-background/70 hover:text-foreground group-hover/queue:opacity-100" onClick={() => onDelete(item.id)} size="icon" title={t("s_3755f56f2f")} type="button" variant="ghost">
             <Trash2 className="size-3.5" />
           </Button>
         </div>

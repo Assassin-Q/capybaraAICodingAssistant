@@ -1,0 +1,72 @@
+import { en } from "@/lib/locales/en";
+import { zh } from "@/lib/locales/zh";
+
+export type Locale = "zh" | "en";
+/** `auto` follows the IDE/browser locale; the other two are explicit user choices. */
+export type LocalePreference = Locale | "auto";
+
+export type TranslationKey = keyof typeof zh;
+export type Translations = Record<TranslationKey, string>;
+
+const dictionaries: Record<Locale, Translations> = { en: en as Translations, zh };
+
+/**
+ * Resolves `auto` against the environment.
+ *
+ * The panel runs inside JCEF, which reports the IDE's own locale, so a Chinese IDE lands on
+ * Chinese without the user configuring anything. Anything that is not Chinese falls back to
+ * English rather than guessing at a third language we do not ship.
+ */
+export const detectLocale = (): Locale => {
+  const candidates = typeof navigator === "undefined"
+    ? []
+    : [navigator.language, ...(navigator.languages ?? [])];
+  return candidates.some((value) => value?.toLowerCase().startsWith("zh")) ? "zh" : "en";
+};
+
+export const resolveLocale = (preference: LocalePreference): Locale =>
+  preference === "auto" ? detectLocale() : preference;
+
+/**
+ * The active locale lives at module scope, not only in React state.
+ *
+ * Plain modules — preset catalogues, prompt builders, formatting helpers — need translations too
+ * and cannot call a hook. React is kept in step by [useLocale], which re-renders subscribers
+ * whenever this changes, so the two never disagree.
+ */
+let activeLocale: Locale = "zh";
+const listeners = new Set<(locale: Locale) => void>();
+
+export const getLocale = (): Locale => activeLocale;
+
+export const setLocale = (locale: Locale): void => {
+  if (activeLocale === locale) return;
+  activeLocale = locale;
+  if (typeof document !== "undefined") document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+  listeners.forEach((listener) => listener(locale));
+};
+
+export const subscribeToLocale = (listener: (locale: Locale) => void): (() => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+
+/**
+ * Looks up a string, substituting `{name}` placeholders.
+ *
+ * A missing key returns the key itself rather than an empty string: a visible `settings.title`
+ * in the UI is a bug report, whereas a blank label silently looks like an intentional design.
+ */
+export const t = (
+  key: TranslationKey,
+  // Undefined is accepted because call sites interpolate optional values — a missing file name or
+  // variant should leave a gap in the sentence, not force every caller to pre-format a fallback.
+  params?: Record<string, string | number | undefined>
+): string => {
+  const table = dictionaries[activeLocale] ?? zh;
+  const template = table[key] ?? zh[key] ?? key;
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name: string) =>
+    Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : match
+  );
+};

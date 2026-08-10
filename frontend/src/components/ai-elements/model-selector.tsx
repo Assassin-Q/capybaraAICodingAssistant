@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { ComponentProps, ReactNode } from "react";
+import { t } from "@/lib/i18n";
 
 export type ModelSelectorProps = ComponentProps<typeof Popover>;
 
@@ -31,7 +32,7 @@ export type ModelSelectorContentProps = ComponentProps<typeof PopoverContent> & 
 export const ModelSelectorContent = ({
   className,
   children,
-  title = "选择模型",
+  title = t("s_4e769dd289"),
   ...props
 }: ModelSelectorContentProps) => (
   <PopoverContent

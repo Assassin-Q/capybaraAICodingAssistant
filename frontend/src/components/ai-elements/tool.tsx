@@ -21,6 +21,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { isValidElement } from "react";
 
 import { CodeBlock } from "./code-block";
+import { t } from "@/lib/i18n";
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
 
@@ -43,13 +44,13 @@ export type ToolHeaderProps = {
 );
 
 const statusLabels: Record<ToolPart["state"], string> = {
-  "approval-requested": "等待确认",
-  "approval-responded": "已响应",
-  "input-available": "执行中",
-  "input-streaming": "准备中",
-  "output-available": "已完成",
-  "output-denied": "已拒绝",
-  "output-error": "执行失败",
+  "approval-requested": t("s_25a45621ed"),
+  "approval-responded": t("s_712c9a0ec7"),
+  "input-available": t("s_1f425b6bf0"),
+  "input-streaming": t("s_4f1f8aa3ff"),
+  "output-available": t("s_e99b48a29b"),
+  "output-denied": t("s_4c7c52c706"),
+  "output-error": t("s_9746cfc7d2"),
 };
 
 const statusIcons: Record<ToolPart["state"], ReactNode> = {
@@ -111,7 +112,7 @@ export type ToolInputProps = ComponentProps<"div"> & { input: ToolPart["input"] 
 
 export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
   <div className={cn("space-y-1.5 overflow-hidden", className)} {...props}>
-    <h4 className="text-[10px] font-medium text-muted-foreground">参数</h4>
+    <h4 className="text-[10px] font-medium text-muted-foreground">{t("s_749d765242")}</h4>
     <CodeBlock
       className="border-0 bg-muted/20"
       code={typeof input === "string" ? input : JSON.stringify(input, null, 2)}
@@ -135,7 +136,7 @@ export const ToolOutput = ({ className, output, errorText, ...props }: ToolOutpu
   }
   return (
     <div className={cn("space-y-1.5", className)} {...props}>
-      <h4 className="text-[10px] font-medium text-muted-foreground">{errorText ? "错误" : "结果"}</h4>
+      <h4 className="text-[10px] font-medium text-muted-foreground">{errorText ? t("s_b859c7be75") : t("s_0a2c91cec6")}</h4>
       <div className={cn("overflow-x-auto rounded-md text-xs [&_table]:w-full", errorText ? "bg-destructive/10 px-2 py-1.5 text-destructive" : "")}>
         {errorText && <div className="whitespace-pre-wrap">{errorText}</div>}
         {!errorText && renderedOutput}

@@ -1,5 +1,6 @@
 import type { IdeContextEvent } from "@/lib/idea";
 import type { AssistantToolPart, ModelRef, SessionInfo } from "@/lib/opencode";
+import { t } from "@/lib/i18n";
 
 export type RunStatus = "ready" | "submitted" | "streaming" | "error";
 
@@ -8,19 +9,19 @@ export interface ContextChip extends IdeContextEvent {
 }
 
 export const actionLabels: Record<IdeContextEvent["action"], string> = {
-  add_to_chat: "加入对话",
-  explain_code: "解释代码",
-  generate_test: "生成测试",
-  optimize_code: "优化代码",
+  add_to_chat: t("s_471f0dcad9"),
+  explain_code: t("s_625cb72e0e"),
+  generate_test: t("s_519ea0b247"),
+  optimize_code: t("s_59c4239b75"),
 };
 
 export const modelKey = (model: ModelRef): string => model.providerID + "/" + model.id;
 
 export const sessionName = (session: SessionInfo): string => {
   const title = session.title?.trim();
-  if (!title) return "新会话";
+  if (!title) return t("s_db44360cd0");
   const generated = /^new session\s*-\s*(.+)$/i.exec(title);
-  return generated ? "新会话 · " + generated[1] : title;
+  return generated ? t("s_fd3701e50f") + generated[1] : title;
 };
 
 export const errorMessage = (error: unknown): string => {
@@ -33,7 +34,7 @@ export const errorMessage = (error: unknown): string => {
       const provider = typeof record.providerID === "string" ? record.providerID : "";
       const model = typeof record.modelID === "string" ? record.modelID : "";
       const variant = typeof record.variant === "string" ? record.variant : "";
-      return `思考档位“${variant || "未知"}”不适用于 ${provider && model ? `${provider}/${model}` : "当前模型"}`;
+      return t("s_b120657aa7", { p0: variant || t("s_d9c32a4c3d"), p1: provider && model ? `${provider}/${model}` : t("s_a0af8f7df5") });
     }
     for (const key of ["message", "detail", "reason"]) {
       const value = record[key];
@@ -43,11 +44,11 @@ export const errorMessage = (error: unknown): string => {
       const value = record[key];
       if (value && value !== error) {
         const nested = errorMessage(value);
-        if (nested !== "请求失败，请检查 OpenCode 服务") return nested;
+        if (nested !== t("s_e4a6220d8f")) return nested;
       }
     }
   }
-  return "请求失败，请检查 OpenCode 服务";
+  return t("s_e4a6220d8f");
 };
 
 export const formatToolValue = (value: unknown): string => {

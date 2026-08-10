@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 "use client"
 
 import * as React from "react"
@@ -72,7 +73,7 @@ const DialogContent = React.forwardRef<
             className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
-            <span className="sr-only">关闭</span>
+            <span className="sr-only">{t("s_6c14bd7f6f")}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Content>
@@ -111,7 +112,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close asChild>
-          <Button variant="outline">关闭</Button>
+          <Button variant="outline">{t("s_6c14bd7f6f")}</Button>
         </DialogPrimitive.Close>
       )}
     </div>

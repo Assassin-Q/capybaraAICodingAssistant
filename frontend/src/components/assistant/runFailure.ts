@@ -1,8 +1,9 @@
 import type { ActivePrompt } from "@/hooks/useRunLifecycle";
 import type { AssistantMessage, SessionMessage } from "@/lib/opencode";
 import { EMPTY_TOKEN_USAGE } from "@/lib/tokenUsage";
+import { t } from "@/lib/i18n";
 
-export const DEFAULT_EMPTY_RUN_ERROR = "OpenCode 未生成回复，当前模型或思考档位可能不可用。";
+export const DEFAULT_EMPTY_RUN_ERROR = t("s_204b96ed88");
 
 const runAssistants = (messages: SessionMessage[], prompt: ActivePrompt): AssistantMessage[] =>
   messages.filter((message): message is AssistantMessage => message.type === "assistant" && (

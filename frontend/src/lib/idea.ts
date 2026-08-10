@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 export interface IdeLineRange {
   start: number;
   end: number;
@@ -11,6 +12,24 @@ export interface IdeContextEvent {
   fileName?: string;
   lineRange?: IdeLineRange;
   timestamp: number;
+}
+
+export interface OpenCodeInstallMethod {
+  id: string;
+  label: string;
+  command: string;
+  note?: string;
+}
+
+export interface OpenCodeRequirement {
+  installed: boolean;
+  supported: boolean;
+  version: string;
+  minimumVersion: string;
+  executable: string;
+  docsUrl: string;
+  methods: OpenCodeInstallMethod[];
+  message: string;
 }
 
 export interface IdeaRuntimeConfig {
@@ -261,6 +280,9 @@ const normalizeContextEvent = (raw: unknown): IdeContextEvent | null => {
 export const ideaApi = {
   getRuntimeConfig: () => request<IdeaRuntimeConfig>("/opencode-info"),
 
+  /** Whether OpenCode is installed and new enough for the v2 session API this panel relies on. */
+  openCodeRequirement: () => request<OpenCodeRequirement>("/ide/opencode-requirement"),
+
   /**
    * Re-discovers the local OpenCode server. A plugin-managed server is relaunched; an
    * externally started one is only re-probed unless `force` is set, because OpenCode loads
@@ -412,7 +434,7 @@ export const ideaApi = {
     request<MemoryApiResult<MemoryItem>>("/memory/memories", {
       body: JSON.stringify({
         content,
-        displayName: "用户全局记忆",
+        displayName: t("s_bde4dd2172"),
         tags: ["capybara", "user", "global"],
         type: "preference",
       }),

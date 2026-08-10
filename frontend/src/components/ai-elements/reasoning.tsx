@@ -21,6 +21,7 @@ import {
 import { Streamdown } from "streamdown";
 
 import { Shimmer } from "./shimmer";
+import { t } from "@/lib/i18n";
 
 interface ReasoningContextValue {
   duration: number | undefined;
@@ -121,9 +122,9 @@ export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger> & 
 };
 
 const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
-  if (isStreaming || duration === 0) return <Shimmer duration={1}>思考中</Shimmer>;
-  if (duration === undefined) return "已完成思考";
-  return "思考了 " + duration + " 秒";
+  if (isStreaming || duration === 0) return <Shimmer duration={1}>{t("s_138d5364bb")}</Shimmer>;
+  if (duration === undefined) return t("s_347bb96578");
+  return t("s_53ab92eadf") + duration + t("s_d9ad5055c3");
 };
 
 export const ReasoningTrigger = memo(({

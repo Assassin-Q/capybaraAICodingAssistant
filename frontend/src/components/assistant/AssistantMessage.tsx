@@ -8,6 +8,7 @@ import { MarkdownResponse } from "@/components/assistant/MarkdownResponse";
 import { SessionDiffSummary } from "@/components/assistant/SessionDiffSummary";
 import { TokenUsageSummary } from "@/components/assistant/TokenUsage";
 import { Shimmer } from "@/components/ai-elements/shimmer";
+import { t } from "@/lib/i18n";
 import type {
   AssistantMessage as AssistantMessageData,
   SessionFileDiff,
@@ -15,8 +16,8 @@ import type {
 
 function ThinkingLine() {
   return (
-    <div aria-label="处理中" className="px-0.5 py-1 text-xs text-muted-foreground">
-      <Shimmer duration={1}>处理中</Shimmer>
+    <div aria-label={t("s_fcb979ef0b")} className="px-0.5 py-1 text-xs text-muted-foreground">
+      <Shimmer duration={1}>{t("s_fcb979ef0b")}</Shimmer>
     </div>
   );
 }
@@ -29,13 +30,13 @@ function ThinkingLine() {
 const explainProviderError = (value: string): string | undefined => {
   const normalized = value.toLowerCase();
   if (normalized.includes("reasoning_content") && normalized.includes("thinking mode")) {
-    return "当前中转站要求把思考内容原样回传，但它与 OpenCode 的请求格式不兼容。把思考档位切回「默认」，或换一个模型即可继续。";
+    return t("s_a03b1f12c5");
   }
   if (normalized.includes("context") && normalized.includes("maximum") && normalized.includes("token")) {
-    return "对话已超出该模型的上下文窗口。可以新开会话，或换一个上下文更大的模型。";
+    return t("s_4b3abc8591");
   }
   if (normalized.includes("insufficient_quota") || normalized.includes("exceeded your current quota")) {
-    return "供应商返回额度不足，请检查该 API Key 的余额或配额。";
+    return t("s_3b32459688");
   }
   return undefined;
 };
@@ -101,26 +102,29 @@ export const AssistantMessage = memo(function AssistantMessage({
                 provider rejection can poison the rest of the session. These are the ways out. */}
             {onRecover && (
               <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-destructive/20 pt-2">
-                <span className="text-[11px] opacity-80">这条失败的回合会留在上下文里：</span>
+                <span className="text-[11px] opacity-80">{t("s_e703caaf44")}</span>
                 <Button
                   className="h-6 px-2 text-[11px]"
-                  onClick={() => onRecover("revert", message.id)}
+                  onClick={() => onRecover("revert", message.parentID ?? message.id)}
                   size="sm"
-                  title="删除这条以及之后的所有消息，回到出错前的状态"
+                  title={t("s_0e48b03531")}
                   type="button"
                   variant="outline"
                 >
-                  <Undo2 className="size-3" />回到出错前
+                  <Undo2 className="size-3" />{t("s_69f65907a6")}
                 </Button>
                 <Button
                   className="h-6 px-2 text-[11px]"
-                  onClick={() => onRecover("fork", message.id)}
+                  // Branches from the prompt, not from the failed reply. A run that died before OpenCode
+                  // persisted any assistant message leaves only a locally synthesised turn, whose id
+                  // the server rejects with BadRequest; the parent user message always exists.
+                  onClick={() => onRecover("fork", message.parentID ?? message.id)}
                   size="sm"
-                  title="把出错前的内容复制成新会话，原会话保持不变"
+                  title={t("s_6bb896d47e")}
                   type="button"
                   variant="outline"
                 >
-                  <GitFork className="size-3" />另存为新会话
+                  <GitFork className="size-3" />{t("s_0bb7a29205")}
                 </Button>
               </div>
             )}

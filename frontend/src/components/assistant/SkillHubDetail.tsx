@@ -9,14 +9,15 @@ import { skillsApi } from "@/lib/ideaIntegrations";
 import type { SkillHubDetail, SkillHubTraceDimension } from "@/lib/ideaIntegrations";
 import type { ManagedScope } from "@/lib/ideaIntegrations";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 const compact = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1, notation: "compact" });
 
 const tabs = [
-  { id: "overview", label: "概述" },
-  { id: "files", label: "文件" },
-  { id: "versions", label: "版本历史" },
-  { id: "trace", label: "评测报告" },
+  { id: "overview", label: t("s_153042ed9e") },
+  { id: "files", label: t("s_49deaf7da2") },
+  { id: "versions", label: t("s_8770418ba3") },
+  { id: "trace", label: t("s_7f68264e69") },
 ] as const;
 
 type TabID = typeof tabs[number]["id"];
@@ -100,7 +101,7 @@ export function SkillHubDetailView({
         if (cancelled) return;
         // Treat a missing flag as success: the plugin serialises with encodeDefaults=false, so an
         // older build omits it entirely on the happy path.
-        if (next.success === false) setError(next.message ?? "读取详情失败");
+        if (next.success === false) setError(next.message ?? t("s_83f79675f8"));
         else setDetail(next);
       })
       .catch((detailError) => {
@@ -120,7 +121,7 @@ export function SkillHubDetailView({
     setFileText("");
     try {
       const content = await skillsApi.hubFile(slug, namespace, path);
-      setFileText(content.success === false ? content.message ?? "读取失败" : content.text);
+      setFileText(content.success === false ? content.message ?? t("s_d9f607a200") : content.text);
     } catch (fileError) {
       setFileText(errorMessage(fileError));
     } finally {
@@ -157,7 +158,7 @@ export function SkillHubDetailView({
   if (loading) {
     return (
       <section className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
-        正在读取技能详情…
+        {t("s_26a7c79c79")}
       </section>
     );
   }
@@ -165,8 +166,8 @@ export function SkillHubDetailView({
   if (!detail) {
     return (
       <section className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3">
-        <p className="text-sm text-muted-foreground">{error || "没有读到该技能的详情"}</p>
-        <Button onClick={onBack} size="sm" type="button" variant="outline">返回列表</Button>
+        <p className="text-sm text-muted-foreground">{error || t("s_87b83b7cce")}</p>
+        <Button onClick={onBack} size="sm" type="button" variant="outline">{t("s_53505b1fcd")}</Button>
       </section>
     );
   }
@@ -177,7 +178,7 @@ export function SkillHubDetailView({
     // scrolls now, so the install bar is always clear of whatever is being read.
     <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <header className="flex items-start gap-3">
-        <Button aria-label="返回列表" onClick={onBack} size="icon-sm" type="button" variant="ghost">
+        <Button aria-label={t("s_53505b1fcd")} onClick={onBack} size="icon-sm" type="button" variant="ghost">
           <ArrowLeft className="size-4" />
         </Button>
         {detail.iconUrl
@@ -193,7 +194,7 @@ export function SkillHubDetailView({
               <span className="inline-flex items-center gap-1 font-medium text-amber-600 dark:text-amber-400">
                 <Star className="size-3 fill-current" />
                 {detail.evaluation.overall.toFixed(1)}
-                <span className="font-normal text-muted-foreground">（AI 评分）</span>
+                <span className="font-normal text-muted-foreground">{t("s_71ad1d5ce5")}</span>
               </span>
             )}
             {detail.security.map((report) => (
@@ -210,21 +211,21 @@ export function SkillHubDetailView({
         </div>
       </header>
 
-      <p className="whitespace-pre-wrap text-sm leading-6">{detail.description || "未提供介绍"}</p>
+      <p className="whitespace-pre-wrap text-sm leading-6">{detail.description || t("s_7e73fb8978")}</p>
 
       <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
         {detail.subCategories.map((name) => <Badge key={name} variant="outline">{name}</Badge>)}
         {detail.version && <Badge variant="outline">v{detail.version}</Badge>}
         {detail.requiresApiKey && (
-          <Badge variant="outline"><KeyRound className="size-3" />需 API Key</Badge>
+          <Badge variant="outline"><KeyRound className="size-3" />{t("s_8e12c97a7a")}</Badge>
         )}
-        <span className="text-muted-foreground">更新于 {formatDate(detail.updatedAt)}</span>
+        <span className="text-muted-foreground">{t("s_1e1ed72b9a")} {formatDate(detail.updatedAt)}</span>
       </div>
 
       <div className="grid grid-cols-3 gap-2 rounded-md bg-muted/35 px-3 py-2 text-center">
-        <div><p className="text-[10px] text-muted-foreground">下载</p><p className="font-mono text-sm">{compact.format(detail.downloads)}</p></div>
-        <div><p className="text-[10px] text-muted-foreground">收藏</p><p className="font-mono text-sm">{compact.format(detail.stars)}</p></div>
-        <div><p className="text-[10px] text-muted-foreground">安装</p><p className="font-mono text-sm">{compact.format(detail.installs)}</p></div>
+        <div><p className="text-[10px] text-muted-foreground">{t("s_2b9d013177")}</p><p className="font-mono text-sm">{compact.format(detail.downloads)}</p></div>
+        <div><p className="text-[10px] text-muted-foreground">{t("s_d07cee786a")}</p><p className="font-mono text-sm">{compact.format(detail.stars)}</p></div>
+        <div><p className="text-[10px] text-muted-foreground">{t("s_087db63ab1")}</p><p className="font-mono text-sm">{compact.format(detail.installs)}</p></div>
       </div>
 
       <nav className="flex shrink-0 gap-1 border-b border-border/50">
@@ -251,30 +252,30 @@ export function SkillHubDetailView({
       <div className="min-h-32 min-h-0 flex-1 overflow-y-auto">
         {tab === "overview" && (
           overviewLoading
-            ? <p className="py-6 text-center text-xs text-muted-foreground">正在读取 SKILL.md…</p>
+            ? <p className="py-6 text-center text-xs text-muted-foreground">{t("s_63ed6869b5")}</p>
             : overviewText
               ? <MarkdownResponse>{overviewText}</MarkdownResponse>
-              : <p className="py-6 text-center text-xs text-muted-foreground">这个技能没有提供 SKILL.md</p>
+              : <p className="py-6 text-center text-xs text-muted-foreground">{t("s_dd58c36470")}</p>
         )}
 
         {tab === "files" && (openPath ? (
           <div className="rounded-md border border-border/50">
             <div className="flex items-center gap-2 border-b border-border/40 px-3 py-2">
               <Button className="h-6 gap-1 px-1.5 text-[11px]" onClick={() => setOpenPath("")} size="sm" type="button" variant="ghost">
-                <ChevronLeft className="size-3" />返回文件树
+                <ChevronLeft className="size-3" />{t("s_b3dd0b880c")}
               </Button>
               <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">{openPath}</span>
             </div>
             <div className="max-h-96 overflow-auto px-3 py-2">
               {fileLoading
-                ? <p className="text-xs text-muted-foreground">正在读取…</p>
+                ? <p className="text-xs text-muted-foreground">{t("s_fcabadb2a7")}</p>
                 : <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5">{fileText}</pre>}
             </div>
           </div>
         ) : (
           <div className="rounded-md border border-border/50">
             <p className="border-b border-border/40 px-3 py-2 text-[11px] text-muted-foreground">
-              共 {detail.files.length} 个文件
+              {t("s_3b6ef811b8")} {detail.files.length} {t("s_6218629ae2")}
             </p>
             {detail.files.map((file) => (
               <button
@@ -294,16 +295,16 @@ export function SkillHubDetailView({
         {tab === "versions" && (
           <div className="rounded-md border border-border/50">
             {detail.versions.length === 0
-              ? <p className="px-3 py-6 text-center text-xs text-muted-foreground">没有版本记录</p>
+              ? <p className="px-3 py-6 text-center text-xs text-muted-foreground">{t("s_df844966a8")}</p>
               : detail.versions.map((version) => (
                 <div className="border-b border-border/40 px-3 py-2.5 last:border-b-0" key={version.version}>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs font-medium">v{version.version}</span>
-                    {version.latest && <Badge variant="secondary">最新</Badge>}
+                    {version.latest && <Badge variant="secondary">{t("s_7e805a1230")}</Badge>}
                     {/* Comparison ignores a leading v so "v1.1.9" and "1.1.9" are the same release. */}
                     {installedVersion
                       && version.version.replace(/^v/i, "") === installedVersion.replace(/^v/i, "")
-                      && <Badge className="border-emerald-500/50 text-emerald-600 dark:text-emerald-400" variant="outline">本机已安装</Badge>}
+                      && <Badge className="border-emerald-500/50 text-emerald-600 dark:text-emerald-400" variant="outline">{t("s_e3277e9f89")}</Badge>}
                     <span className="ml-auto text-[11px] text-muted-foreground">{formatDate(version.createdAt)}</span>
                   </div>
                   {version.changelog && (
@@ -320,8 +321,7 @@ export function SkillHubDetailView({
           <div className="space-y-3">
             <div className="rounded-md border border-border/50 bg-muted/25 px-3 py-2.5">
               <p className="text-[11px] leading-5 text-muted-foreground">
-                SkillHub TRACE 从可信任度、可靠性、适用性、规范性、有效性五个维度评估技能，
-                结果由 AI 自动检测生成，仅供参考。
+                {t("s_8d31559f70")}
               </p>
             </div>
             <div className="flex items-baseline gap-2 px-1">
@@ -338,16 +338,16 @@ export function SkillHubDetailView({
             </div>
           </div>
         ) : (
-          <p className="py-6 text-center text-xs text-muted-foreground">这个技能还没有评测报告</p>
+          <p className="py-6 text-center text-xs text-muted-foreground">{t("s_c228120fb4")}</p>
         ))}
       </div>
 
       <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border/50 bg-background pt-3">
         <Button disabled={busy} onClick={() => onInstall("project")} size="sm" type="button">
-          <Download className="size-3.5" />安装到项目
+          <Download className="size-3.5" />{t("s_fce92787ed")}
         </Button>
         <Button disabled={busy} onClick={() => onInstall("global")} size="sm" type="button" variant="outline">
-          <Download className="size-3.5" />安装到全局
+          <Download className="size-3.5" />{t("s_268643e9a1")}
         </Button>
         {detail.homepage && (
           <a
@@ -356,7 +356,7 @@ export function SkillHubDetailView({
             rel="noreferrer"
             target="_blank"
           >
-            <ExternalLink className="size-3" />在 SkillHub 查看
+            <ExternalLink className="size-3" />{t("s_0ffa426624")}
           </a>
         )}
       </footer>

@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface ModelVariantEditorProps {
   effective: ModelVariantMap;
@@ -107,15 +108,15 @@ export function ModelVariantEditor({
   return (
     <section className="grid gap-3">
       <div>
-        <p className="text-xs font-medium">思考档位</p>
+        <p className="text-xs font-medium">{t("s_3b89b7af15")}</p>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
-          档位能力来自 OpenCode；这里只维护档位 key 和界面显示名称。
+          {t("s_67467a09a9")}
         </p>
       </div>
 
       <div className="grid grid-cols-[minmax(6rem,0.8fr)_minmax(7rem,1.2fr)_2rem] items-end gap-2">
         <label className="grid min-w-0 gap-1 text-[11px] text-muted-foreground">
-          档位 key
+          {t("s_7844b26186")}
           <Input
             className="h-8 min-w-0 font-mono text-xs"
             onChange={(event) => setNewVariantID(event.target.value)}
@@ -125,12 +126,12 @@ export function ModelVariantEditor({
                 addVariant();
               }
             }}
-            placeholder="例如 high"
+            placeholder={t("s_7ab8bc46f4")}
             value={newVariantID}
           />
         </label>
         <label className="grid min-w-0 gap-1 text-[11px] text-muted-foreground">
-          显示名称
+          {t("s_75ae6a8a7d")}
           <Input
             className="h-8 min-w-0 text-xs"
             onChange={(event) => setNewVariantLabel(event.target.value)}
@@ -140,17 +141,17 @@ export function ModelVariantEditor({
                 addVariant();
               }
             }}
-            placeholder="例如 高"
+            placeholder={t("s_f89f113163")}
             value={newVariantLabel}
           />
         </label>
         <Button
-          aria-label="添加思考档位"
+          aria-label={t("s_4c07ad0a35")}
           className="size-8"
           disabled={!canAdd}
           onClick={addVariant}
           size="icon-sm"
-          title="添加档位"
+          title={t("s_b168879ab8")}
           type="button"
           variant="ghost"
         >
@@ -165,8 +166,8 @@ export function ModelVariantEditor({
           <div className="grid min-h-11 grid-cols-[1.25rem_minmax(6rem,0.8fr)_minmax(7rem,1.2fr)_auto] items-center gap-2 px-3 py-2">
             <span />
             <Input className="h-8 min-w-0 font-mono text-xs" disabled value="default" />
-            <Input className="h-8 min-w-0 text-xs" disabled value="默认" />
-            <Badge className="justify-self-end text-[10px] font-normal" variant="secondary">系统</Badge>
+            <Input className="h-8 min-w-0 text-xs" disabled value={t("s_c8d09cf955")} />
+            <Badge className="justify-self-end text-[10px] font-normal" variant="secondary">{t("s_1a1f6dff78")}</Badge>
           </div>
         )}
         {ids.map((id, index) => {
@@ -197,7 +198,7 @@ export function ModelVariantEditor({
             >
               <GripVertical className="size-3.5 cursor-grab text-muted-foreground" />
               <Input
-                aria-label={`档位 ${id} 的 key`}
+                aria-label={t("s_81450128c2", { p0: id })}
                 className="h-8 min-w-0 font-mono text-xs"
                 defaultValue={id}
                 key={`key-${id}`}
@@ -205,10 +206,10 @@ export function ModelVariantEditor({
                 onKeyDown={(event) => {
                   if (event.key === "Enter") event.currentTarget.blur();
                 }}
-                title="改完按 Enter 或点走即可重命名"
+                title={t("s_8a4f26105c")}
               />
               <Input
-                aria-label={`${id} 的显示名称`}
+                aria-label={t("s_9fff59abf4", { p0: id })}
                 className="h-8 min-w-0 text-xs"
                 disabled={disabled}
                 onChange={(event) => updateLabel(id, event.target.value)}
@@ -217,15 +218,15 @@ export function ModelVariantEditor({
               />
               <div className="flex items-center justify-end gap-1">
                 <Badge className="hidden text-[10px] font-normal sm:inline-flex" variant="secondary">
-                  {disabled ? "已停用" : hasOverride ? "用户配置" : "OpenCode"}
+                  {disabled ? t("s_6c7dcbb73a") : hasOverride ? t("s_1c98a42537") : "OpenCode"}
                 </Badge>
                 {hasOverride && (
                   <Button
-                    aria-label={`清除档位 ${id} 的用户配置`}
+                    aria-label={t("s_f81d3d8091", { p0: id })}
                     className="size-7"
                     onClick={() => clearOverride(id)}
                     size="icon-sm"
-                    title="恢复 OpenCode 配置"
+                    title={t("s_f86245a65f")}
                     type="button"
                     variant="ghost"
                   >
@@ -234,11 +235,11 @@ export function ModelVariantEditor({
                 )}
                 {!disabled && (
                   <Button
-                    aria-label={`停用档位 ${id}`}
+                    aria-label={t("s_0f7f63d2fe", { p0: id })}
                     className="size-7"
                     onClick={() => disableVariant(id)}
                     size="icon-sm"
-                    title="停用档位"
+                    title={t("s_31f09ec30f")}
                     type="button"
                     variant="ghost"
                   >
@@ -251,7 +252,7 @@ export function ModelVariantEditor({
         })}
         {ids.length === 0 && (
           <p className="px-3 py-4 text-xs text-muted-foreground">
-            当前模型没有可用档位，可以在上方添加档位 key 和显示名称。
+            {t("s_192f8fcf87")}
           </p>
         )}
       </div>

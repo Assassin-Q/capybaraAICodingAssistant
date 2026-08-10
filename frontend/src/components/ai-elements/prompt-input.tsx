@@ -14,6 +14,7 @@ import { AttachmentPreviewDialog } from "@/components/ai-elements/attachment-pre
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 export type PromptInputFile = FileUIPart & { id: string; file: File };
 
@@ -73,7 +74,7 @@ const shouldAttachPastedText = (text: string): boolean =>
 const pastedTextFilename = (): string => {
   const now = new Date();
   const part = (value: number): string => value.toString().padStart(2, "0");
-  return `粘贴内容-${now.getFullYear()}${part(now.getMonth() + 1)}${part(now.getDate())}-${part(now.getHours())}${part(now.getMinutes())}${part(now.getSeconds())}.txt`;
+  return t("s_99565ae69d", { p0: now.getFullYear(), p1: part(now.getMonth() + 1), p2: part(now.getDate()), p3: part(now.getHours()), p4: part(now.getMinutes()), p5: part(now.getSeconds()) });
 };
 
 const formatFileSize = (size: number): string => {
@@ -279,7 +280,7 @@ export function PromptInputAttachments({ className }: { className?: string }) {
       <Attachments className={cn("w-full self-start justify-start px-2 pt-2", className)} variant="inline">
       {files.map((file) => (
           <Attachment
-            aria-label={`预览 ${file.filename ?? "附件"}`}
+            aria-label={t("s_f14ca938f0", { p0: file.filename ?? t("s_99f6fe6c41") })}
             className="h-11 max-w-[min(100%,19rem)] gap-2 border-0 bg-muted/60 px-2 pr-1.5 shadow-none hover:bg-muted"
             data={file}
             key={file.id}
@@ -300,7 +301,7 @@ export function PromptInputAttachments({ className }: { className?: string }) {
           >
             <AttachmentPreview className="size-8 bg-background/75 [&>svg]:size-4" />
             <AttachmentInfo className="text-xs leading-4" description={attachmentDetail(file)} />
-            <AttachmentRemove className="size-6 shrink-0 opacity-100 [&>svg]:size-3" label="移除附件" />
+            <AttachmentRemove className="size-6 shrink-0 opacity-100 [&>svg]:size-3" label={t("s_8f3ea228b8")} />
           </Attachment>
       ))}
       </Attachments>
@@ -313,7 +314,7 @@ export function PromptInputAttachmentButton({ className, ...props }: Omit<Compon
   const { openFileDialog } = usePromptInput();
   return (
     <InputGroupButton
-      aria-label="添加附件"
+      aria-label={t("s_dba9e8228b")}
       className={cn("size-8", className)}
       onClick={openFileDialog}
       size="icon-sm"

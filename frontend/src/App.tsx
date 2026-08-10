@@ -47,8 +47,10 @@ import type { WorkspacePreferences } from "@/lib/preferences";
 import { appendTextAttachments } from "@/lib/textAttachments";
 import { restoreActiveRun } from "@/components/assistant/runRestoration";
 import { getContextUsage } from "@/lib/tokenUsage";
+import { checkForUpdate, type UpdateStatus } from "@/lib/updateCheck";
 import { approvalModeAllows, type ApprovalMode } from "@/lib/approvalMode";
 import { buildProfessionalRoleInstructions } from "@/lib/professionalRoles";
+import { t } from "@/lib/i18n";
 interface QuestionAnswers { [requestID: string]: string[][]; }
 
 function App() {
@@ -99,6 +101,8 @@ function App() {
   const [runStatus, setRunStatus] = useState<RunStatus>("ready");
   /** Driven by session.status, so the automatic compaction pass shows up as well as a manual one. */
   const [compacting, setCompacting] = useState(false);
+  /** Checked once per panel load; a newer release turns the header dot amber. */
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>();
   const [connected, setConnected] = useState<boolean | null>(null);
   const [booting, setBooting] = useState(true);
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
@@ -366,7 +370,7 @@ function App() {
         const directory = runtime.projectPath ?? await ideaApi
           .getProjectPath()
           .catch(() => import.meta.env.VITE_PROJECT_PATH as string | undefined);
-        if (!directory) throw new Error("未获取到 IDEA 项目路径");
+        if (!directory) throw new Error(t("s_82c867faaa"));
         if (runtime.error) throw new Error(runtime.error);
 
         const [health, nextModels, nextAgents, initialSessions, nextCommands, nextSkills, nextConfig] = await Promise.all([
@@ -586,25 +590,25 @@ function App() {
           || serverCommand?.source === "skill"
           || commandName.startsWith("mcp");
         const isKnownCommand = localSlashCommands.has(commandName) || isAllowedServerCommand;
-        if (!isKnownCommand) throw new Error(`未知命令：/${commandName}`);
+        if (!isKnownCommand) throw new Error(t("s_6d47b4acb1", { p0: commandName }));
         if (typedText.startsWith("$") && preferences.disabledSkillNames.includes(commandName)) {
-          throw new Error(`技能已停用：$${commandName}`);
+          throw new Error(t("s_969b5ede07", { p0: commandName }));
         }
         setMessages((current) => [...current, createOptimisticUserMessage(messageID, commandText, attachments)]);
         setContexts([]);
         if (commandName === "init") {
-          if (!model) throw new Error("当前没有可用模型，无法初始化项目");
+          if (!model) throw new Error(t("s_1d719e37e8"));
           await openCodeApi.initSession(selectedSessionID, model, messageID, projectPath);
         } else if (commandName === "mcp") {
           const [mcpName, ...mcpPrompt] = argumentsText.split(/\s+/).filter(Boolean);
-          if (!mcpName || !mcpNames.includes(mcpName)) throw new Error("请选择已配置的 MCP 服务器");
+          if (!mcpName || !mcpNames.includes(mcpName)) throw new Error(t("s_5a92734105"));
           await openCodeApi.sendPrompt(selectedSessionID, {
             agents: mentionedSubagents(text, agents).map((name) => ({ name })),
             directory: projectPath,
             files: transportAttachments,
             messageID,
             personaInstructions: roleInstructions || undefined,
-            text: `请优先使用 MCP 服务器“${mcpName}”完成任务。\n\n${appendTextAttachments(mcpPrompt.join(" "), textAttachments)}`,
+            text: t("s_8a9ea72c55", { p0: mcpName, p1: appendTextAttachments(mcpPrompt.join(" "), textAttachments) }),
           });
         } else {
           const result = await openCodeApi.executeCommand(
@@ -764,6 +768,10 @@ function App() {
     runAllowancesRef.current.clear();
   }, [selectedSessionID]);
 
+  useEffect(() => {
+    void checkForUpdate().then(setUpdateStatus).catch(() => undefined);
+  }, []);
+
   autoAnswerRef.current = autoAnswerPermissions;
 
   const handlePermissionReply = useCallback(async (request: PermissionRequest, reply: PermissionReply) => {
@@ -896,7 +904,7 @@ function App() {
 
   const handleVariantChange = useCallback(async (variant: string | undefined) => {
     if (!selectedSessionID || !selectedModel || variant === selectedVariant) return;
-    if (!modelSupportsVariant(selectedModel, variant)) return setError(`当前模型不支持思考档位“${variant}”`);
+    if (!modelSupportsVariant(selectedModel, variant)) return setError(t("s_fbae765f6e", { p0: variant }));
     const previous = selectedVariant;
     const nextRef = modelRefWithAvailableVariant(selectedModel, variant);
     setSelectedVariant(variant);
@@ -983,7 +991,7 @@ function App() {
     () => resolveStreamingAssistantState(messages, conversationTurns, streamingAssistantID),
     [conversationTurns, messages, streamingAssistantID]
   );
-  return <ErrorBoundary label="助手界面"><AssistantShell
+  return <ErrorBoundary label={t("s_f887d06f37")}><AssistantShell
     agents={agents}
     booting={booting}
     commands={commands}
@@ -992,6 +1000,7 @@ function App() {
     contextUsage={contextUsage}
     contexts={contexts}
     compacting={compacting}
+    updateStatus={updateStatus}
     composerText={composerText}
     conversationTurns={conversationTurns}
     currentPermissions={currentPermissions}
@@ -1041,7 +1050,7 @@ function App() {
     onSessionTitleCancel={() => setEditingSessionTitle(false)}
     onSessionTitleChange={setSessionTitleDraft}
     onSessionTitleEdit={() => {
-      setSessionTitleDraft(currentSession?.title ?? "新会话");
+      setSessionTitleDraft(currentSession?.title ?? t("s_db44360cd0"));
       setEditingSessionTitle(true);
     }}
     onSessionTitleSave={() => void saveSessionTitle()}

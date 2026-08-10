@@ -14,6 +14,7 @@ import type { ComponentProps } from "react";
 import { memo } from "react";
 
 import { CodeBlock } from "./code-block";
+import { t } from "@/lib/i18n";
 
 export type AgentProps = ComponentProps<"div">;
 
@@ -67,7 +68,7 @@ export const AgentInstructions = memo(
   ({ className, children, ...props }: AgentInstructionsProps) => (
     <div className={cn("space-y-2", className)} {...props}>
       <span className="font-medium text-muted-foreground text-sm">
-        说明
+        {t("s_26670dda42")}
       </span>
       <div className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
         <p>{children}</p>
@@ -80,7 +81,7 @@ export type AgentToolsProps = ComponentProps<typeof Accordion>;
 
 export const AgentTools = memo(({ className, ...props }: AgentToolsProps) => (
   <div className={cn("space-y-2", className)}>
-    <span className="font-medium text-muted-foreground text-sm">工具</span>
+    <span className="font-medium text-muted-foreground text-sm">{t("s_a72ef18d9a")}</span>
     <Accordion className="rounded-md border" {...props} />
   </div>
 ));
@@ -103,7 +104,7 @@ export const AgentTool = memo(
         {...props}
       >
         <AccordionTrigger className="px-3 py-2 text-sm hover:no-underline">
-          {typeof tool.description === "string" ? tool.description : "暂无说明"}
+          {typeof tool.description === "string" ? tool.description : t("s_6dd28f404d")}
         </AccordionTrigger>
         <AccordionContent className="px-3 pb-3">
           <div className="rounded-md bg-muted/50">
@@ -123,7 +124,7 @@ export const AgentOutput = memo(
   ({ className, schema, ...props }: AgentOutputProps) => (
     <div className={cn("space-y-2", className)} {...props}>
       <span className="font-medium text-muted-foreground text-sm">
-        输出结构
+        {t("s_5990379088")}
       </span>
       <div className="rounded-md bg-muted/50">
         <CodeBlock code={schema} language="typescript" />

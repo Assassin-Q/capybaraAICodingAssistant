@@ -1,15 +1,16 @@
 import type { ModelInfo, ModelRef } from "@/lib/opencode";
+import { t } from "@/lib/i18n";
 
 const VARIANT_LABELS: Record<string, string> = {
-  default: "默认",
-  high: "高",
-  low: "低",
-  max: "极高",
-  medium: "中",
-  minimal: "极低",
-  none: "关闭",
-  thinking: "思考",
-  xhigh: "超高",
+  default: t("s_c8d09cf955"),
+  high: t("s_b096b3f5ac"),
+  low: t("s_b9ee259b7f"),
+  max: t("s_c34687da2b"),
+  medium: t("s_0869071c92"),
+  minimal: t("s_db71a9ec61"),
+  none: t("s_6c14bd7f6f"),
+  thinking: t("s_a6c1499244"),
+  xhigh: t("s_e9b58f9ec4"),
 };
 
 export const variantLabel = (value?: string): string => {

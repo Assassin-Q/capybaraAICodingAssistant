@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 export interface PreviewableAttachment {
   file?: File;
@@ -28,9 +29,9 @@ const isTextAttachment = (attachment: PreviewableAttachment): boolean => {
 
 const readAttachmentText = async (attachment: PreviewableAttachment): Promise<string> => {
   if (attachment.file) return attachment.file.text();
-  if (!attachment.url) throw new Error("附件地址不可用");
+  if (!attachment.url) throw new Error(t("s_a45c1f5f9f"));
   const response = await fetch(attachment.url);
-  if (!response.ok) throw new Error(`读取附件失败（${response.status}）`);
+  if (!response.ok) throw new Error(t("s_f8f0a7f903", { p0: response.status }));
   return response.text();
 };
 
@@ -52,7 +53,7 @@ export function AttachmentPreviewDialog({ attachment, onOpenChange, open }: Atta
         if (!cancelled) setText(content);
       })
       .catch((error: unknown) => {
-        if (!cancelled) setTextError(error instanceof Error ? error.message : "读取附件失败");
+        if (!cancelled) setTextError(error instanceof Error ? error.message : t("s_abe5fe4c08"));
       })
       .finally(() => {
         if (!cancelled) setTextLoading(false);
@@ -71,11 +72,11 @@ export function AttachmentPreviewDialog({ attachment, onOpenChange, open }: Atta
         image ? "w-fit max-w-[min(90vw,64rem)]" : "max-w-[min(90vw,52rem)]"
       )}>
         <DialogTitle className={cn("truncate px-4 pt-4 pr-12 text-sm font-medium", image && "sr-only")}>
-          {attachment.filename ?? "附件预览"}
+          {attachment.filename ?? t("s_c080054ff9")}
         </DialogTitle>
         {image ? (
           <img
-            alt={attachment.filename ?? "图片附件"}
+            alt={attachment.filename ?? t("s_d0fc4c5e10")}
             className="max-h-[86vh] max-w-full object-contain"
             src={attachment.url}
           />
@@ -92,7 +93,7 @@ export function AttachmentPreviewDialog({ attachment, onOpenChange, open }: Atta
             )}
           </div>
         ) : (
-          <div className="flex min-h-40 items-center justify-center px-6 text-sm text-muted-foreground">当前附件类型暂不支持预览</div>
+          <div className="flex min-h-40 items-center justify-center px-6 text-sm text-muted-foreground">{t("s_3c575f936d")}</div>
         )}
       </DialogContent>
     </Dialog>

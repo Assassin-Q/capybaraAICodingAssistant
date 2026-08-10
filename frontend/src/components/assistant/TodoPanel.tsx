@@ -2,18 +2,19 @@ import { Check, ChevronUp, Circle, ListTodo, LoaderCircle } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { TodoInfo } from "@/lib/opencode";
+import { t } from "@/lib/i18n";
 
 const priorityLabel: Record<string, string> = {
-  high: "高",
-  low: "低",
-  medium: "中",
+  high: t("s_b096b3f5ac"),
+  low: t("s_b9ee259b7f"),
+  medium: t("s_0869071c92"),
 };
 
 const statusLabel: Record<string, string> = {
-  cancelled: "已取消",
-  completed: "已完成",
-  in_progress: "进行中",
-  pending: "待处理",
+  cancelled: t("s_a5ffdc95ee"),
+  completed: t("s_e99b48a29b"),
+  in_progress: t("s_6f1972e48e"),
+  pending: t("s_59a9eb4e65"),
 };
 
 const isFinished = (todo: TodoInfo): boolean =>
@@ -31,14 +32,14 @@ export function TodoPanel({ active = true, todos }: { active?: boolean; todos: T
       <Popover>
         <PopoverTrigger asChild>
           <button
-            aria-label="查看任务清单"
+            aria-label={t("s_9c31a29913")}
             className="pointer-events-auto mx-auto flex h-8 max-w-full items-center gap-2 rounded-full bg-popover px-3 text-xs text-popover-foreground shadow-sm ring-1 ring-border/50 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
             type="button"
           >
             {activeTodo.status === "in_progress"
               ? <LoaderCircle className="size-3.5 shrink-0 animate-spin text-primary" />
               : <ListTodo className="size-3.5 shrink-0 text-muted-foreground" />}
-            <span className="shrink-0 font-medium">{`第 ${activeIndex + 1}/${todos.length} 步`}</span>
+            <span className="shrink-0 font-medium">{t("s_137e09917b", { p0: activeIndex + 1, p1: todos.length })}</span>
             <span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-border" />
             <span className="min-w-0 truncate text-muted-foreground">{activeTodo.content}</span>
             <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />

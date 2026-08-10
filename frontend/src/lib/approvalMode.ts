@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import type {
   LegacyPermissionConfig,
   PermissionEffect,
@@ -14,19 +15,19 @@ export interface ApprovalModeOption {
 
 export const approvalModeOptions: ApprovalModeOption[] = [
   {
-    description: "只有读取是自动的，其余逐项询问",
+    description: t("s_a557a9a148"),
     id: "ask",
-    label: "请求批准",
+    label: t("s_4e79789710"),
   },
   {
-    description: "读写文件自动完成，命令和联网仍需确认",
+    description: t("s_a150e1cc69"),
     id: "auto",
-    label: "替我审批",
+    label: t("s_0eb7bec970"),
   },
   {
-    description: "全部放行，不再逐项询问",
+    description: t("s_dbcd31de89"),
     id: "full",
-    label: "完全访问",
+    label: t("s_31fe549474"),
   },
 ];
 

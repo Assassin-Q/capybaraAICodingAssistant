@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { modelKey } from "@/components/assistant/shared";
 import type { ModelInfo } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface MemoryModelPickerProps {
   disabled?: boolean;
@@ -43,7 +44,7 @@ export function MemoryModelPicker({ disabled, models, onChange, value }: MemoryM
     <ModelSelector onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setHasInteracted(false); }} open={open}>
       <ModelSelectorTrigger asChild>
         <Button
-          aria-label="选择记忆整理模型"
+          aria-label={t("s_a66e8eced4")}
           className="h-9 w-full justify-start gap-2 bg-muted/45 px-3 text-xs font-normal hover:bg-muted/70"
           disabled={disabled}
           type="button"
@@ -51,7 +52,7 @@ export function MemoryModelPicker({ disabled, models, onChange, value }: MemoryM
         >
           <Cpu className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate text-left">
-            {selected ? `${selected.providerID} / ${selected.name}` : value || "从已配置供应商中选择模型"}
+            {selected ? `${selected.providerID} / ${selected.name}` : value || t("s_e7afb50375")}
           </span>
           <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
         </Button>
@@ -61,11 +62,11 @@ export function MemoryModelPicker({ disabled, models, onChange, value }: MemoryM
         className="w-[min(30rem,calc(100vw-1rem))]"
         onKeyDown={(event) => { if (["ArrowDown", "ArrowUp", "Enter"].includes(event.key)) setHasInteracted(true); }}
         side="bottom"
-        title="选择记忆整理模型"
+        title={t("s_a66e8eced4")}
       >
-        <ModelSelectorInput autoFocus placeholder="搜索供应商或模型" />
+        <ModelSelectorInput autoFocus placeholder={t("s_6f33db2494")} />
         <ModelSelectorList className="max-h-[min(52vh,22rem)] py-1">
-          <ModelSelectorEmpty>没有已配置且可用的模型</ModelSelectorEmpty>
+          <ModelSelectorEmpty>{t("s_d89472fe24")}</ModelSelectorEmpty>
           {grouped.map(([providerID, providerModels]) => (
             <ModelSelectorGroup heading={providerID} key={providerID}>
               {providerModels.map((model) => {

@@ -15,6 +15,7 @@ import com.aicoding.plugin.services.GitFileDiffRequest
 import com.aicoding.plugin.services.FileAttachRequest
 import com.aicoding.plugin.services.FrontendLogRequest
 import com.aicoding.plugin.services.FrontendLogService
+import com.aicoding.plugin.services.OpenCodeRequirementService
 import com.aicoding.plugin.services.FileSearchRequest
 import com.aicoding.plugin.services.GitStatusService
 import com.aicoding.plugin.services.IdeaFileSearchService
@@ -159,6 +160,7 @@ class HttpServerManager(private val project: Project) {
     private val insightService = IdeaInsightService(project)
     private val fileSearchService = IdeaFileSearchService(project)
     private val frontendLogService = FrontendLogService()
+    private val requirementService = OpenCodeRequirementService(project)
     private val approvalModeService = project.getService(ApprovalModeService::class.java)
     private val browserService = project.getService(BrowserControlService::class.java)
     private val gitStatusService = project.getService(GitStatusService::class.java)
@@ -747,6 +749,8 @@ class HttpServerManager(private val project: Project) {
                 writeJson(exchange, 200, insightService.symbol(body<IdeaSymbolRequest>(exchange)))
             route == "/navigate" && method == "POST" ->
                 writeJson(exchange, 200, insightService.navigate(body<IdeaNavigateRequest>(exchange)))
+            route == "/opencode-requirement" && method == "GET" ->
+                writeJson(exchange, 200, requirementService.check())
             route == "/client-log" && method == "POST" ->
                 writeJson(exchange, 200, frontendLogService.append(body<FrontendLogRequest>(exchange)))
             route == "/client-log" && method == "GET" -> {

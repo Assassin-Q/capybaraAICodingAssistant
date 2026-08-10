@@ -2,6 +2,7 @@ import { gitApi } from "@/lib/ideaIntegrations";
 import { modelRefWithAvailableVariant } from "@/components/assistant/modelVariants";
 import { openCodeApi } from "@/lib/opencode";
 import type { AssistantMessage, ModelInfo } from "@/lib/opencode";
+import { t } from "@/lib/i18n";
 
 interface CommitSummaryOptions {
   model?: ModelInfo;
@@ -10,9 +11,9 @@ interface CommitSummaryOptions {
 }
 
 const PROMPT_HEADER = [
-  "根据下面的 git 改动生成一条中文提交信息。",
-  "要求：第一行是不超过 50 个字的摘要，使用祈使语气；如果改动较多，空一行后用 - 列出要点。",
-  "只输出提交信息本身，不要解释、不要代码块、不要引号。",
+  t("s_cc49fd1dd9"),
+  t("s_4990aefffc"),
+  t("s_1da87a4e18"),
   "",
 ].join("\n");
 
@@ -34,13 +35,13 @@ export async function generateCommitSummary({
   projectPath,
   variant,
 }: CommitSummaryOptions): Promise<string> {
-  if (!projectPath) throw new Error("未获取到项目路径");
-  if (!model) throw new Error("请先在输入框选择模型");
+  if (!projectPath) throw new Error(t("s_e332687e33"));
+  if (!model) throw new Error(t("s_f1e3f90383"));
 
   const diff = await gitApi.diffSummary();
-  if (!diff.available) throw new Error(diff.message ?? "无法读取 Git 改动");
+  if (!diff.available) throw new Error(diff.message ?? t("s_4a95c2502a"));
   const body = `${diff.stat}\n\n${diff.nameStatus}`.trim();
-  if (!body) throw new Error("没有可总结的改动");
+  if (!body) throw new Error(t("s_a504185a9f"));
 
   const modelRef = modelRefWithAvailableVariant(model, variant);
   const session = await openCodeApi.createSession(projectPath, modelRef);
@@ -63,7 +64,7 @@ export async function generateCommitSummary({
       .reverse()
       .find((message): message is AssistantMessage => message.type === "assistant");
     const text = reply ? assistantText(reply) : "";
-    if (!text) throw new Error("模型没有返回提交信息");
+    if (!text) throw new Error(t("s_572f8dea2c"));
     // Strip stray fencing some models add despite the instruction.
     return text.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/, "").trim();
   } finally {

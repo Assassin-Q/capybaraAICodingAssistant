@@ -43,6 +43,7 @@ import {
   type ManagedSkillInfo,
 } from "@/lib/ideaIntegrations";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface SkillHubPanelProps {
   onInstalled: () => void;
@@ -81,21 +82,21 @@ function FilterMenu({ label, value, options, onChange }: FilterMenuProps) {
 /** Mirrors SkillHub's own scene categories. */
 const categoryLabels: Record<string, string> = {
   "ai-agent": "AI Agent",
-  "business-ops": "商业运营",
-  "content-creation": "内容创作",
-  "data-analysis": "数据分析",
-  "design-media": "设计多媒体",
-  "dev-programming": "开发编程",
-  "it-ops-security": "IT 运维安全",
-  "knowledge-management": "知识管理",
-  "office-efficiency": "办公效率",
-  professional: "专业领域",
+  "business-ops": t("s_63b0a125d3"),
+  "content-creation": t("s_f0aa02e6aa"),
+  "data-analysis": t("s_e2e51da567"),
+  "design-media": t("s_358ef9fd2e"),
+  "dev-programming": t("s_af06b3008c"),
+  "it-ops-security": t("s_d494c238ed"),
+  "knowledge-management": t("s_55187c9a79"),
+  "office-efficiency": t("s_6cb229dd88"),
+  professional: t("s_5d09753c20"),
 };
 
 const sourceLabels: Record<string, string> = {
   clawhub: "SkillHub",
-  community: "社区",
-  enterprise: "企业",
+  community: t("s_367c1ec5d7"),
+  enterprise: t("s_00c5fdb039"),
 };
 
 /**
@@ -104,11 +105,11 @@ const sourceLabels: Record<string, string> = {
  * SkillHub's own 推荐精选 (`curated_score`) and 近期飙升 (`rank`) are absent rather than faked.
  */
 const sortOptions = [
-  { id: "score", label: "全部" },
-  { id: "downloads", label: "下载量" },
-  { id: "stars", label: "收藏量" },
-  { id: "installs", label: "安装量" },
-  { id: "updated_at", label: "最近上新" },
+  { id: "score", label: t("s_778fc8f994") },
+  { id: "downloads", label: t("s_2a6c7441d8") },
+  { id: "stars", label: t("s_bcc5c1db11") },
+  { id: "installs", label: t("s_0fbe0bf7e0") },
+  { id: "updated_at", label: t("s_10f6cdccba") },
 ] as const;
 
 type SortId = typeof sortOptions[number]["id"];
@@ -171,7 +172,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
         });
         if (!response.success) {
           setResults(undefined);
-          setError(response.message ?? "SkillHub 请求失败");
+          setError(response.message ?? t("s_70475ab9c2"));
           return;
         }
         setResults(response.results);
@@ -227,14 +228,14 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
 
   const install = async (skill: SkillHubSkill, scope: ManagedScope) => {
     setBusy(skill.slug);
-    setNotice(`正在下载 ${skill.slug}…`);
+    setNotice(t("s_cea45d92d8", { p0: skill.slug }));
     try {
       const result = await skillsApi.installFromHub({
         coordinate: skill.publicSlug ?? skill.slug,
         overwrite: false,
         scope,
       });
-      if (report(result, `已安装 ${skill.slug}`)) onInstalled();
+      if (report(result, t("s_a1a76712d9", { p0: skill.slug }))) onInstalled();
     } catch (installError) {
       setNotice("");
       setError(errorMessage(installError));
@@ -261,7 +262,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <SettingsHeader
-        description="数据来源：腾讯 SkillHub"
+        description={t("s_b771750ad7")}
         loading={loading}
         onRefresh={() => void load(query)}
         title="SkillHub"
@@ -273,8 +274,8 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
         <div className="flex items-center gap-3 rounded-md border border-border/50 bg-card/60 px-4 py-3">
           <WifiOff className="size-4 text-muted-foreground" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">无法连接 SkillHub</p>
-            <p className="mt-0.5 break-all text-xs text-muted-foreground">{status?.message ?? "正在检测…"}</p>
+            <p className="text-sm font-medium">{t("s_78b724d71b")}</p>
+            <p className="mt-0.5 break-all text-xs text-muted-foreground">{status?.message ?? t("s_0eda5436f1")}</p>
           </div>
         </div>
       )}
@@ -289,13 +290,13 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
             onKeyDown={(event) => {
               if (event.key === "Enter") void load(query);
             }}
-            placeholder="搜索技能，留空查看全部"
+            placeholder={t("s_44b6ed0346")}
             value={query}
           />
         </div>
         <Button disabled={!ready || loading} onClick={() => void load(query)} size="sm" type="button">
           <Search className="size-3.5" />
-          搜索
+          {t("s_f04090805c")}
         </Button>
       </div>
 
@@ -316,7 +317,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
           </Button>
         ))}
         <Button
-          aria-label={order === "desc" ? "当前为降序，点击切换升序" : "当前为升序，点击切换降序"}
+          aria-label={order === "desc" ? t("s_0d776de844") : t("s_f05920d44b")}
           onClick={() => {
             const nextOrder = order === "desc" ? "asc" : "desc";
             setOrder(nextOrder);
@@ -327,28 +328,28 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
           variant="ghost"
         >
           {order === "desc" ? <ArrowDownWideNarrow className="size-3.5" /> : <ArrowUpNarrowWide className="size-3.5" />}
-          {order === "desc" ? "降序" : "升序"}
+          {order === "desc" ? t("s_a4c38f3ce2") : t("s_c0276ec9a7")}
         </Button>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <FilterMenu
-            label="场景分类"
+            label={t("s_b5bb4a4a9c")}
             onChange={(value) => {
               setCategory(value);
               void load(query, 1, { category: value });
             }}
-            options={[{ value: "all", label: "所有场景分类" }, ...categories.map((value) => ({
+            options={[{ value: "all", label: t("s_80bedda93c") }, ...categories.map((value) => ({
               value,
               label: categoryLabels[value] ?? value,
             }))]}
             value={category}
           />
           <FilterMenu
-            label="来源"
+            label={t("s_c63f79e636")}
             onChange={(value) => {
               setSource(value);
               void load(query, 1, { source: value });
             }}
-            options={[{ value: "all", label: "所有来源" }, ...sources.map((value) => ({
+            options={[{ value: "all", label: t("s_7e8aac04ce") }, ...sources.map((value) => ({
               value,
               label: sourceLabels[value] ?? value,
             }))]}
@@ -363,9 +364,9 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
               });
             }}
             options={[
-              { value: "all", label: "不限 API Key" },
-              { value: "none", label: "无需 API Key" },
-              { value: "required", label: "需配置 API Key" },
+              { value: "all", label: t("s_03cf3af46d") },
+              { value: "none", label: t("s_671fab0538") },
+              { value: "required", label: t("s_aa170923aa") },
             ]}
             value={apiKey}
           />
@@ -374,9 +375,9 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border/50 bg-muted/10">
         {results === undefined ? (
-          <EmptyState icon={<Wifi className="size-5" />}>{ready ? "正在加载技能…" : "SkillHub 暂时不可达"}</EmptyState>
+          <EmptyState icon={<Wifi className="size-5" />}>{ready ? t("s_3dfadbf069") : t("s_406bbbb5e6")}</EmptyState>
         ) : visible.length === 0 ? (
-          <EmptyState icon={<PackageOpen className="size-5" />}>没有符合条件的技能</EmptyState>
+          <EmptyState icon={<PackageOpen className="size-5" />}>{t("s_5698e104f0")}</EmptyState>
         ) : (
           visible.map((skill) => (
             <article
@@ -386,7 +387,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
               <button
                 className="flex min-w-0 flex-1 items-center gap-3 text-left"
                 onClick={() => setDetail(skill)}
-                title="查看详情"
+                title={t("s_faea8c1db9")}
                 type="button"
               >
                 <SkillIcon skill={skill} />
@@ -399,12 +400,12 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
                     {skill.requiresApiKey && (
                       <Badge variant="outline">
                         <KeyRound className="size-3" />
-                        需 API Key
+                        {t("s_8e12c97a7a")}
                       </Badge>
                     )}
                   </div>
                   <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-                    {skill.description ?? "未提供介绍"}
+                    {skill.description ?? t("s_7e73fb8978")}
                   </p>
                 </div>
               </button>
@@ -421,7 +422,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    aria-label={`安装 ${skill.name ?? skill.slug}`}
+                    aria-label={t("s_bbabab64aa", { p0: skill.name ?? skill.slug })}
                     className={cn("h-8 w-24 shrink-0 gap-1 text-xs", busy === skill.slug && "opacity-60")}
                     disabled={busy !== ""}
                     size="sm"
@@ -429,13 +430,13 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
                     variant="outline"
                   >
                     <CloudDownload className="size-3.5" />
-                    {busy === skill.slug ? "安装中" : "安装"}
+                    {busy === skill.slug ? t("s_411642f1d0") : t("s_087db63ab1")}
                     <ChevronDown className="size-3 opacity-60" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => void install(skill, "project")}>安装到项目</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => void install(skill, "global")}>安装到全局</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void install(skill, "project")}>{t("s_fce92787ed")}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void install(skill, "global")}>{t("s_268643e9a1")}</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </article>
@@ -445,11 +446,11 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
       {results !== undefined && total > 0 && (
         <div className="flex shrink-0 items-center justify-between gap-3 text-xs text-muted-foreground">
           <span>
-            共 {total.toLocaleString("zh-CN")} 个技能，第 {page}/{pageCount} 页
+            {t("s_3b6ef811b8")} {total.toLocaleString("zh-CN")} {t("s_acd1fae81a")} {page}/{pageCount} {t("s_73422182ab")}
           </span>
           <div className="flex items-center gap-1">
             <Button
-              aria-label="上一页"
+              aria-label={t("s_b41561d807")}
               disabled={loading || page <= 1}
               onClick={() => void load(query, page - 1)}
               size="icon-sm"
@@ -459,7 +460,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
               <ChevronLeft className="size-4" />
             </Button>
             <Button
-              aria-label="下一页"
+              aria-label={t("s_67a246a344")}
               disabled={loading || page >= pageCount}
               onClick={() => void load(query, page + 1)}
               size="icon-sm"

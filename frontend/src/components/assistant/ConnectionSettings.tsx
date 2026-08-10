@@ -3,14 +3,24 @@ import { RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { AppearanceSettings } from "@/components/assistant/AppearanceSettings";
+import { LanguageSettings } from "@/components/assistant/LanguageSettings";
+import type { LocalePreference } from "@/lib/i18n";
+import type { UpdateStatus } from "@/lib/updateCheck";
+import { OpenCodeRequirementNotice } from "@/components/assistant/OpenCodeRequirementNotice";
+import { UpdateNotice } from "@/components/assistant/UpdateNotice";
 import { ConfirmDialog } from "@/components/assistant/ConfirmDialog";
 import { SettingsMessage, useConfirm, useSettingsFeedback } from "@/components/assistant/settingsShared";
 import { errorMessage } from "@/components/assistant/shared";
 import { ideaApi, type IdeaRuntimeConfig } from "@/lib/idea";
 import { setOpenCodeBaseUrl } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface ConnectionSettingsProps {
+  /** Current language preference and its setter, surfaced here alongside the appearance controls. */
+  language: LocalePreference;
+  onLanguageChange: (language: LocalePreference) => void;
+  updateStatus?: UpdateStatus;
   baseUrl: string;
   connected: boolean;
   /** Reloads models, agents, sessions and commands after the endpoint changes. */
@@ -18,7 +28,7 @@ interface ConnectionSettingsProps {
   projectPath?: string;
 }
 
-export function ConnectionSettings({ baseUrl, connected, onChanged, projectPath }: ConnectionSettingsProps) {
+export function ConnectionSettings({ baseUrl, connected, language, onChanged, onLanguageChange, projectPath, updateStatus }: ConnectionSettingsProps) {
   const [restarting, setRestarting] = useState(false);
   /** Set when a restart turned out to be a no-op against an externally started server. */
   const [external, setExternal] = useState<IdeaRuntimeConfig>();
@@ -27,7 +37,7 @@ export function ConnectionSettings({ baseUrl, connected, onChanged, projectPath 
 
   const restart = async (force: boolean) => {
     setRestarting(true);
-    setNotice(force ? "正在结束并重新启动 OpenCode…" : "正在重新连接 OpenCode…");
+    setNotice(force ? t("s_24abcb2e4b") : t("s_7a325829af"));
     setError("");
     setExternal(undefined);
     try {
@@ -45,8 +55,8 @@ export function ConnectionSettings({ baseUrl, connected, onChanged, projectPath 
       } else {
         setNotice(
           runtime.managed
-            ? `已重启插件托管的 OpenCode：${runtime.baseUrl ?? ""}`
-            : `已结束原进程并重新启动：${runtime.baseUrl ?? ""}`
+            ? t("s_690e271a87", { p0: runtime.baseUrl ?? "" })
+            : t("s_2652bccc7f", { p0: runtime.baseUrl ?? "" })
         );
       }
       onChanged();
@@ -62,16 +72,19 @@ export function ConnectionSettings({ baseUrl, connected, onChanged, projectPath 
     // `max-w-3xl` alone pinned the content left and left the rest of a wide panel empty. Every
     // other section fills the width; this one now matches, with a cap so the lines stay readable.
     <section className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+      {/* Above everything: a missing or outdated OpenCode makes every other control meaningless. */}
+      <OpenCodeRequirementNotice />
+      <UpdateNotice status={updateStatus} />
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold">连接</h2>
+          <h2 className="text-lg font-semibold">{t("s_7328deebb5")}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            当前插件直接连接 OpenCode；IDEA 仅提供服务发现和编辑器上下文。
+            {t("s_ce3e014483")}
           </p>
         </div>
         <Button disabled={restarting} onClick={() => void restart(false)} size="sm" type="button" variant="outline">
           <RotateCcw className={cn("size-3.5", restarting && "animate-spin")} />
-          重启服务
+          {t("s_b02ebe307b")}
         </Button>
       </header>
 
@@ -79,34 +92,34 @@ export function ConnectionSettings({ baseUrl, connected, onChanged, projectPath 
 
       {external && (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-400">
-          <p className="font-medium">没有真正重启——这个 OpenCode 不是插件启动的</p>
+          <p className="font-medium">{t("s_401fe47a7b")}</p>
           <p className="mt-1 leading-5">
-            插件只是重新连接到了同一个进程
-            {external.externalPid ? `（PID ${external.externalPid}）` : ""}，进程从未停止。
-            <b>OpenCode 只在启动时加载插件</b>，所以工具桥接、审批模式、新装的技能都不会生效。
+            {t("s_02034b5454")}
+            {external.externalPid ? `（PID ${external.externalPid}）` : ""}{t("s_9d0c55c999")}
+            <b>{t("s_9eab93dc60")}</b>{t("s_37893c1dd7")}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Button
               disabled={restarting}
               onClick={() =>
                 confirm.ask({
-                  confirmLabel: "结束并重启",
-                  description: `将结束进程${external.externalPid ? ` PID ${external.externalPid}` : ""}，然后由插件重新启动 OpenCode。该进程上正在进行的任何工作都会中断。`,
+                  confirmLabel: t("s_ec00d5cd76"),
+                  description: t("s_9563306102", { p0: external.externalPid ? ` PID ${external.externalPid}` : "" }),
                   destructive: true,
                   onConfirm: async () => {
                     confirm.close();
                     await restart(true);
                   },
-                  title: "结束外部启动的 OpenCode？",
+                  title: t("s_f591a93564"),
                 })
               }
               size="sm"
               type="button"
               variant="destructive"
             >
-              强制重启
+              {t("s_cae00a80bb")}
             </Button>
-            <span className="text-[11px] opacity-80">或者到你启动它的终端里自行重启</span>
+            <span className="text-[11px] opacity-80">{t("s_1a5568fd38")}</span>
           </div>
         </div>
       )}
@@ -115,30 +128,31 @@ export function ConnectionSettings({ baseUrl, connected, onChanged, projectPath 
         <div className="flex items-center gap-3 border-b border-border px-4 py-4">
           <span className={cn("size-2 rounded-full", connected ? "bg-emerald-500" : "bg-destructive")} />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{connected ? "OpenCode 已连接" : "OpenCode 未连接"}</p>
+            <p className="text-sm font-medium">{connected ? t("s_aeeba1b5f4") : t("s_4ca5bf9106")}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {connected ? "服务响应正常" : "可以点击右上角“重启服务”重新发现或启动"}
+              {connected ? t("s_8e0705f06a") : t("s_7bee6679ba")}
             </p>
           </div>
         </div>
         <dl className="grid gap-4 px-4 py-4 sm:grid-cols-2">
           <div>
-            <dt className="text-xs text-muted-foreground">服务地址</dt>
+            <dt className="text-xs text-muted-foreground">{t("s_86e118291e")}</dt>
             <dd className="mt-1 break-all font-mono text-xs">{baseUrl}</dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">工作区</dt>
-            <dd className="mt-1 break-all font-mono text-xs">{projectPath ?? "未获取到项目路径"}</dd>
+            <dt className="text-xs text-muted-foreground">{t("s_a1ff8da47d")}</dt>
+            <dd className="mt-1 break-all font-mono text-xs">{projectPath ?? t("s_e332687e33")}</dd>
           </div>
         </dl>
       </div>
 
       <p className="text-xs text-muted-foreground">
-        重启只作用于本机的 OpenCode 服务：若服务由插件启动，会先结束再重新拉起；若是你自己启动的，
-        插件只重新探测 12001-12100 端口并重新连接，不会结束你的进程。
+        {t("s_7e74e791fb")}
       </p>
       {/* Appearance had its own page for two settings; it lives here now. */}
       <div className="border-t border-border pt-5">
+        <LanguageSettings onChange={onLanguageChange} value={language} />
+
         <AppearanceSettings />
       </div>
 

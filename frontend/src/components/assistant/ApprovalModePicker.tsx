@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { approvalModeOptions, type ApprovalMode } from "@/lib/approvalMode";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 const modeIcon = (mode: ApprovalMode) => {
   if (mode === "full") return ShieldCheck;
@@ -57,15 +58,15 @@ export function ApprovalModePicker({
     >
       <ModelSelectorTrigger asChild>
         <Button
-          aria-label={`审批模式：${selected?.label ?? ""}`}
+          aria-label={t("s_af1dd55710", { p0: selected?.label ?? "" })}
           className={cn("h-7 max-w-[8.5rem] gap-1.5 rounded-full bg-muted/55 px-2 text-[11px] font-normal hover:bg-muted", className)}
           size="sm"
-          title={selected ? `审批模式：${selected.label}\n${selected.description}` : "审批模式"}
+          title={selected ? t("s_480773099d", { p0: selected.label, p1: selected.description }) : t("s_1072712e57")}
           type="button"
           variant="ghost"
         >
           <SelectedIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate">{selected?.label ?? "审批模式"}</span>
+          <span className="truncate">{selected?.label ?? t("s_1072712e57")}</span>
           <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
         </Button>
       </ModelSelectorTrigger>
@@ -87,10 +88,10 @@ export function ApprovalModePicker({
           }
         }}
         onMouseLeave={() => setActiveMode(null)}
-        title="选择审批模式"
+        title={t("s_820c291999")}
       >
         <ModelSelectorList className="p-1">
-          <ModelSelectorGroup heading="审批模式">
+          <ModelSelectorGroup heading={t("s_1072712e57")}>
             {approvalModeOptions.map((option) => {
               const Icon = modeIcon(option.id);
               return (

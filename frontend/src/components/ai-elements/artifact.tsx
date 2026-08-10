@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import { XIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes } from "react";
+import { t } from "@/lib/i18n";
 
 export type ArtifactProps = HTMLAttributes<HTMLDivElement>;
 
@@ -59,7 +60,7 @@ export const ArtifactClose = ({
     {...props}
   >
     {children ?? <XIcon className="size-4" />}
-    <span className="sr-only">关闭</span>
+    <span className="sr-only">{t("s_6c14bd7f6f")}</span>
   </Button>
 );
 

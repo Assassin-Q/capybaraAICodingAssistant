@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
 import { createContext, useCallback, useContext, useMemo } from "react";
+import { t } from "@/lib/i18n";
 
 // ============================================================================
 // Types
@@ -78,11 +79,11 @@ export const getMediaCategory = (
 
 export const getAttachmentLabel = (data: AttachmentData): string => {
   if (data.type === "source-document") {
-    return data.title || data.filename || "来源";
+    return data.title || data.filename || t("s_c63f79e636");
   }
 
   const category = getMediaCategory(data);
-  return data.filename || (category === "image" ? "图片" : "附件");
+  return data.filename || (category === "image" ? t("s_be8da62ea1") : t("s_99f6fe6c41"));
 };
 
 const renderAttachmentImage = (
@@ -92,7 +93,7 @@ const renderAttachmentImage = (
 ) =>
   isGrid ? (
     <img
-      alt={filename || "图片"}
+      alt={filename || t("s_be8da62ea1")}
       className="size-full object-cover"
       height={96}
       src={url}
@@ -100,7 +101,7 @@ const renderAttachmentImage = (
     />
   ) : (
     <img
-      alt={filename || "图片"}
+      alt={filename || t("s_be8da62ea1")}
       className="size-full rounded object-cover"
       height={20}
       src={url}
@@ -318,7 +319,7 @@ export type AttachmentRemoveProps = ComponentProps<typeof Button> & {
 };
 
 export const AttachmentRemove = ({
-  label = "移除附件",
+  label = t("s_8f3ea228b8"),
   className,
   children,
   ...props
@@ -423,6 +424,6 @@ export const AttachmentEmpty = ({
     )}
     {...props}
   >
-    {children ?? "没有附件"}
+    {children ?? t("s_0de8ade098")}
   </div>
 );

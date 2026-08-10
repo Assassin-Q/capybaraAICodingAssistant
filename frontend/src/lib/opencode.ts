@@ -43,6 +43,7 @@ import {
 } from "@/lib/providerCatalog";
 import { extractTextAttachments } from "@/lib/textAttachments";
 import { EMPTY_TOKEN_USAGE, parseTokenUsage } from "@/lib/tokenUsage";
+import { t } from "@/lib/i18n";
 
 export type * from "@/lib/opencodeTypes";
 
@@ -131,7 +132,7 @@ const unwrapData = <T>(value: unknown): T => {
 const responseError = async (response: Response): Promise<Error> => {
   const body = await response.text().catch(() => "");
   if (!body) {
-    return new Error(`OpenCode 请求失败，状态码 ${response.status}`);
+    return new Error(t("s_c9c5901e35", { p0: response.status }));
   }
   try {
     const parsed = JSON.parse(body) as unknown;
@@ -172,9 +173,9 @@ const request = async <T>(
     return JSON.parse(text) as T;
   } catch {
     if (text.trimStart().startsWith("<")) {
-      throw new Error("OpenCode 返回了网页内容，请检查当前连接的服务地址是否正确");
+      throw new Error(t("s_af2cf1abbb"));
     }
-    throw new Error("OpenCode 返回了无法解析的 JSON 数据");
+    throw new Error(t("s_cd976b7289"));
   }
 };
 
@@ -618,7 +619,7 @@ export const openCodeApi = {
       method: "POST",
     });
     const session = toSession(unwrapData<unknown>(response), directory);
-    if (!session) throw new Error("OpenCode 返回了无效会话");
+    if (!session) throw new Error(t("s_f3d0f756f6"));
     return session;
   },
 
@@ -628,7 +629,7 @@ export const openCodeApi = {
       method: "PATCH",
     }, directoryParams(directory));
     const session = toSession(unwrapData<unknown>(response), directory);
-    if (!session) throw new Error("OpenCode 返回了无效会话");
+    if (!session) throw new Error(t("s_f3d0f756f6"));
     return session;
   },
 
@@ -682,7 +683,7 @@ export const openCodeApi = {
     }, directoryParams(directory));
     const savedRules = permissionRules(asRecord(unwrapData(response))?.permission);
     if (inferApprovalMode(savedRules) !== mode) {
-      throw new Error("OpenCode 未应用所选审批模式，请检查服务版本");
+      throw new Error(t("s_62da5c5bc1"));
     }
   },
 
@@ -731,13 +732,13 @@ export const openCodeApi = {
       method: "POST",
     }, directoryParams(directory));
     const session = toSession(unwrapData<unknown>(response), directory);
-    if (!session) throw new Error("OpenCode 返回了无效会话");
+    if (!session) throw new Error(t("s_f3d0f756f6"));
     return session;
   },
 
   sendPrompt: async (sessionID: string, input: SendPromptInput) => {
     const messageID = input.messageID ?? createMessageID();
-    if (!input.text.trim() && (input.files ?? []).length === 0) throw new Error("消息必须包含文字或附件");
+    if (!input.text.trim() && (input.files ?? []).length === 0) throw new Error(t("s_3c383555f8"));
     await request<unknown>(`/api/session/${encodeURIComponent(sessionID)}/prompt`, {
       body: JSON.stringify({
         id: messageID,
@@ -801,7 +802,7 @@ export const openCodeApi = {
     const credential = recordArray(integration?.connections).find((connection) =>
       stringValue(connection.type) === "credential" && Boolean(stringValue(connection.id))
     );
-    if (!credential) throw new Error("当前供应商没有可移除的 OpenCode 凭据");
+    if (!credential) throw new Error(t("s_de519171f7"));
     await request<void>(`/api/credential/${encodeURIComponent(stringValue(credential.id))}`, {
       method: "DELETE",
     }, locationParams(directory));

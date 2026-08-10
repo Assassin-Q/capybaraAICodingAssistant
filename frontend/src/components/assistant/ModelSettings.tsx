@@ -16,6 +16,7 @@ import { openCodeApi } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
 import type { ModelVariantLabels } from "@/lib/preferences";
 import type { CustomModelConfig, ModelInfo, ModelModality, OpenCodeConfig, ProviderCatalog, ProviderConfig } from "@/lib/opencode";
+import { t } from "@/lib/i18n";
 
 interface ModelSettingsProps {
   modelVariantLabels: ModelVariantLabels;
@@ -55,8 +56,8 @@ interface ProviderDraft {
 type SdkType = "openai-responses" | "openai-compatible" | "anthropic";
 
 const sdkOptions: Array<{ description: string; id: SdkType; label: string; npm: string }> = [
-  { description: "OpenAI Responses API，适合原生 OpenAI 推理模型", id: "openai-responses", label: "OpenAI Responses", npm: "@ai-sdk/openai" },
-  { description: "OpenAI Chat Completions 兼容接口", id: "openai-compatible", label: "OpenAI 兼容", npm: "@ai-sdk/openai-compatible" },
+  { description: t("s_0a5429258b"), id: "openai-responses", label: "OpenAI Responses", npm: "@ai-sdk/openai" },
+  { description: t("s_bd0735704b"), id: "openai-compatible", label: t("s_83a19c76d9"), npm: "@ai-sdk/openai-compatible" },
   { description: "Anthropic Messages API", id: "anthropic", label: "Anthropic", npm: "@ai-sdk/anthropic" },
 ];
 
@@ -225,12 +226,12 @@ function CapabilityToggle({ checked, label, onCheckedChange }: { checked: boolea
 }
 
 const inputModalities: Array<{ id: ModelModality; label: string }> = [
-  { id: "text", label: "文本" }, { id: "image", label: "图片" }, { id: "audio", label: "音频" },
-  { id: "video", label: "视频" }, { id: "pdf", label: "PDF" },
+  { id: "text", label: t("s_f1926e9b33") }, { id: "image", label: t("s_be8da62ea1") }, { id: "audio", label: t("s_461189f186") },
+  { id: "video", label: t("s_fa4e33b698") }, { id: "pdf", label: "PDF" },
 ];
 
 const outputModalities: Array<{ id: ModelModality; label: string }> = [
-  { id: "text", label: "文本" }, { id: "audio", label: "音频" },
+  { id: "text", label: t("s_f1926e9b33") }, { id: "audio", label: t("s_461189f186") },
 ];
 
 const toggleModality = (items: ModelModality[], item: ModelModality, enabled: boolean): ModelModality[] =>
@@ -438,7 +439,7 @@ export function ModelSettings({
 
   const saveProvider = async () => {
     const id = providerDraft.id.trim();
-    if (!projectPath || !id) return setError("请填写供应商 ID");
+    if (!projectPath || !id) return setError(t("s_7a38131dea"));
     setSaving(true);
     setError("");
     setNotice("");
@@ -468,7 +469,7 @@ export function ModelSettings({
         },
       };
       const saved = await ideaApi.saveProvider(id, provider);
-      setNotice(saved.message ?? "已写入 opencode.jsonc，重启 OpenCode 服务后生效。");
+      setNotice(saved.message ?? t("s_df3e8b58a7"));
       await openCodeApi.updateConfig({ disabled_providers: [...disabledProviders] }, projectPath);
       applyLocalConfig({
         ...config,
@@ -486,7 +487,7 @@ export function ModelSettings({
   const saveModel = async () => {
     const providerID = providerDraft.id.trim();
     const modelID = modelDraft.id.trim();
-    if (!projectPath || !providerID || !modelID) return setError("请先选择供应商并填写模型 ID");
+    if (!projectPath || !providerID || !modelID) return setError(t("s_17ccd8beb5"));
     setSaving(true);
     setError("");
     setNotice("");
@@ -505,7 +506,7 @@ export function ModelSettings({
         models: { ...models, [modelID]: toModelConfig({ ...modelDraft, id: modelID }, previous) },
       };
       const saved = await ideaApi.saveProvider(providerID, nextProvider);
-      setNotice(saved.message ?? "已写入 opencode.jsonc，重启 OpenCode 服务后生效。");
+      setNotice(saved.message ?? t("s_df3e8b58a7"));
       applyLocalConfig({ ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } }, providerID);
       setEditingModelID(modelID);
       setModelDraft({ ...modelDraft, id: modelID });
@@ -536,7 +537,7 @@ export function ModelSettings({
       const nextProvider = { ...existing, blacklist: [...blacklist] };
       // PATCH /config discards provider edits; the plugin writes them to opencode.jsonc instead.
       const saved = await ideaApi.saveProvider(providerID, nextProvider);
-      setNotice(saved.message ?? "已写入 opencode.jsonc，重启 OpenCode 服务后生效。");
+      setNotice(saved.message ?? t("s_df3e8b58a7"));
       applyLocalConfig({ ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } }, providerID);
       onChanged();
     } catch (toggleError) {
@@ -562,7 +563,7 @@ export function ModelSettings({
       // Edits opencode.jsonc directly — PATCH /config only merges and cannot remove a key.
       const removal = await ideaApi.removeProvider(providerID);
       if (!removal.success) {
-        setError(removal.message ?? `无法删除 ${providerID}`);
+        setError(removal.message ?? t("s_2b3b7fd6c6", { p0: providerID }));
         return;
       }
 
@@ -596,7 +597,7 @@ export function ModelSettings({
       };
       const nextProvider = { ...existing, blacklist, models };
       const saved = await ideaApi.saveProvider(providerID, nextProvider);
-      setNotice(saved.message ?? "已写入 opencode.jsonc，重启 OpenCode 服务后生效。");
+      setNotice(saved.message ?? t("s_df3e8b58a7"));
       const nextConfig: OpenCodeConfig = { ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } };
       const nextVariantLabels = { ...modelVariantLabels };
       delete nextVariantLabels[modelVariantLabelKey(providerID, modelID)];
@@ -632,9 +633,9 @@ export function ModelSettings({
   const modelEditor = (
     <div className="grid gap-4 bg-muted/25 px-3 py-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        <SettingField label="模型 ID">
+        <SettingField label={t("s_2b7c96b260")}>
           <div className="relative">
-            <Input disabled={Boolean(editingModelID) && editingModelID !== "new" && Boolean(catalogModels[editingModelID ?? ""])} onChange={(event) => applyModelID(event.target.value)} placeholder="例如 gpt-5.5" title="选中建议即可自动带出上下文、模态和档位；自定义供应商的模型 ID 可以直接改" value={modelDraft.id} />
+            <Input disabled={Boolean(editingModelID) && editingModelID !== "new" && Boolean(catalogModels[editingModelID ?? ""])} onChange={(event) => applyModelID(event.target.value)} placeholder={t("s_695f4de76f")} title={t("s_f273d83ecf")} value={modelDraft.id} />
             {editingModelID === "new" && suggestionsOpen && modelIDSuggestions(modelDraft.id).length > 0 && (
               <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md">
                 {modelIDSuggestions(modelDraft.id).map(({ model, providerID }) => (
@@ -655,16 +656,16 @@ export function ModelSettings({
             )}
           </div>
         </SettingField>
-        <SettingField label="显示名称"><Input onChange={(event) => setModelDraft((current) => ({ ...current, name: event.target.value }))} placeholder="模型名称" value={modelDraft.name} /></SettingField>
-        <SettingField label="上下文大小"><Input inputMode="numeric" onChange={(event) => setModelDraft((current) => ({ ...current, context: event.target.value }))} placeholder="例如 200000" value={modelDraft.context} /></SettingField>
-        <SettingField label="最大输出"><Input inputMode="numeric" onChange={(event) => setModelDraft((current) => ({ ...current, maxOutput: event.target.value }))} placeholder={String(DEFAULT_MAX_OUTPUT)} value={modelDraft.maxOutput} /></SettingField>
-        <div className="grid gap-2 pt-5"><CapabilityToggle checked={modelDraft.enabled} label="启用此模型" onCheckedChange={(enabled) => setModelDraft((current) => ({ ...current, enabled }))} /></div>
-        <CapabilityToggle checked={modelDraft.reasoning} label="支持思考" onCheckedChange={(reasoning) => setModelDraft((current) => ({ ...current, reasoning }))} />
-        <CapabilityToggle checked={modelDraft.toolCall} label="支持工具调用" onCheckedChange={(toolCall) => setModelDraft((current) => ({ ...current, toolCall }))} />
+        <SettingField label={t("s_75ae6a8a7d")}><Input onChange={(event) => setModelDraft((current) => ({ ...current, name: event.target.value }))} placeholder={t("s_38719c9968")} value={modelDraft.name} /></SettingField>
+        <SettingField label={t("s_da083e745f")}><Input inputMode="numeric" onChange={(event) => setModelDraft((current) => ({ ...current, context: event.target.value }))} placeholder={t("s_0a303c4a30")} value={modelDraft.context} /></SettingField>
+        <SettingField label={t("s_880c229522")}><Input inputMode="numeric" onChange={(event) => setModelDraft((current) => ({ ...current, maxOutput: event.target.value }))} placeholder={String(DEFAULT_MAX_OUTPUT)} value={modelDraft.maxOutput} /></SettingField>
+        <div className="grid gap-2 pt-5"><CapabilityToggle checked={modelDraft.enabled} label={t("s_6d02e09e27")} onCheckedChange={(enabled) => setModelDraft((current) => ({ ...current, enabled }))} /></div>
+        <CapabilityToggle checked={modelDraft.reasoning} label={t("s_5b9e4cfc4d")} onCheckedChange={(reasoning) => setModelDraft((current) => ({ ...current, reasoning }))} />
+        <CapabilityToggle checked={modelDraft.toolCall} label={t("s_bc0f4e16a9")} onCheckedChange={(toolCall) => setModelDraft((current) => ({ ...current, toolCall }))} />
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="grid gap-2">
-          <p className="text-xs font-medium">输入模态</p>
+          <p className="text-xs font-medium">{t("s_487296a07f")}</p>
           <div className="grid grid-cols-2 gap-2">
             {inputModalities.map((item) => (
               <CapabilityToggle
@@ -680,7 +681,7 @@ export function ModelSettings({
           </div>
         </div>
         <div className="grid gap-2">
-          <p className="text-xs font-medium">输出模态</p>
+          <p className="text-xs font-medium">{t("s_68a9c25a41")}</p>
           <div className="grid grid-cols-2 gap-2">
             {outputModalities.map((item) => (
               <CapabilityToggle
@@ -705,10 +706,10 @@ export function ModelSettings({
       />
       <div className="flex flex-wrap items-center justify-end gap-2">
         <InlineResult error={error} notice={notice} />
-        <Button onClick={() => { setEditingModelID(undefined); setModelVariantLabelDraft({}); }} size="sm" type="button" variant="ghost">取消</Button>
+        <Button onClick={() => { setEditingModelID(undefined); setModelVariantLabelDraft({}); }} size="sm" type="button" variant="ghost">{t("s_4d0b4688c7")}</Button>
         <Button disabled={saving} onClick={() => void saveModel()} size="sm" type="button">
           {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
-          {saving ? "保存中…" : "保存模型"}
+          {saving ? t("s_6644f06197") : t("s_5db70c89b3")}
         </Button>
       </div>
     </div>
@@ -717,37 +718,37 @@ export function ModelSettings({
   const providerForm = (
     <>
       <div className="flex min-w-0 items-center gap-2 pb-4">
-        {isNewProvider && <Button aria-label="返回供应商列表" className="size-7" onClick={() => setNewProviderStep("choose")} size="icon-sm" title="返回" type="button" variant="ghost"><ArrowLeft className="size-3.5" /></Button>}
+        {isNewProvider && <Button aria-label={t("s_3a52815329")} className="size-7" onClick={() => setNewProviderStep("choose")} size="icon-sm" title={t("s_11d0241540")} type="button" variant="ghost"><ArrowLeft className="size-3.5" /></Button>}
         <Cpu className="size-4 shrink-0 text-muted-foreground" />
-        <h3 className="min-w-0 flex-1 truncate text-base font-semibold">{isNewProvider ? providerDraft.name || "自定义供应商" : providerName(selectedID, catalog)}</h3>
-        {!isNewProvider && <Badge variant="secondary">{providerDraft.disabled ? "已停用" : "已启用"}</Badge>}
+        <h3 className="min-w-0 flex-1 truncate text-base font-semibold">{isNewProvider ? providerDraft.name || t("s_eecf139e11") : providerName(selectedID, catalog)}</h3>
+        {!isNewProvider && <Badge variant="secondary">{providerDraft.disabled ? t("s_6c7dcbb73a") : t("s_25d2843150")}</Badge>}
       </div>
 
       {providerDraft.catalogProvider ? (
         <div className="grid gap-4">
           <div className="grid gap-3 rounded-md bg-muted/35 px-3 py-3 sm:grid-cols-2">
-            <div><p className="text-[11px] text-muted-foreground">供应商 ID</p><p className="mt-1 truncate font-mono text-xs">{providerDraft.id}</p></div>
-            <div><p className="text-[11px] text-muted-foreground">内置适配器</p><p className="mt-1 truncate font-mono text-xs">{providerDraft.npm || "OpenCode native"}</p></div>
-            {providerDraft.baseURL && <div className="sm:col-span-2"><p className="text-[11px] text-muted-foreground">默认地址</p><p className="mt-1 break-all font-mono text-xs">{providerDraft.baseURL}</p></div>}
+            <div><p className="text-[11px] text-muted-foreground">{t("s_4ce9ed14e3")}</p><p className="mt-1 truncate font-mono text-xs">{providerDraft.id}</p></div>
+            <div><p className="text-[11px] text-muted-foreground">{t("s_12975e6c28")}</p><p className="mt-1 truncate font-mono text-xs">{providerDraft.npm || "OpenCode native"}</p></div>
+            {providerDraft.baseURL && <div className="sm:col-span-2"><p className="text-[11px] text-muted-foreground">{t("s_26b27709ce")}</p><p className="mt-1 break-all font-mono text-xs">{providerDraft.baseURL}</p></div>}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            <SettingField label="API Key"><div className="relative"><Input onChange={(event) => setProviderDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder={isNewProvider ? "输入供应商 API Key" : "留空则保留现有凭据"} type={showKey ? "text" : "password"} value={providerDraft.apiKey} /><Button aria-label={showKey ? "隐藏 API Key" : "显示 API Key"} className="absolute right-1 top-1" onClick={() => setShowKey((value) => !value)} size="icon-xs" title={showKey ? "隐藏 API Key" : "显示 API Key"} type="button" variant="ghost">{showKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}</Button></div></SettingField>
-            <label className="flex items-end gap-2 pb-2 text-xs"><Switch checked={!providerDraft.disabled} onCheckedChange={(checked) => setProviderDraft((current) => ({ ...current, disabled: !checked }))} />启用此供应商</label>
+            <SettingField label="API Key"><div className="relative"><Input onChange={(event) => setProviderDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder={isNewProvider ? t("s_cc63b124df") : t("s_f72dee10c7")} type={showKey ? "text" : "password"} value={providerDraft.apiKey} /><Button aria-label={showKey ? t("s_f3d9423a57") : t("s_caddc83f01")} className="absolute right-1 top-1" onClick={() => setShowKey((value) => !value)} size="icon-xs" title={showKey ? t("s_f3d9423a57") : t("s_caddc83f01")} type="button" variant="ghost">{showKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}</Button></div></SettingField>
+            <label className="flex items-end gap-2 pb-2 text-xs"><Switch checked={!providerDraft.disabled} onCheckedChange={(checked) => setProviderDraft((current) => ({ ...current, disabled: !checked }))} />{t("s_4c519b46e8")}</label>
           </div>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
-          <SettingField label="供应商 ID"><Input disabled={!isNewProvider} onChange={(event) => setProviderDraft((current) => ({ ...current, id: event.target.value.trim() }))} placeholder="例如 company-api" value={providerDraft.id} /></SettingField>
-          <SettingField label="显示名称"><Input onChange={(event) => setProviderDraft((current) => ({ ...current, name: event.target.value }))} placeholder="例如 公司 API" value={providerDraft.name} /></SettingField>
-          <SettingField label="接口协议"><Select onValueChange={(value: SdkType) => { const option = sdkOptions.find((item) => item.id === value); setProviderDraft((current) => ({ ...current, npm: option?.npm ?? current.npm, sdkType: value })); }} value={providerDraft.sdkType}><SelectTrigger className="w-full border-border/60 shadow-none"><SelectValue /></SelectTrigger><SelectContent className="border-0 ring-1 ring-border/40">{sdkOptions.map((option) => <SelectItem key={option.id} value={option.id}><span className="flex flex-col"><span>{option.label}</span><span className="text-[10px] text-muted-foreground">{option.description}</span></span></SelectItem>)}</SelectContent></Select></SettingField>
+          <SettingField label={t("s_4ce9ed14e3")}><Input disabled={!isNewProvider} onChange={(event) => setProviderDraft((current) => ({ ...current, id: event.target.value.trim() }))} placeholder={t("s_4c7a7eac7f")} value={providerDraft.id} /></SettingField>
+          <SettingField label={t("s_75ae6a8a7d")}><Input onChange={(event) => setProviderDraft((current) => ({ ...current, name: event.target.value }))} placeholder={t("s_15df463d1a")} value={providerDraft.name} /></SettingField>
+          <SettingField label={t("s_e56c552b72")}><Select onValueChange={(value: SdkType) => { const option = sdkOptions.find((item) => item.id === value); setProviderDraft((current) => ({ ...current, npm: option?.npm ?? current.npm, sdkType: value })); }} value={providerDraft.sdkType}><SelectTrigger className="w-full border-border/60 shadow-none"><SelectValue /></SelectTrigger><SelectContent className="border-0 ring-1 ring-border/40">{sdkOptions.map((option) => <SelectItem key={option.id} value={option.id}><span className="flex flex-col"><span>{option.label}</span><span className="text-[10px] text-muted-foreground">{option.description}</span></span></SelectItem>)}</SelectContent></Select></SettingField>
           <SettingField label="Base URL"><Input onChange={(event) => setProviderDraft((current) => ({ ...current, baseURL: event.target.value }))} placeholder="https://api.example.com/v1" value={providerDraft.baseURL} /></SettingField>
-          <SettingField label="API Key"><div className="relative"><Input onChange={(event) => setProviderDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder="留空则保留现有凭据" type={showKey ? "text" : "password"} value={providerDraft.apiKey} /><Button aria-label={showKey ? "隐藏 API Key" : "显示 API Key"} className="absolute right-1 top-1" onClick={() => setShowKey((value) => !value)} size="icon-xs" title={showKey ? "隐藏 API Key" : "显示 API Key"} type="button" variant="ghost">{showKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}</Button></div></SettingField>
-          <label className="flex items-end gap-2 pb-2 text-xs"><Switch checked={!providerDraft.disabled} onCheckedChange={(checked) => setProviderDraft((current) => ({ ...current, disabled: !checked }))} />启用此供应商</label>
+          <SettingField label="API Key"><div className="relative"><Input onChange={(event) => setProviderDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder={t("s_f72dee10c7")} type={showKey ? "text" : "password"} value={providerDraft.apiKey} /><Button aria-label={showKey ? t("s_f3d9423a57") : t("s_caddc83f01")} className="absolute right-1 top-1" onClick={() => setShowKey((value) => !value)} size="icon-xs" title={showKey ? t("s_f3d9423a57") : t("s_caddc83f01")} type="button" variant="ghost">{showKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}</Button></div></SettingField>
+          <label className="flex items-end gap-2 pb-2 text-xs"><Switch checked={!providerDraft.disabled} onCheckedChange={(checked) => setProviderDraft((current) => ({ ...current, disabled: !checked }))} />{t("s_4c519b46e8")}</label>
         </div>
       )}
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        {!isNewProvider && providerDraft.catalogProvider && <Button disabled={saving} onClick={() => void removeProviderCredential()} size="sm" type="button" variant="ghost">移除凭据</Button>}
+        {!isNewProvider && providerDraft.catalogProvider && <Button disabled={saving} onClick={() => void removeProviderCredential()} size="sm" type="button" variant="ghost">{t("s_1bc09d8e22")}</Button>}
         {!isNewProvider && !providerDraft.catalogProvider && (
           <Button
             disabled={saving}
@@ -757,21 +758,21 @@ export function ModelSettings({
             variant="ghost"
           >
             <Trash2 className="size-3.5 text-destructive" />
-            移除供应商
+            {t("s_b57bfcf3cb")}
           </Button>
         )}
         <InlineResult error={error} notice={notice} />
         <Button disabled={saving} onClick={() => void saveProvider()} size="sm" type="button">
           {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-          {saving ? "保存中…" : "保存供应商"}
+          {saving ? t("s_6644f06197") : t("s_c599dafee4")}
         </Button>
       </div>
 
       {!isNewProvider && <div className="mt-7 border-t border-border/50 pt-5">
-        <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold">模型列表</h3><p className="mt-1 text-xs text-muted-foreground">展开后直接在当前模型下面编辑。</p></div><Button onClick={() => { setEditingModelID("new"); setModelDraft(emptyModel()); setModelVariantLabelDraft({}); }} size="sm" type="button" variant="ghost"><Plus className="size-3.5" />添加模型</Button></div>
+        <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold">{t("s_c271d29118")}</h3><p className="mt-1 text-xs text-muted-foreground">{t("s_3d1a044ba9")}</p></div><Button onClick={() => { setEditingModelID("new"); setModelDraft(emptyModel()); setModelVariantLabelDraft({}); }} size="sm" type="button" variant="ghost"><Plus className="size-3.5" />{t("s_532a64e19c")}</Button></div>
         <div className="mt-3 divide-y divide-border/50 bg-muted/20">
           {editingModelID === "new" && modelEditor}
-          {modelIDs.length === 0 && editingModelID !== "new" ? <p className="p-4 text-sm text-muted-foreground">尚未配置模型</p> : modelIDs.map((id) => {
+          {modelIDs.length === 0 && editingModelID !== "new" ? <p className="p-4 text-sm text-muted-foreground">{t("s_f031ba1927")}</p> : modelIDs.map((id) => {
             const model = draftForModel(id);
             // The provider marks retired models "deprecated"; the composer filters those out, so
             // showing them here as plain "enabled" made the two lists silently disagree.
@@ -784,10 +785,10 @@ export function ModelSettings({
                 <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => toggleModelEditor(id)} type="button">
                   <span className={cn("size-1.5 shrink-0 rounded-full", deprecated ? "bg-muted-foreground/60" : model.enabled ? "bg-emerald-500" : "bg-muted-foreground")} />
                   <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{model.name}</span><span className="block truncate font-mono text-[11px] text-muted-foreground">{id}</span></span>
-                  {deprecated && <Badge title="供应商已下线该模型，输入框的模型选择里不会出现" variant="outline">已弃用</Badge>}
+                  {deprecated && <Badge title={t("s_613b1a65d5")} variant="outline">{t("s_64170be710")}</Badge>}
                   {!deprecated && awaitingRestart && (
-                    <Badge title="已写入 opencode.jsonc，但 OpenCode 只在启动时读取配置，重启服务后才会真正可用" variant="outline">
-                      待重启生效
+                    <Badge title={t("s_80560ed849")} variant="outline">
+                      {t("s_f866545e31")}
                     </Badge>
                   )}
                   {model.context && <Badge variant="secondary">{model.context}</Badge>}
@@ -795,8 +796,8 @@ export function ModelSettings({
                 </button>
                 {/* A deprecated model cannot be used at all, so the toggle reads off and locked
                     rather than claiming the model is enabled. */}
-                <Switch aria-label={deprecated ? `${model.name} 已被供应商下线` : `${model.enabled ? "停用" : "启用"}模型 ${model.name}`} checked={model.enabled && !deprecated} disabled={saving || deprecated} onCheckedChange={(enabled) => void setModelEnabled(id, enabled)} size="sm" title={deprecated ? "供应商已下线该模型，无法启用" : undefined} />
-                <Button aria-label={`移除模型 ${model.name}`} className="size-8 shrink-0" disabled={saving} onClick={() => setPendingDeleteModelID(id)} size="icon-sm" title="移除模型" type="button" variant="ghost"><Trash2 className="size-3.5 text-muted-foreground" /></Button>
+                <Switch aria-label={deprecated ? t("s_d3c699452f", { p0: model.name }) : t("s_693267a874", { p0: model.enabled ? t("s_d989e55188") : t("s_d4e9ca3dd4"), p1: model.name })} checked={model.enabled && !deprecated} disabled={saving || deprecated} onCheckedChange={(enabled) => void setModelEnabled(id, enabled)} size="sm" title={deprecated ? t("s_b639c59e68") : undefined} />
+                <Button aria-label={t("s_30c5686d43", { p0: model.name })} className="size-8 shrink-0" disabled={saving} onClick={() => setPendingDeleteModelID(id)} size="icon-sm" title={t("s_fdd3167c8b")} type="button" variant="ghost"><Trash2 className="size-3.5 text-muted-foreground" /></Button>
               </div>
               {editingModelID === id && modelEditor}
             </div>;
@@ -809,7 +810,7 @@ export function ModelSettings({
   return (
     <>
     <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-      <header className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">模型设置</h2><p className="mt-1 text-sm text-muted-foreground">管理已连接供应商，并从 OpenCode 内置目录添加新的服务。</p></div><Button aria-label="刷新模型配置" disabled={loading} onClick={() => void load(selectedID)} size="icon-sm" title="刷新" type="button" variant="ghost"><RefreshCw className={cn("size-4", loading && "animate-spin")} /></Button></header>
+      <header className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">{t("s_ec4725bd2f")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("s_1540ca93f6")}</p></div><Button aria-label={t("s_d8e2d46b57")} disabled={loading} onClick={() => void load(selectedID)} size="icon-sm" title={t("s_38108eaa1d")} type="button" variant="ghost"><RefreshCw className={cn("size-4", loading && "animate-spin")} /></Button></header>
       {error && <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive"><CircleAlert className="mt-0.5 size-3.5 shrink-0" /><span>{error}</span></div>}
       {!error && notice && (
         <div className="flex items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
@@ -819,37 +820,37 @@ export function ModelSettings({
       )}
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-[12rem_minmax(0,1fr)]">
         <aside className="flex max-h-44 min-h-0 flex-col rounded-md bg-muted/30 p-1.5 md:max-h-none">
-          <div className="flex h-9 shrink-0 items-center justify-between gap-1 px-2"><p className="truncate text-[11px] font-medium text-muted-foreground">供应商</p><Button aria-label="添加供应商" className="size-7 shrink-0" onClick={beginNewProvider} size="icon-sm" title="添加供应商" type="button" variant={isNewProvider ? "secondary" : "ghost"}><Plus className="size-3.5" /></Button></div>
+          <div className="flex h-9 shrink-0 items-center justify-between gap-1 px-2"><p className="truncate text-[11px] font-medium text-muted-foreground">{t("s_703c9eb0f0")}</p><Button aria-label={t("s_3f55a222ea")} className="size-7 shrink-0" onClick={beginNewProvider} size="icon-sm" title={t("s_3f55a222ea")} type="button" variant={isNewProvider ? "secondary" : "ghost"}><Plus className="size-3.5" /></Button></div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{providerIDs.map((id) => <Button className="mb-0.5 w-full justify-start gap-2 px-2" key={id} onClick={() => selectProvider(id)} size="sm" type="button" variant={id === selectedID && !isNewProvider ? "secondary" : "ghost"}><span className={cn("size-1.5 shrink-0 rounded-full", config.disabled_providers?.includes(id) ? "bg-muted-foreground" : "bg-emerald-500")} /><span className="truncate">{providerName(id, catalog)}</span></Button>)}</div>
         </aside>
         <div className={cn("flex min-h-0 min-w-0 flex-col overscroll-contain pr-1", isNewProvider && newProviderStep === "choose" ? "overflow-hidden" : "overflow-y-auto")}>
           {isNewProvider && newProviderStep === "choose" ? (
             <div className="flex min-h-0 flex-1 flex-col gap-3">
-              <div><h3 className="text-base font-semibold">添加供应商</h3><p className="mt-1 text-xs text-muted-foreground">优先选择 OpenCode 内置供应商；只有自建兼容接口需要完整配置。</p></div>
-              <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" /><Input className="pl-8" onChange={(event) => setProviderSearch(event.target.value)} placeholder="搜索供应商名称或 ID" value={providerSearch} /></div>
+              <div><h3 className="text-base font-semibold">{t("s_3f55a222ea")}</h3><p className="mt-1 text-xs text-muted-foreground">{t("s_26bf5af93c")}</p></div>
+              <div className="relative"><Search className="pointer-events-none absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" /><Input className="pl-8" onChange={(event) => setProviderSearch(event.target.value)} placeholder={t("s_59c9decbe2")} value={providerSearch} /></div>
               <div className="min-h-0 flex-1 overflow-y-auto rounded-md bg-muted/20 p-1">
-                <button className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left hover:bg-accent" onClick={chooseCustomProvider} type="button"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background"><Plus className="size-3.5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium">自定义供应商</span><span className="block text-xs text-muted-foreground">配置 OpenAI Responses、OpenAI 兼容或 Anthropic 接口</span></span></button>
+                <button className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left hover:bg-accent" onClick={chooseCustomProvider} type="button"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background"><Plus className="size-3.5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium">{t("s_eecf139e11")}</span><span className="block text-xs text-muted-foreground">{t("s_19d54ed4ec")}</span></span></button>
                 {availableCatalogProviders.map((provider) => {
                   const modelCount = Object.keys(provider.models).length;
-                  return <button className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left hover:bg-accent" key={provider.id} onClick={() => chooseCatalogProvider(provider.id)} type="button"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background font-mono text-[10px] uppercase">{provider.name.slice(0, 2)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{provider.name}</span><span className="block truncate font-mono text-[11px] text-muted-foreground">{provider.id}</span></span><span className="shrink-0 text-[10px] text-muted-foreground">{modelCount > 0 ? `${modelCount} 模型` : "配置后加载"}</span></button>;
+                  return <button className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left hover:bg-accent" key={provider.id} onClick={() => chooseCatalogProvider(provider.id)} type="button"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background font-mono text-[10px] uppercase">{provider.name.slice(0, 2)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{provider.name}</span><span className="block truncate font-mono text-[11px] text-muted-foreground">{provider.id}</span></span><span className="shrink-0 text-[10px] text-muted-foreground">{modelCount > 0 ? t("s_4b3772872c", { p0: modelCount }) : t("s_9a4d20b045")}</span></button>;
                 })}
-                {availableCatalogProviders.length === 0 && <p className="px-3 py-8 text-center text-sm text-muted-foreground">没有匹配的内置供应商</p>}
+                {availableCatalogProviders.length === 0 && <p className="px-3 py-8 text-center text-sm text-muted-foreground">{t("s_fd8f5db498")}</p>}
               </div>
             </div>
-          ) : selectedID || isNewProvider ? providerForm : <div className="flex min-h-56 flex-col items-start justify-center gap-3"><p className="text-sm font-medium">还没有可用供应商</p><Button onClick={beginNewProvider} size="sm" type="button"><Plus className="size-3.5" />添加供应商</Button></div>}
+          ) : selectedID || isNewProvider ? providerForm : <div className="flex min-h-56 flex-col items-start justify-center gap-3"><p className="text-sm font-medium">{t("s_a4528c162b")}</p><Button onClick={beginNewProvider} size="sm" type="button"><Plus className="size-3.5" />{t("s_3f55a222ea")}</Button></div>}
         </div>
       </div>
     </section>
     <Dialog onOpenChange={(open) => { if (!open) setPendingDeleteProviderID(undefined); }} open={Boolean(pendingDeleteProviderID)}>
       <DialogContent className="max-w-[calc(100vw-1.5rem)] gap-3 p-4 sm:max-w-sm">
-        <DialogHeader><DialogTitle className="text-base">移除这个供应商？</DialogTitle><DialogDescription>将从配置中删除 {pendingDeleteProviderID} 及其模型。若 OpenCode 不支持删除配置项，会退回为停用并提示你手动清理。</DialogDescription></DialogHeader>
-        <DialogFooter><Button onClick={() => setPendingDeleteProviderID(undefined)} size="sm" type="button" variant="ghost">取消</Button><Button disabled={saving} onClick={() => void deleteProvider()} size="sm" type="button" variant="destructive"><Trash2 className="size-3.5" />移除供应商</Button></DialogFooter>
+        <DialogHeader><DialogTitle className="text-base">{t("s_9b04e7a40f")}</DialogTitle><DialogDescription>{t("s_9b1ca1a222")} {pendingDeleteProviderID} {t("s_2830f8fb13")}</DialogDescription></DialogHeader>
+        <DialogFooter><Button onClick={() => setPendingDeleteProviderID(undefined)} size="sm" type="button" variant="ghost">{t("s_4d0b4688c7")}</Button><Button disabled={saving} onClick={() => void deleteProvider()} size="sm" type="button" variant="destructive"><Trash2 className="size-3.5" />{t("s_b57bfcf3cb")}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
     <Dialog onOpenChange={(open) => { if (!open) setPendingDeleteModelID(undefined); }} open={Boolean(pendingDeleteModelID)}>
       <DialogContent className="max-w-[calc(100vw-1.5rem)] gap-3 p-4 sm:max-w-sm">
-        <DialogHeader><DialogTitle className="text-base">移除这个模型？</DialogTitle><DialogDescription>将从当前供应商的可用模型中隐藏 {pendingDeleteModelID}，OpenCode 后续不会再加载它。</DialogDescription></DialogHeader>
-        <DialogFooter><Button onClick={() => setPendingDeleteModelID(undefined)} size="sm" type="button" variant="ghost">取消</Button><Button disabled={saving} onClick={() => void deleteModel()} size="sm" type="button" variant="destructive"><Trash2 className="size-3.5" />移除模型</Button></DialogFooter>
+        <DialogHeader><DialogTitle className="text-base">{t("s_8b3db86b51")}</DialogTitle><DialogDescription>{t("s_896dfd9667")} {pendingDeleteModelID}{t("s_57316c8462")}</DialogDescription></DialogHeader>
+        <DialogFooter><Button onClick={() => setPendingDeleteModelID(undefined)} size="sm" type="button" variant="ghost">{t("s_4d0b4688c7")}</Button><Button disabled={saving} onClick={() => void deleteModel()} size="sm" type="button" variant="destructive"><Trash2 className="size-3.5" />{t("s_fdd3167c8b")}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
     </>

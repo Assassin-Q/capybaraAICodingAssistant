@@ -6,6 +6,7 @@ import { useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface VirtualConversationProps {
   className?: string;
@@ -199,7 +200,7 @@ export function VirtualConversation({
       />
       {!atBottom && items.length > 0 && (
         <Button
-          aria-label="滚动到底部"
+          aria-label={t("s_60f4cd8a8c")}
           // Right-aligned rather than centred: the todo capsule is centred on the same bottom edge
           // and covered this button whenever a run had a task list.
           className={cn(
@@ -208,7 +209,7 @@ export function VirtualConversation({
           )}
           onClick={scrollToBottom}
           size="icon"
-          title="滚动到底部"
+          title={t("s_60f4cd8a8c")}
           type="button"
           variant="ghost"
         >

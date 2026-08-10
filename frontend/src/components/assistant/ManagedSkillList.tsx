@@ -18,6 +18,7 @@ import { ideaApi } from "@/lib/idea";
 import { skillsApi, type ManagedScope, type ManagedSkillInfo } from "@/lib/ideaIntegrations";
 import { openCodeApi, setOpenCodeBaseUrl } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface ManagedSkillListProps {
   disabledSkillNames: string[];
@@ -32,14 +33,14 @@ const normalizePath = (value: string): string => value.replace(/\\/g, "/").toLow
 const sourceLabels: Record<string, string> = {
   agents: "Agents",
   claude: "Claude Code",
-  import: "导入",
+  import: t("s_60e2bcad85"),
   opencode: "OpenCode",
 };
 
 const scopeFilters: Array<{ id: ManagedScope | "all"; label: string }> = [
-  { id: "all", label: "全部" },
-  { id: "project", label: "项目" },
-  { id: "global", label: "全局" },
+  { id: "all", label: t("s_778fc8f994") },
+  { id: "project", label: t("s_22336e6b89") },
+  { id: "global", label: t("s_a5644f4bbf") },
 ];
 
 export function ManagedSkillList({
@@ -112,7 +113,7 @@ export function ManagedSkillList({
   );
 
   const importSkill = (target: ManagedScope) =>
-    void runAction(() => skillsApi.import(target), "技能导入完成");
+    void runAction(() => skillsApi.import(target), t("s_ca8d3024a7"));
 
   /**
    * Renaming the file is what OpenCode reads, but that only takes effect on reload — so the
@@ -125,20 +126,20 @@ export function ManagedSkillList({
     onDisabledSkillNamesChange([...next]);
     void runAction(
       () => skillsApi.setEnabled(skill.location, enabled),
-      enabled ? "技能已启用，OpenCode 重启后加载" : "技能已停用"
+      enabled ? t("s_35006dcc81") : t("s_373fa7be0e")
     );
   };
 
   const removeSkill = (skill: ManagedSkillInfo) =>
     confirm.ask({
-      confirmLabel: "删除技能",
-      description: `将删除目录 ${skill.location.replace(/[\\/]SKILL\.md(\.disabled)?$/, "")} 及其全部文件，操作不可撤销。`,
+      confirmLabel: t("s_b9e42ac786"),
+      description: t("s_74ff4ef7f5", { p0: skill.location.replace(/[\\/]SKILL\.md(\.disabled)?$/, "") }),
       destructive: true,
       onConfirm: async () => {
         confirm.close();
-        await runAction(() => skillsApi.remove(skill.location), "技能已删除");
+        await runAction(() => skillsApi.remove(skill.location), t("s_34c29b6946"));
       },
-      title: `删除技能「${skill.name}」`,
+      title: t("s_d14ab24cdc", { p0: skill.name }),
     });
 
   /**
@@ -180,10 +181,10 @@ export function ManagedSkillList({
   };
 
   const loadState = (skill: ManagedSkillInfo) => {
-    if (!skill.enabled) return { label: "已停用", variant: "outline" as const };
-    if (loadedPaths === null) return { label: "无法确认（未连接服务）", variant: "outline" as const };
-    if (isLoaded(skill)) return { label: "已加载", variant: "secondary" as const };
-    return { label: "待重启服务加载", variant: "outline" as const };
+    if (!skill.enabled) return { label: t("s_6c7dcbb73a"), variant: "outline" as const };
+    if (loadedPaths === null) return { label: t("s_d43762b683"), variant: "outline" as const };
+    if (isLoaded(skill)) return { label: t("s_b19bae5d13"), variant: "secondary" as const };
+    return { label: t("s_8cfbd5f5a6"), variant: "outline" as const };
   };
 
   return (
@@ -193,18 +194,18 @@ export function ManagedSkillList({
           <>
             <Button disabled={busy} onClick={() => importSkill("project")} size="sm" type="button" variant="outline">
               <Download className="size-3.5" />
-              导入到项目
+              {t("s_f356e6abae")}
             </Button>
             <Button disabled={busy} onClick={() => importSkill("global")} size="sm" type="button" variant="outline">
               <Download className="size-3.5" />
-              导入到全局
+              {t("s_bc47c2f969")}
             </Button>
           </>
         }
-        description="扫描 .opencode/skills、~/.config/opencode/skills，以及 Claude Code 兼容的 .claude/skills 和 .agents/skills。仅列出 <根目录>/<名称>/SKILL.md 这一层——嵌套更深的目录 OpenCode 不会加载，因此不显示。「待重启服务加载」表示文件已就位但 OpenCode 还没读到，可到「连接」页重启服务。"
+        description={t("s_92e9685020")}
         loading={loading}
         onRefresh={() => void refresh()}
-        title="技能"
+        title={t("s_53da139b6a")}
       />
 
       <SettingsMessage error={error} notice={notice} />
@@ -213,13 +214,12 @@ export function ManagedSkillList({
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
           <RotateCcw className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
           <span className="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-400">
-            有 {pendingReload.length} 个技能已启用但 OpenCode 还没加载
-            （{pendingReload.slice(0, 3).map((skill) => skill.name).join("、")}
-            {pendingReload.length > 3 ? " 等" : ""}）。重启服务后生效。
+            {t("s_fbd5b75066")} {pendingReload.length} {t("s_b92ac75ad5")}{pendingReload.slice(0, 3).map((skill) => skill.name).join("、")}
+            {pendingReload.length > 3 ? t("s_93ac7be2bc") : ""}{t("s_4d47092361")}
           </span>
           <Button disabled={restarting} onClick={() => void restartService()} size="sm" type="button">
             <RotateCcw className={cn("size-3.5", restarting && "animate-spin")} />
-            一键重启服务
+            {t("s_692962c043")}
           </Button>
         </div>
       )}
@@ -245,7 +245,7 @@ export function ManagedSkillList({
           <Input
             className="pl-9"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索技能..."
+            placeholder={t("s_e93efaf48a")}
             value={query}
           />
         </div>
@@ -253,7 +253,7 @@ export function ManagedSkillList({
 
       <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border/50 bg-muted/10">
         {visible.length === 0 ? (
-          <EmptyState icon={<PackageOpen className="size-5" />}>没有匹配的技能</EmptyState>
+          <EmptyState icon={<PackageOpen className="size-5" />}>{t("s_8a1fac7238")}</EmptyState>
         ) : (
           visible.map((skill) => {
             const state = loadState(skill);
@@ -274,26 +274,26 @@ export function ManagedSkillList({
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <h3 className="truncate text-sm font-medium">{skill.name}</h3>
                     <Badge variant={state.variant}>{state.label}</Badge>
-                    <Badge variant="outline">{skill.scope === "project" ? "项目" : "全局"}</Badge>
+                    <Badge variant="outline">{skill.scope === "project" ? t("s_22336e6b89") : t("s_a5644f4bbf")}</Badge>
                     <Badge variant="outline">{sourceLabels[skill.source] ?? skill.source}</Badge>
                   </div>
                   <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                    {skill.description ?? "未提供介绍"}
+                    {skill.description ?? t("s_7e73fb8978")}
                   </p>
                   <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/80">{skill.location}</p>
                 </div>
                 <Switch
-                  aria-label={`启用 ${skill.name}`}
+                  aria-label={t("s_7873b24627", { p0: skill.name })}
                   checked={skill.enabled}
                   disabled={busy}
                   onCheckedChange={(enabled) => setEnabled(skill, enabled)}
                 />
                 <Button
-                  aria-label={`删除 ${skill.name}`}
+                  aria-label={t("s_05cefdc56b", { p0: skill.name })}
                   disabled={busy}
                   onClick={() => removeSkill(skill)}
                   size="icon-sm"
-                  title="删除技能"
+                  title={t("s_b9e42ac786")}
                   type="button"
                   variant="ghost"
                 >

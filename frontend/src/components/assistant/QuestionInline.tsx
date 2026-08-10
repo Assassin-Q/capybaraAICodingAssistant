@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import type { QuestionRequest } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 function SelectionMark({ multiple, selected }: { multiple: boolean; selected: boolean }) {
   return (
@@ -113,8 +114,8 @@ export function QuestionInline({
           <div className="flex items-start gap-2.5">
             <Sparkles className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
-              <ConfirmationTitle className="font-medium text-foreground">OpenCode 需要你的选择</ConfirmationTitle>
-              <p className="mt-1 text-muted-foreground">回答后将继续当前任务。</p>
+              <ConfirmationTitle className="font-medium text-foreground">{t("s_412dfd80db")}</ConfirmationTitle>
+              <p className="mt-1 text-muted-foreground">{t("s_73bc5f4367")}</p>
             </div>
             <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{activeIndex + 1}/{request.questions.length}</span>
           </div>
@@ -122,7 +123,7 @@ export function QuestionInline({
           <div className="flex flex-col gap-2" key={`${request.id}-${activeIndex}`}>
             <div className="flex min-w-0 items-center gap-2">
               <span className="min-w-0 flex-1 truncate font-medium text-foreground">{question.header || question.question}</span>
-              <span className="shrink-0 text-[10px] text-muted-foreground">{multiple ? "多选" : "单选"}</span>
+              <span className="shrink-0 text-[10px] text-muted-foreground">{multiple ? t("s_83c68005f4") : t("s_3e886a9ca6")}</span>
             </div>
             {question.header && <p className="leading-5 text-muted-foreground">{question.question}</p>}
 
@@ -154,7 +155,7 @@ export function QuestionInline({
                 <div className={cn("grid min-h-10 grid-cols-[1rem_auto_minmax(0,1fr)] items-center gap-2.5 rounded-md px-2.5 py-1.5", customSelected && "bg-muted/65")}>
                   <button
                     aria-checked={customSelected}
-                    aria-label={multiple ? "选择自定义回答" : "使用自定义回答"}
+                    aria-label={multiple ? t("s_9efd3a579e") : t("s_4cc72337e2")}
                     className="flex size-4 items-center justify-center"
                     onClick={toggleCustomAnswer}
                     role={multiple ? "checkbox" : "radio"}
@@ -162,12 +163,12 @@ export function QuestionInline({
                   >
                     <SelectionMark multiple={multiple} selected={customSelected} />
                   </button>
-                  <label className="whitespace-nowrap text-xs font-medium" htmlFor={customInputID}>自定义回答</label>
+                  <label className="whitespace-nowrap text-xs font-medium" htmlFor={customInputID}>{t("s_ef511fa77f")}</label>
                   <Input
                     className="h-8 border-border/50 bg-background/70 px-2.5 text-xs shadow-none focus-visible:ring-2"
                     id={customInputID}
                     onChange={(event) => updateCustomAnswer(event.target.value)}
-                    placeholder="输入回答"
+                    placeholder={t("s_8eb84f93e2")}
                     ref={customInputRef}
                     value={customValue}
                   />
@@ -180,12 +181,12 @@ export function QuestionInline({
 
       <ConfirmationActions className="flex w-full flex-wrap items-center justify-between gap-2 self-stretch">
         <div className="flex items-center gap-1">
-          <ConfirmationAction disabled={activeIndex === 0} onClick={() => setActiveIndex((index) => Math.max(0, index - 1))} variant="ghost"><ChevronLeft className="size-3.5" />上一题</ConfirmationAction>
-          {activeIndex < request.questions.length - 1 && <ConfirmationAction onClick={() => setActiveIndex((index) => Math.min(request.questions.length - 1, index + 1))} variant="ghost">下一题<ChevronRight className="size-3.5" /></ConfirmationAction>}
+          <ConfirmationAction disabled={activeIndex === 0} onClick={() => setActiveIndex((index) => Math.max(0, index - 1))} variant="ghost"><ChevronLeft className="size-3.5" />{t("s_5cd36810d1")}</ConfirmationAction>
+          {activeIndex < request.questions.length - 1 && <ConfirmationAction onClick={() => setActiveIndex((index) => Math.min(request.questions.length - 1, index + 1))} variant="ghost">{t("s_2d4c3791c5")}<ChevronRight className="size-3.5" /></ConfirmationAction>}
         </div>
         <div className="flex items-center gap-1">
-          <ConfirmationAction onClick={onReject} variant="ghost">暂不回答</ConfirmationAction>
-          <ConfirmationAction disabled={!complete} onClick={onReply}>提交回答</ConfirmationAction>
+          <ConfirmationAction onClick={onReject} variant="ghost">{t("s_1adb16f364")}</ConfirmationAction>
+          <ConfirmationAction disabled={!complete} onClick={onReply}>{t("s_679645d268")}</ConfirmationAction>
         </div>
       </ConfirmationActions>
     </Confirmation>

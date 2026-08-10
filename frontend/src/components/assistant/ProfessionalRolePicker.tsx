@@ -1,6 +1,7 @@
 import { BriefcaseBusiness, Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { t } from "@/lib/i18n";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,20 +29,20 @@ export function ProfessionalRolePicker({ onChange, preferences }: ProfessionalRo
   const roles = preferences.roles ?? {};
   const enabledRoles = PROFESSIONAL_ROLE_PRESETS.filter((preset) => roles[preset.id]?.enabled);
   const selected = findProfessionalRolePreset(preferences.selectedRoleId);
-  const label = selected && roles[selected.id]?.enabled ? selected.name : "自动角色";
+  const label = selected && roles[selected.id]?.enabled ? selected.name : t("s_13f490e30b");
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <Button aria-label={`专业角色：${label}`} className="h-7 max-w-36 gap-1.5 px-2 text-xs font-normal text-muted-foreground hover:text-foreground" title={`专业角色：${label}`} type="button" variant="ghost">
+        <Button aria-label={t("s_080edd40af", { p0: label })} className="h-7 max-w-36 gap-1.5 px-2 text-xs font-normal text-muted-foreground hover:text-foreground" title={t("s_080edd40af", { p0: label })} type="button" variant="ghost">
           <BriefcaseBusiness className="size-3.5" />
           <span className="truncate">{label}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-64">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">专业角色</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs text-muted-foreground">{t("s_7d6b576c8e")}</DropdownMenuLabel>
         <DropdownMenuItem className="items-start focus:bg-transparent focus-visible:bg-accent hover:bg-accent" onSelect={() => onChange(AUTO_PROFESSIONAL_ROLE_ID)}>
           <BriefcaseBusiness className="mt-0.5 size-3.5" />
-          <span className="min-w-0 flex-1"><span className="block text-sm">自动角色</span><span className="block text-xs text-muted-foreground">由模型根据任务自行判断</span></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm">{t("s_13f490e30b")}</span><span className="block text-xs text-muted-foreground">{t("s_09d76e0d9e")}</span></span>
           {preferences.selectedRoleId === AUTO_PROFESSIONAL_ROLE_ID && <Check className="mt-0.5 size-3.5" />}
         </DropdownMenuItem>
         {enabledRoles.length > 0 && <DropdownMenuSeparator />}

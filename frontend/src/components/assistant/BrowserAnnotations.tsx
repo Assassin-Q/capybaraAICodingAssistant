@@ -4,6 +4,7 @@ import { MessageSquareText, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { localApiBaseUrl } from "@/lib/idea";
+import { t } from "@/lib/i18n";
 
 export interface BrowserAnnotation {
   id: string;
@@ -120,13 +121,13 @@ export const annotationsAsPrompt = (annotations: BrowserAnnotation[]): string =>
   const lines = annotations.map((annotation, index) => {
     const label = annotation.text.trim().slice(0, 60);
     return [
-      `${index + 1}. 选择器 \`${annotation.selector}\``,
-      label ? `   元素文本：${label}` : "",
-      `   用户要求：${annotation.comment?.trim() ?? ""}`,
+      t("s_a3adc379de", { p0: index + 1, p1: annotation.selector }),
+      label ? t("s_f317a96f3a", { p0: label }) : "",
+      t("s_0801c100f9", { p0: annotation.comment?.trim() ?? "" }),
     ].filter(Boolean).join("\n");
   });
   return [
-    `【浏览器标注】页面 ${annotations[0]?.url ?? ""}`,
+    t("s_1a72b5095a", { p0: annotations[0]?.url ?? "" }),
     ...lines,
   ].join("\n");
 };
@@ -148,22 +149,22 @@ export function BrowserAnnotationChip({
       <div className="flex items-center gap-1.5">
         <PopoverTrigger asChild>
           <Button
-            aria-label={`浏览器标注 ${annotations.length} 条`}
+            aria-label={t("s_c6eb6dfc1f", { p0: annotations.length })}
             className="h-6 gap-1.5 rounded-full bg-muted/60 px-2 text-[11px] font-normal"
             size="sm"
             type="button"
             variant="ghost"
           >
             <MessageSquareText className="size-3" />
-            {annotations.length} 条浏览器标注
+            {annotations.length} {t("s_c14049a181")}
           </Button>
         </PopoverTrigger>
         <Button
-          aria-label="清除浏览器标注"
+          aria-label={t("s_b384a41aeb")}
           className="size-5"
           onClick={onClear}
           size="icon-sm"
-          title="不随本次提问发送"
+          title={t("s_4bbb0b9b8e")}
           type="button"
           variant="ghost"
         >
@@ -173,8 +174,8 @@ export function BrowserAnnotationChip({
       <PopoverContent align="start" className="w-80 border-border/50 p-0" sideOffset={6}>
         <p className="border-b border-border/40 px-3 py-2 text-[11px] text-muted-foreground">
           {imagesSupported
-            ? "发送时每条标注会附带该元素的截图"
-            : "当前模型不支持图片，只发送标注文字"}
+            ? t("s_1b4047dd74")
+            : t("s_a175e119b3")}
         </p>
         <div className="max-h-56 overflow-y-auto">
           {annotations.map((annotation, index) => (

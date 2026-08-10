@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ideaFileSearchApi, type FileSearchHit } from "@/lib/ideaIntegrations";
 import type { AgentInfo, CommandInfo, SkillInfo } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface SlashCommandMenuProps {
   agents: AgentInfo[];
@@ -43,8 +44,8 @@ interface CommandEntry {
  * to the new prefix, rather than a separate mode this one has to track.
  */
 const GATEWAYS: Array<{ description: string; kind: EntryKind; label: string; prefix: string }> = [
-  { description: "调用工作区技能或 MCP 服务", kind: "skill", label: "技能与 MCP", prefix: "$" },
-  { description: "交给某个子智能体处理", kind: "agent", label: "子智能体", prefix: "@" },
+  { description: t("s_d52e883472"), kind: "skill", label: t("s_57d1b9097c"), prefix: "$" },
+  { description: t("s_69bc073da7"), kind: "agent", label: t("s_16bb55f008"), prefix: "@" },
 ];
 
 /**
@@ -53,14 +54,14 @@ const GATEWAYS: Array<{ description: string; kind: EntryKind; label: string; pre
  * Keeping the query in the composer text is what makes the second step work without a mode flag:
  * everything after the command is the search term, so the same text-driven path drives both menus.
  */
-const FILE_COMMAND = "/引用文件 ";
+const FILE_COMMAND = t("s_22a59aa648");
 
 const sourceLabel = (kind: EntryKind): string => {
-  if (kind === "agent") return "子智能体";
-  if (kind === "file") return "文件";
+  if (kind === "agent") return t("s_16bb55f008");
+  if (kind === "file") return t("s_49deaf7da2");
   if (kind === "mcp") return "MCP";
-  if (kind === "skill") return "技能";
-  return "命令";
+  if (kind === "skill") return t("s_53da139b6a");
+  return t("s_b114b91547");
 };
 
 const fuzzyScore = (value: string, term: string): number | undefined => {
@@ -152,7 +153,7 @@ export function SlashCommandMenu({
 
     if (prefix === "/") {
       values.push({
-        description: "初始化项目并生成 AGENTS.md",
+        description: t("s_8337e72fc3"),
         id: "cmd:init",
         insert: "/init ",
         kind: "command",
@@ -161,27 +162,27 @@ export function SlashCommandMenu({
       });
       values.push({
         action: onCompact,
-        description: "立即压缩当前会话，把已有对话浓缩成摘要以释放上下文",
+        description: t("s_83b7a1eb22"),
         id: "cmd:compact",
         kind: "command",
         label: "/compact",
         sourceLabel: sourceLabel("command"),
       });
       values.push({
-        description: "按文件名或内容检索项目文件，选中后作为上下文附加",
+        description: t("s_47cf3e7d9e"),
         id: "cmd:file",
         insert: FILE_COMMAND,
         kind: "file",
-        label: "/引用文件",
-        sourceLabel: "选择器",
+        label: t("s_2d730c6b6e"),
+        sourceLabel: t("s_5da56aba3c"),
       });
       GATEWAYS.forEach((gateway) => values.push({
-        description: `${gateway.description}（按 ${gateway.prefix} 也可直接打开）`,
+        description: t("s_12f3b7ca48", { p0: gateway.description, p1: gateway.prefix }),
         id: `gateway:${gateway.prefix}`,
         insert: gateway.prefix,
         kind: gateway.kind,
         label: `${gateway.prefix} ${gateway.label}`,
-        sourceLabel: "选择器",
+        sourceLabel: t("s_5da56aba3c"),
       }));
       commands.forEach((command) => {
         if (command.name === "init" || command.name === "compact") return;
@@ -191,7 +192,7 @@ export function SlashCommandMenu({
             ? "skill"
             : "command";
         values.push({
-          description: command.description ?? "OpenCode 命令",
+          description: command.description ?? t("s_420903c36c"),
           id: `cmd:${command.name}`,
           insert: `/${command.name} `,
           kind,
@@ -203,7 +204,7 @@ export function SlashCommandMenu({
 
     if (prefix === "$") {
       skills.filter((skill) => !disabled.has(skill.name)).forEach((skill) => values.push({
-        description: skill.description ?? "工作区技能",
+        description: skill.description ?? t("s_c9422bb291"),
         id: `skill:${skill.name}`,
         insert: `$${skill.name} `,
         kind: "skill",
@@ -211,7 +212,7 @@ export function SlashCommandMenu({
         sourceLabel: sourceLabel("skill"),
       }));
       mcpNames.forEach((name) => values.push({
-        description: `优先使用 ${name} 提供的 MCP 工具`,
+        description: t("s_1846b2af9e", { p0: name }),
         id: `mcp:${name}`,
         insert: `$${name} `,
         kind: "mcp",
@@ -224,7 +225,7 @@ export function SlashCommandMenu({
       agents
         .filter((agent) => agent.mode === "subagent" && !agent.hidden && !agent.disabled)
         .forEach((agent) => values.push({
-          description: agent.description ?? "OpenCode 子智能体",
+          description: agent.description ?? t("s_4640b8205d"),
           id: `agent:${agent.id}`,
           insert: `@${agent.id} `,
           kind: "agent",
@@ -238,7 +239,7 @@ export function SlashCommandMenu({
       // content matches, whose relevance lives in the body rather than the path.
       return fileHits.map((hit) => ({
         action: () => onAttachFile(hit.path),
-        description: hit.line ? `第 ${hit.line} 行：${hit.preview ?? ""}` : hit.relativePath,
+        description: hit.line ? t("s_35163dd609", { p0: hit.line, p1: hit.preview ?? "" }) : hit.relativePath,
         id: `file:${hit.path}`,
         kind: "file" as const,
         label: hit.name,
@@ -280,9 +281,13 @@ export function SlashCommandMenu({
     itemRefs.current = [];
   }, [query]);
 
+  // Mirrors the render guard below. The listener is registered unconditionally, so while the menu
+  // was hidden it still swallowed Enter — picking /init inserted the text and then ate the very
+  // keystroke meant to send it, which is why only the send button worked.
+  const hidden = Boolean(dismissedPrefix) && query.startsWith(dismissedPrefix);
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.isComposing || entries.length === 0) return;
+      if (event.isComposing || hidden || entries.length === 0) return;
       if (event.key === "ArrowDown") {
         event.preventDefault();
         setActiveIndex((current) => (current + 1) % entries.length);
@@ -301,18 +306,18 @@ export function SlashCommandMenu({
     // JCEF as well as a normal browser.
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [activeIndex, choose, entries, query]);
+  }, [activeIndex, choose, entries, hidden, query]);
 
   useEffect(() => {
     itemRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
 
-  if (dismissedPrefix && query.startsWith(dismissedPrefix)) return null;
+  if (hidden) return null;
   const emptyLabel = fileMode
-    ? (fileSearching ? "正在检索..." : term ? "没有匹配的文件" : "输入文件名或内容关键字")
-    : "没有匹配项";
+    ? (fileSearching ? t("s_346965a7d1") : term ? t("s_a4d86f59a3") : t("s_39ebea348c"))
+    : t("s_88aee91c88");
   return (
-    <section aria-label="命令、技能、子智能体与文件" className="absolute bottom-[calc(100%+0.5rem)] left-3 z-30 w-[calc(100%-1.5rem)] max-w-2xl overflow-hidden rounded-lg border-0 bg-popover shadow-md ring-1 ring-border/30">
+    <section aria-label={t("s_41ea8bcfbb")} className="absolute bottom-[calc(100%+0.5rem)] left-3 z-30 w-[calc(100%-1.5rem)] max-w-2xl overflow-hidden rounded-lg border-0 bg-popover shadow-md ring-1 ring-border/30">
       <div className="max-h-72 overflow-y-auto p-1.5">
         {entries.length === 0 ? (
           <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground"><Search className="size-3.5" />{emptyLabel}</div>

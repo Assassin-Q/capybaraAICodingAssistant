@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { t } from "@/lib/i18n";
 import {
   Dialog,
   DialogContent,
@@ -42,7 +43,7 @@ export function ConfirmDialog({ busy = false, onOpenChange, request }: ConfirmDi
             type="button"
             variant="outline"
           >
-            取消
+            {t("s_4d0b4688c7")}
           </Button>
           <Button
             disabled={busy}
@@ -51,7 +52,7 @@ export function ConfirmDialog({ busy = false, onOpenChange, request }: ConfirmDi
             type="button"
             variant={request?.destructive ? "destructive" : "default"}
           >
-            {request?.confirmLabel ?? "确认"}
+            {request?.confirmLabel ?? t("s_b56d9ac6c5")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -52,6 +52,7 @@ import type {
   MemoryUserProfile,
 } from "@/lib/idea";
 import type { ModelInfo } from "@/lib/opencode";
+import { t } from "@/lib/i18n";
 
 interface MemorySettingsProps {
   models: ModelInfo[];
@@ -75,15 +76,15 @@ const settingsFromStatus = (status: MemorySystemStatus): MemorySettingsRequest =
 });
 
 const formatDate = (value?: number | string): string => {
-  if (!value) return "尚未执行";
+  if (!value) return t("s_6da92c1601");
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "未知" : date.toLocaleString("zh-CN", { hour12: false });
+  return Number.isNaN(date.getTime()) ? t("s_d9c32a4c3d") : date.toLocaleString("zh-CN", { hour12: false });
 };
 
 const profileRows = (profile: MemoryUserProfile | null) => [
-  { icon: UserRound, items: profile?.profileData?.preferences ?? [], label: "偏好" },
-  { icon: Brain, items: profile?.profileData?.patterns ?? [], label: "习惯" },
-  { icon: Sparkles, items: profile?.profileData?.workflows ?? [], label: "工作流" },
+  { icon: UserRound, items: profile?.profileData?.preferences ?? [], label: t("s_dfdf11c5fd") },
+  { icon: Brain, items: profile?.profileData?.patterns ?? [], label: t("s_0c5992442b") },
+  { icon: Sparkles, items: profile?.profileData?.workflows ?? [], label: t("s_cc19798b0c") },
 ];
 
 interface ToggleRowProps {
@@ -134,7 +135,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
       ideaApi.listMemories(),
       ideaApi.getMemoryProfile(),
     ]);
-    if (!memoryResult.success) throw new Error(memoryResult.error || "读取记忆失败");
+    if (!memoryResult.success) throw new Error(memoryResult.error || t("s_d53ba8c809"));
     setMemories(memoryResult.data?.items ?? []);
     if (profileResult.success) setProfile(profileResult.data ?? null);
   }, []);
@@ -163,7 +164,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
     setProvider(nextStatus.memoryProvider ?? "");
     setModel(nextStatus.memoryModel ?? "");
     setStoragePath(nextStatus.storagePath);
-    setNotice(message ?? "设置已更新");
+    setNotice(message ?? t("s_4241b02109"));
     await loadMemoryData(nextStatus);
     onChanged?.();
   };
@@ -175,7 +176,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
     setNotice("");
     try {
       const result = await ideaApi.updateMemorySettings({ ...settingsFromStatus(status), ...patch });
-      if (!result.success || !result.status) throw new Error(result.message || "保存记忆设置失败");
+      if (!result.success || !result.status) throw new Error(result.message || t("s_f0401baae9"));
       await applyStatus(result.status, result.message);
     } catch (saveError) {
       setError(errorMessage(saveError));
@@ -191,7 +192,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
     setNotice("");
     try {
       const result = await ideaApi.installMemorySystem();
-      if (!result.success || !result.status) throw new Error(result.message || "安装记忆插件失败");
+      if (!result.success || !result.status) throw new Error(result.message || t("s_a52a292623"));
       await applyStatus(result.status, result.message);
     } catch (installError) {
       setError(errorMessage(installError));
@@ -206,7 +207,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
     setError("");
     try {
       const result = await ideaApi.scanDevelopmentEnvironments(true);
-      if (!result.success || !result.status) throw new Error(result.message || "扫描开发环境失败");
+      if (!result.success || !result.status) throw new Error(result.message || t("s_f1e096de79"));
       await applyStatus(result.status, result.message);
     } catch (scanError) {
       setError(errorMessage(scanError));
@@ -222,7 +223,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
     setNotice("");
     try {
       const result = await ideaApi.saveDevelopmentEnvironments(environments, true);
-      if (!result.success || !result.status) throw new Error(result.message || "保存开发环境失败");
+      if (!result.success || !result.status) throw new Error(result.message || t("s_02d816f46e"));
       setEnvironmentDraft(null);
       setEnvironmentDeleteTarget(null);
       await applyStatus(result.status, result.message);
@@ -241,7 +242,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
           manual: true,
           name: "",
           paths: [""],
-          source: "手动",
+          source: t("s_2a4a4de806"),
           version: "",
         });
   };
@@ -251,7 +252,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
     const name = environmentDraft.name.trim();
     const paths = environmentDraft.paths.map((path) => path.trim()).filter(Boolean);
     if (!name || paths.length === 0) {
-      setError("请填写环境名称和至少一个路径");
+      setError(t("s_497c7cfa99"));
       return;
     }
     const nextEnvironment: DevelopmentEnvironmentInfo = {
@@ -259,7 +260,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
       manual: true,
       name,
       paths,
-      source: "手动",
+      source: t("s_2a4a4de806"),
       version: environmentDraft.version?.trim() || undefined,
     };
     const exists = status.environments.some((environment) => environment.id === nextEnvironment.id);
@@ -280,9 +281,9 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
     setError("");
     try {
       const result = await ideaApi.refreshMemoryProfile();
-      if (!result.success) throw new Error(result.error || "刷新用户画像失败");
+      if (!result.success) throw new Error(result.error || t("s_e3011be148"));
       setProfile(result.data ?? null);
-      setNotice(result.message || "用户画像已刷新");
+      setNotice(result.message || t("s_1a41d1e575"));
     } catch (profileError) {
       setError(errorMessage(profileError));
     } finally {
@@ -297,10 +298,10 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
     setError("");
     try {
       const result = await ideaApi.addMemory(content);
-      if (!result.success) throw new Error(result.error || "新增记忆失败");
+      if (!result.success) throw new Error(result.error || t("s_253def22ad"));
       setNewMemory("");
       setAddOpen(false);
-      setNotice("已加入跨项目用户记忆");
+      setNotice(t("s_e52b5401db"));
       const memoryResult = await ideaApi.listMemories();
       if (memoryResult.success) setMemories(memoryResult.data?.items ?? []);
     } catch (addError) {
@@ -316,10 +317,10 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
     setError("");
     try {
       const result = await ideaApi.deleteMemory(deleteTarget.id);
-      if (!result.success) throw new Error(result.error || "删除记忆失败");
+      if (!result.success) throw new Error(result.error || t("s_2be1f08d7c"));
       setMemories((current) => current.filter((item) => item.id !== deleteTarget.id));
       setDeleteTarget(null);
-      setNotice("记忆已删除");
+      setNotice(t("s_487c083835"));
     } catch (deleteError) {
       setError(errorMessage(deleteError));
     } finally {
@@ -333,7 +334,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
     setError("");
     try {
       const result = await ideaApi.openMemoryDashboard();
-      if (!result.success) throw new Error(result.message || "打开管理面板失败");
+      if (!result.success) throw new Error(result.message || t("s_70430a7138"));
     } catch (dashboardError) {
       setError(errorMessage(dashboardError));
     } finally {
@@ -360,16 +361,16 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
     <section className="mx-auto flex w-full max-w-5xl flex-col pb-10">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border/50 pb-5">
         <div>
-          <h2 className="text-lg font-semibold">用户记忆</h2>
+          <h2 className="text-lg font-semibold">{t("s_3bede49d8d")}</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            自动沉淀跨会话、跨项目的偏好和技术上下文，并维护本机可复用的开发环境索引。
+            {t("s_2b00f5a6ce")}
           </p>
         </div>
         <div className="flex items-center gap-1">
-          <Button aria-label="刷新记忆状态" disabled={loading || Boolean(busy)} onClick={() => void refresh()} size="icon-sm" title="刷新" type="button" variant="ghost">
+          <Button aria-label={t("s_2e96a307c2")} disabled={loading || Boolean(busy)} onClick={() => void refresh()} size="icon-sm" title={t("s_38108eaa1d")} type="button" variant="ghost">
             <RefreshCw className={cn("size-4", loading && "animate-spin")} />
           </Button>
-          {status?.pluginReady && <Button onClick={() => void openDashboard()} size="sm" type="button" variant="ghost"><ExternalLink className="size-3.5" />完整管理</Button>}
+          {status?.pluginReady && <Button onClick={() => void openDashboard()} size="sm" type="button" variant="ghost"><ExternalLink className="size-3.5" />{t("s_fb987913ba")}</Button>}
         </div>
       </header>
 
@@ -380,51 +381,51 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Database className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold">记忆引擎</h3>
-            {status && <Badge variant={status.pluginReady ? "secondary" : "outline"}>{status.pluginReady ? "运行中" : status.installed ? "等待重载" : "未安装"}</Badge>}
+            <h3 className="text-sm font-semibold">{t("s_97fb12960e")}</h3>
+            {status && <Badge variant={status.pluginReady ? "secondary" : "outline"}>{status.pluginReady ? t("s_5942497005") : status.installed ? t("s_1fedf0f4ce") : t("s_6f7dc945ae")}</Badge>}
           </div>
           <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            默认使用本地向量存储的 OpenCode Mem。检测到其他社区记忆插件时会保留并展示，不会覆盖用户现有方案。
+            {t("s_902014770b")}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             {(status?.plugins ?? []).map((plugin) => (
               <div className="min-w-44 rounded-md bg-muted/50 px-3 py-2" key={plugin.id}>
-                <div className="flex items-center gap-2"><span className="text-xs font-medium">{plugin.name}</span>{plugin.fullIntegration && <Badge variant="secondary">已接管设置</Badge>}</div>
+                <div className="flex items-center gap-2"><span className="text-xs font-medium">{plugin.name}</span>{plugin.fullIntegration && <Badge variant="secondary">{t("s_673cd296a4")}</Badge>}</div>
                 <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{plugin.description}</p>
               </div>
             ))}
-            {status && status.plugins.length === 0 && <span className="text-xs text-muted-foreground">未检测到记忆插件</span>}
+            {status && status.plugins.length === 0 && <span className="text-xs text-muted-foreground">{t("s_c296a2a618")}</span>}
           </div>
         </div>
         <div className="flex min-w-0 flex-col justify-center gap-3">
           {!integrated && <Button disabled={busy === "install"} onClick={() => void install()} size="sm" type="button">
             {busy === "install" ? <LoaderCircle className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
-            安装本地记忆
+            {t("s_a0c3ce22e1")}
           </Button>}
           <label className="grid gap-1.5 text-xs font-medium">
-            <span className="flex items-center gap-1.5"><FolderCog className="size-3.5 text-muted-foreground" />记忆存储位置</span>
-            <Input disabled={controlsDisabled} onChange={(event) => setStoragePath(event.target.value)} placeholder="例如 C:\\OpenCodeMemory" value={storagePath} />
+            <span className="flex items-center gap-1.5"><FolderCog className="size-3.5 text-muted-foreground" />{t("s_dc7cc4071b")}</span>
+            <Input disabled={controlsDisabled} onChange={(event) => setStoragePath(event.target.value)} placeholder={t("s_8a2cf2985e")} value={storagePath} />
           </label>
           <div className="flex items-start justify-between gap-3">
-            <p className="min-w-0 flex-1 text-[11px] leading-4 text-muted-foreground">支持绝对路径和 ~/ 路径。修改后需重新加载 OpenCode，旧目录数据不会被自动删除或移动。</p>
-            <Button disabled={controlsDisabled || !storagePath.trim() || !storageChanged} onClick={() => void saveSettings({ storagePath: storagePath.trim() })} size="sm" type="button" variant="secondary">保存位置</Button>
+            <p className="min-w-0 flex-1 text-[11px] leading-4 text-muted-foreground">{t("s_9bc390c6f8")}</p>
+            <Button disabled={controlsDisabled || !storagePath.trim() || !storageChanged} onClick={() => void saveSettings({ storagePath: storagePath.trim() })} size="sm" type="button" variant="secondary">{t("s_45561b8ad5")}</Button>
           </div>
-          {status?.restartRequired && <p className="text-[11px] leading-4 text-amber-600 dark:text-amber-500">配置已就绪，重载 OpenCode 服务后开始工作。</p>}
+          {status?.restartRequired && <p className="text-[11px] leading-4 text-amber-600 dark:text-amber-500">{t("s_05d0a72e19")}</p>}
         </div>
       </section>
 
       <section className="border-b border-border/50 py-6">
-        <div className="flex items-center gap-2"><Sparkles className="size-4 text-muted-foreground" /><h3 className="text-sm font-semibold">自动整理</h3></div>
+        <div className="flex items-center gap-2"><Sparkles className="size-4 text-muted-foreground" /><h3 className="text-sm font-semibold">{t("s_7ea0593117")}</h3></div>
         <div className="mt-3 divide-y divide-border/40">
-          <ToggleRow checked={status?.enabled ?? true} description="暂停时保留已有数据，但不再注入、捕获或更新用户画像。" disabled={!status || Boolean(busy) || !integrated} label="启用用户记忆" onCheckedChange={(enabled) => void saveSettings({ enabled })} />
-          <ToggleRow checked={status?.autoInstall ?? true} description="全局没有任何记忆插件时，自动安装 OpenCode Mem。" disabled={!status || Boolean(busy)} label="缺失时自动安装" onCheckedChange={(autoInstall) => void saveSettings({ autoInstall })} />
-          <ToggleRow checked={status?.autoCaptureEnabled ?? true} description="会话空闲后提取可长期复用的技术决策、排错经验和偏好。每次提取会额外调用一次下面这个模型；关掉后仍会在 OpenCode 自带的 compaction 里提取，不额外计费。" disabled={controlsDisabled} label="自动捕获（会额外调用模型）" onCheckedChange={(autoCaptureEnabled) => void saveSettings({ autoCaptureEnabled })} />
-          <ToggleRow checked={status?.crossProjectEnabled ?? true} description="检索所有项目的记忆，让个人偏好和通用经验跟随到新工作区。" disabled={controlsDisabled} label="跨项目召回" onCheckedChange={(crossProjectEnabled) => void saveSettings({ crossProjectEnabled })} />
-          <ToggleRow checked={status?.profileEnabled ?? true} description="根据长期交互整理沟通偏好、工作习惯和常用工作流。" disabled={controlsDisabled} label="学习用户画像" onCheckedChange={(profileEnabled) => void saveSettings({ profileEnabled })} />
-          <ToggleRow checked={status?.environmentSyncEnabled ?? true} description="扫描本机 SDK、运行时和工具路径，并同步为一条受控的全局记忆。" disabled={controlsDisabled} label="同步开发环境" onCheckedChange={(environmentSyncEnabled) => void saveSettings({ environmentSyncEnabled })} />
+          <ToggleRow checked={status?.enabled ?? true} description={t("s_e208f8da03")} disabled={!status || Boolean(busy) || !integrated} label={t("s_b89301d015")} onCheckedChange={(enabled) => void saveSettings({ enabled })} />
+          <ToggleRow checked={status?.autoInstall ?? true} description={t("s_cf45de7a13")} disabled={!status || Boolean(busy)} label={t("s_5e668edc4f")} onCheckedChange={(autoInstall) => void saveSettings({ autoInstall })} />
+          <ToggleRow checked={status?.autoCaptureEnabled ?? true} description={t("s_9f6d6428bf")} disabled={controlsDisabled} label={t("s_b6ff4b96a5")} onCheckedChange={(autoCaptureEnabled) => void saveSettings({ autoCaptureEnabled })} />
+          <ToggleRow checked={status?.crossProjectEnabled ?? true} description={t("s_a39a2707b6")} disabled={controlsDisabled} label={t("s_d6c26ab834")} onCheckedChange={(crossProjectEnabled) => void saveSettings({ crossProjectEnabled })} />
+          <ToggleRow checked={status?.profileEnabled ?? true} description={t("s_2608f5fa8d")} disabled={controlsDisabled} label={t("s_b8ae355f4b")} onCheckedChange={(profileEnabled) => void saveSettings({ profileEnabled })} />
+          <ToggleRow checked={status?.environmentSyncEnabled ?? true} description={t("s_4e0858d9a1")} disabled={controlsDisabled} label={t("s_a65c20899b")} onCheckedChange={(environmentSyncEnabled) => void saveSettings({ environmentSyncEnabled })} />
         </div>
         <div className="mt-4 grid gap-1.5">
-          <p className="text-xs font-medium">整理模型</p>
+          <p className="text-xs font-medium">{t("s_f1e2be3258")}</p>
           <MemoryModelPicker
             disabled={controlsDisabled || models.length === 0}
             models={models}
@@ -432,40 +433,37 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
             value={selectedMemoryModelKey}
           />
           <p className="text-[11px] leading-4 text-muted-foreground">
-            仅显示 OpenCode 当前已配置、已启用且可以直接调用的供应商模型。
-            这个模型只用来整理记忆，选便宜的小模型即可，不影响对话质量。
+            {t("s_ba2c499521")}
           </p>
           {status && status.captureCallsTotal > 0 && (
             <p className="rounded-md bg-muted/40 px-2.5 py-1.5 text-[11px] leading-5 text-muted-foreground">
-              已提取记忆 <b className="font-mono">{status.captureCallsTotal}</b> 条
-              （本月 <b className="font-mono">{status.captureCallsThisMonth}</b> 条）。
-              每条对应一次额外的模型调用——这是自动捕获的实际开销。
+              {t("s_1a17e730d7")} <b className="font-mono">{status.captureCallsTotal}</b> {t("s_160b4abe5c")} <b className="font-mono">{status.captureCallsThisMonth}</b> {t("s_04482bab8a")}
             </p>
           )}
         </div>
-        <div className="mt-3 flex justify-end"><Button disabled={controlsDisabled || !provider.trim() || !model.trim() || !modelChanged} onClick={() => void saveSettings({ memoryModel: model.trim(), memoryProvider: provider.trim() })} size="sm" type="button" variant="secondary">保存整理模型</Button></div>
+        <div className="mt-3 flex justify-end"><Button disabled={controlsDisabled || !provider.trim() || !model.trim() || !modelChanged} onClick={() => void saveSettings({ memoryModel: model.trim(), memoryProvider: provider.trim() })} size="sm" type="button" variant="secondary">{t("s_895132d584")}</Button></div>
       </section>
 
       <section className="border-b border-border/50 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><div className="flex items-center gap-2"><Brain className="size-4 text-muted-foreground" /><h3 className="text-sm font-semibold">用户画像</h3></div><p className="mt-1 text-xs text-muted-foreground">已分析 {profile?.totalPromptsAnalyzed ?? 0} 条提示，上次更新 {formatDate(profile?.lastAnalyzedAt)}</p></div>
-          <Button disabled={!status?.pluginReady || Boolean(busy)} onClick={() => void refreshProfile()} size="sm" type="button" variant="ghost">{busy === "profile" ? <LoaderCircle className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}重新整理</Button>
+          <div><div className="flex items-center gap-2"><Brain className="size-4 text-muted-foreground" /><h3 className="text-sm font-semibold">{t("s_822dcdf5ff")}</h3></div><p className="mt-1 text-xs text-muted-foreground">{t("s_38d69c8d20")} {profile?.totalPromptsAnalyzed ?? 0} {t("s_8137b500ba")} {formatDate(profile?.lastAnalyzedAt)}</p></div>
+          <Button disabled={!status?.pluginReady || Boolean(busy)} onClick={() => void refreshProfile()} size="sm" type="button" variant="ghost">{busy === "profile" ? <LoaderCircle className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}{t("s_5387b55bb9")}</Button>
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-3">
-          {profileRows(profile).map(({ icon: Icon, items, label }) => <div className="min-w-0" key={label}><div className="mb-2 flex items-center gap-2 text-xs font-medium"><Icon className="size-3.5 text-muted-foreground" />{label}<span className="text-muted-foreground">{items.length}</span></div>{items.length === 0 ? <p className="text-xs text-muted-foreground">尚未形成{label}</p> : <div className="space-y-2">{items.slice(0, 5).map((item, index) => <div className="rounded-md bg-muted/40 px-3 py-2" key={`${label}-${index}`}><p className="text-xs leading-5">{item.description || item.category || "未命名条目"}</p>{item.category && item.description && <p className="mt-1 text-[11px] text-muted-foreground">{item.category}</p>}</div>)}</div>}</div>)}
+          {profileRows(profile).map(({ icon: Icon, items, label }) => <div className="min-w-0" key={label}><div className="mb-2 flex items-center gap-2 text-xs font-medium"><Icon className="size-3.5 text-muted-foreground" />{label}<span className="text-muted-foreground">{items.length}</span></div>{items.length === 0 ? <p className="text-xs text-muted-foreground">{t("s_9fb420b466")}{label}</p> : <div className="space-y-2">{items.slice(0, 5).map((item, index) => <div className="rounded-md bg-muted/40 px-3 py-2" key={`${label}-${index}`}><p className="text-xs leading-5">{item.description || item.category || t("s_7ff24384ed")}</p>{item.category && item.description && <p className="mt-1 text-[11px] text-muted-foreground">{item.category}</p>}</div>)}</div>}</div>)}
         </div>
       </section>
 
       <section className="border-b border-border/50 py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><div className="flex items-center gap-2"><HardDrive className="size-4 text-muted-foreground" /><h3 className="text-sm font-semibold">本机开发环境</h3></div><p className="mt-1 text-xs text-muted-foreground">上次扫描 {formatDate(status?.lastEnvironmentScan)}，共 {status?.environments?.length ?? 0} 项。</p></div>
+          <div><div className="flex items-center gap-2"><HardDrive className="size-4 text-muted-foreground" /><h3 className="text-sm font-semibold">{t("s_4b5373fafb")}</h3></div><p className="mt-1 text-xs text-muted-foreground">{t("s_6edb56748b")} {formatDate(status?.lastEnvironmentScan)}{t("s_e6d3975537")} {status?.environments?.length ?? 0} {t("s_224b86cd59")}</p></div>
           <div className="flex items-center gap-1">
-            <Button disabled={!integrated || Boolean(busy)} onClick={() => openEnvironmentEditor()} size="sm" type="button" variant="ghost"><Plus className="size-3.5" />新增环境</Button>
-            <Button disabled={!integrated || Boolean(busy)} onClick={() => void scan()} size="sm" type="button" variant="ghost">{busy === "scan" ? <LoaderCircle className="size-3.5 animate-spin" /> : <ScanSearch className="size-3.5" />}扫描并同步</Button>
+            <Button disabled={!integrated || Boolean(busy)} onClick={() => openEnvironmentEditor()} size="sm" type="button" variant="ghost"><Plus className="size-3.5" />{t("s_839137597d")}</Button>
+            <Button disabled={!integrated || Boolean(busy)} onClick={() => void scan()} size="sm" type="button" variant="ghost">{busy === "scan" ? <LoaderCircle className="size-3.5 animate-spin" /> : <ScanSearch className="size-3.5" />}{t("s_09b02ae9e6")}</Button>
           </div>
         </div>
         <EnvironmentVariables className="mt-4 overflow-hidden border-border/50 bg-muted/10" defaultShowValues>
-          <EnvironmentVariablesHeader className="border-border/40 px-3 py-2"><EnvironmentVariablesTitle>工具与路径</EnvironmentVariablesTitle><EnvironmentVariablesToggle /></EnvironmentVariablesHeader>
+          <EnvironmentVariablesHeader className="border-border/40 px-3 py-2"><EnvironmentVariablesTitle>{t("s_97791f247a")}</EnvironmentVariablesTitle><EnvironmentVariablesToggle /></EnvironmentVariablesHeader>
           <EnvironmentVariablesContent className="max-h-80 divide-border/40 overflow-y-auto">
             {(status?.environments ?? []).map((environment) => (
               <EnvironmentVariable className="group items-start px-3 py-2.5" key={environment.id} name={environment.name} value={environment.paths.join(" · ")}>
@@ -474,44 +472,44 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
                   <EnvironmentVariableValue className="mt-1 block break-all text-[11px] leading-4" />
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <Badge variant="outline">{environment.manual ? "手动" : environment.source}</Badge>
-                  <Button aria-label={`编辑 ${environment.name}`} className="opacity-65 group-hover:opacity-100" disabled={Boolean(busy)} onClick={() => openEnvironmentEditor(environment)} size="icon-xs" title="编辑环境" type="button" variant="ghost"><PencilLine className="size-3.5" /></Button>
-                  <Button aria-label={`删除 ${environment.name}`} className="opacity-65 group-hover:opacity-100" disabled={Boolean(busy)} onClick={() => setEnvironmentDeleteTarget(environment)} size="icon-xs" title="删除环境" type="button" variant="ghost"><Trash2 className="size-3.5" /></Button>
+                  <Badge variant="outline">{environment.manual ? t("s_2a4a4de806") : environment.source}</Badge>
+                  <Button aria-label={t("s_21883020e2", { p0: environment.name })} className="opacity-65 group-hover:opacity-100" disabled={Boolean(busy)} onClick={() => openEnvironmentEditor(environment)} size="icon-xs" title={t("s_d6230a90ed")} type="button" variant="ghost"><PencilLine className="size-3.5" /></Button>
+                  <Button aria-label={t("s_05cefdc56b", { p0: environment.name })} className="opacity-65 group-hover:opacity-100" disabled={Boolean(busy)} onClick={() => setEnvironmentDeleteTarget(environment)} size="icon-xs" title={t("s_49209e9ce3")} type="button" variant="ghost"><Trash2 className="size-3.5" /></Button>
                 </div>
               </EnvironmentVariable>
             ))}
-            {(status?.environments ?? []).length === 0 && <p className="px-3 py-5 text-xs text-muted-foreground">尚未扫描开发环境</p>}
+            {(status?.environments ?? []).length === 0 && <p className="px-3 py-5 text-xs text-muted-foreground">{t("s_a6c6006bdb")}</p>}
           </EnvironmentVariablesContent>
         </EnvironmentVariables>
-        <p className="mt-2 text-[11px] leading-4 text-muted-foreground">编辑自动发现的条目后会转为手动维护，后续重新扫描不会覆盖；手动新增项也会参与跨项目环境记忆。</p>
+        <p className="mt-2 text-[11px] leading-4 text-muted-foreground">{t("s_b9cefcc4be")}</p>
       </section>
 
       <section className="py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><div className="flex items-center gap-2"><Database className="size-4 text-muted-foreground" /><h3 className="text-sm font-semibold">最近记忆</h3></div><p className="mt-1 text-xs text-muted-foreground">当前读取 {memories.length} 条，可在完整管理面板中查看项目时间线。</p></div>
-          <Button disabled={!status?.pluginReady} onClick={() => setAddOpen(true)} size="sm" type="button"><Plus className="size-3.5" />新增记忆</Button>
+          <div><div className="flex items-center gap-2"><Database className="size-4 text-muted-foreground" /><h3 className="text-sm font-semibold">{t("s_37b4767a28")}</h3></div><p className="mt-1 text-xs text-muted-foreground">{t("s_7fefbaff66")} {memories.length} {t("s_a238bf4ca7")}</p></div>
+          <Button disabled={!status?.pluginReady} onClick={() => setAddOpen(true)} size="sm" type="button"><Plus className="size-3.5" />{t("s_93ddc16fe9")}</Button>
         </div>
-        <div className="relative mt-4 max-w-md"><Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" /><Input className="pl-8" onChange={(event) => setQuery(event.target.value)} placeholder="筛选内容、项目或标签" value={query} /></div>
+        <div className="relative mt-4 max-w-md"><Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" /><Input className="pl-8" onChange={(event) => setQuery(event.target.value)} placeholder={t("s_d89ba2e4a5")} value={query} /></div>
         <div className="mt-4 divide-y divide-border/40">
-          {filteredMemories.slice(0, 30).map((memory) => <article className="group flex items-start gap-3 py-3" key={memory.id}><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2">{memory.displayName && <span className="text-xs font-medium">{memory.displayName}</span>}{memory.projectName && <Badge variant="outline">{memory.projectName}</Badge>}{memory.memoryType && <Badge variant="secondary">{memory.memoryType}</Badge>}</div><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-foreground/90">{memory.content}</p><p className="mt-1 text-[11px] text-muted-foreground">{formatDate(memory.updatedAt ?? memory.createdAt)}</p></div><Button aria-label="删除记忆" className="opacity-60 group-hover:opacity-100" onClick={() => setDeleteTarget(memory)} size="icon-sm" title="删除" type="button" variant="ghost"><Trash2 className="size-3.5" /></Button></article>)}
-          {!loading && filteredMemories.length === 0 && <p className="py-8 text-center text-xs text-muted-foreground">没有匹配的记忆</p>}
+          {filteredMemories.slice(0, 30).map((memory) => <article className="group flex items-start gap-3 py-3" key={memory.id}><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2">{memory.displayName && <span className="text-xs font-medium">{memory.displayName}</span>}{memory.projectName && <Badge variant="outline">{memory.projectName}</Badge>}{memory.memoryType && <Badge variant="secondary">{memory.memoryType}</Badge>}</div><p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-foreground/90">{memory.content}</p><p className="mt-1 text-[11px] text-muted-foreground">{formatDate(memory.updatedAt ?? memory.createdAt)}</p></div><Button aria-label={t("s_e56b09f417")} className="opacity-60 group-hover:opacity-100" onClick={() => setDeleteTarget(memory)} size="icon-sm" title={t("s_3755f56f2f")} type="button" variant="ghost"><Trash2 className="size-3.5" /></Button></article>)}
+          {!loading && filteredMemories.length === 0 && <p className="py-8 text-center text-xs text-muted-foreground">{t("s_98bd35ed62")}</p>}
         </div>
       </section>
 
       <Dialog onOpenChange={(open) => !open && setEnvironmentDraft(null)} open={Boolean(environmentDraft)}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editingExistingEnvironment ? "编辑开发环境" : "新增开发环境"}</DialogTitle>
-            <DialogDescription>保存后作为手动维护项参与跨项目环境记忆，重新扫描不会覆盖它。</DialogDescription>
+            <DialogTitle>{editingExistingEnvironment ? t("s_afb081a177") : t("s_5345321aa5")}</DialogTitle>
+            <DialogDescription>{t("s_dd3c70b649")}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-1.5 text-xs font-medium">环境名称<Input autoFocus onChange={(event) => setEnvironmentDraft((current) => current ? { ...current, name: event.target.value } : current)} placeholder="例如 Android Studio" value={environmentDraft?.name ?? ""} /></label>
-            <label className="grid gap-1.5 text-xs font-medium">版本（可选）<Input onChange={(event) => setEnvironmentDraft((current) => current ? { ...current, version: event.target.value } : current)} placeholder="例如 2025.1" value={environmentDraft?.version ?? ""} /></label>
-            <label className="grid gap-1.5 text-xs font-medium sm:col-span-2">安装或可执行文件路径<Textarea className="min-h-28 resize-y font-mono text-xs leading-5" onChange={(event) => setEnvironmentDraft((current) => current ? { ...current, paths: event.target.value.split(/\r?\n/) } : current)} placeholder={"每行一个路径，例如：\nC:\\Program Files\\Example\nC:\\Users\\me\\bin\\example.exe"} value={(environmentDraft?.paths ?? []).join("\n")} /></label>
+            <label className="grid gap-1.5 text-xs font-medium">{t("s_66331089cf")}<Input autoFocus onChange={(event) => setEnvironmentDraft((current) => current ? { ...current, name: event.target.value } : current)} placeholder={t("s_89fa80f953")} value={environmentDraft?.name ?? ""} /></label>
+            <label className="grid gap-1.5 text-xs font-medium">{t("s_14d6c4d088")}<Input onChange={(event) => setEnvironmentDraft((current) => current ? { ...current, version: event.target.value } : current)} placeholder={t("s_b17ebba6fc")} value={environmentDraft?.version ?? ""} /></label>
+            <label className="grid gap-1.5 text-xs font-medium sm:col-span-2">{t("s_5390991abe")}<Textarea className="min-h-28 resize-y font-mono text-xs leading-5" onChange={(event) => setEnvironmentDraft((current) => current ? { ...current, paths: event.target.value.split(/\r?\n/) } : current)} placeholder={t("s_a1f1c0a64d")} value={(environmentDraft?.paths ?? []).join("\n")} /></label>
           </div>
           <DialogFooter>
-            <Button onClick={() => setEnvironmentDraft(null)} type="button" variant="ghost">取消</Button>
-            <Button disabled={busy === "environment" || !environmentDraft?.name.trim() || !environmentDraft.paths.some((path) => path.trim())} onClick={() => void saveEnvironment()} type="button">{busy === "environment" && <LoaderCircle className="size-3.5 animate-spin" />}保存环境</Button>
+            <Button onClick={() => setEnvironmentDraft(null)} type="button" variant="ghost">{t("s_4d0b4688c7")}</Button>
+            <Button disabled={busy === "environment" || !environmentDraft?.name.trim() || !environmentDraft.paths.some((path) => path.trim())} onClick={() => void saveEnvironment()} type="button">{busy === "environment" && <LoaderCircle className="size-3.5 animate-spin" />}{t("s_f9943fa0b9")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -519,20 +517,20 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
       <Dialog onOpenChange={(open) => !open && setEnvironmentDeleteTarget(null)} open={Boolean(environmentDeleteTarget)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除这个开发环境？</DialogTitle>
-            <DialogDescription>它会从全局环境索引中移除。自动发现的工具在下次扫描时可能再次出现。</DialogDescription>
+            <DialogTitle>{t("s_8140b7b527")}</DialogTitle>
+            <DialogDescription>{t("s_0f83ccc7d7")}</DialogDescription>
           </DialogHeader>
           <div className="rounded-md bg-muted/50 px-3 py-2 text-xs"><p className="font-medium">{environmentDeleteTarget?.name}</p><p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">{(environmentDeleteTarget?.paths ?? []).join(" · ")}</p></div>
           <DialogFooter>
-            <Button onClick={() => setEnvironmentDeleteTarget(null)} type="button" variant="ghost">取消</Button>
-            <Button disabled={busy === "environment"} onClick={() => void deleteEnvironment()} type="button" variant="destructive">{busy === "environment" && <LoaderCircle className="size-3.5 animate-spin" />}删除环境</Button>
+            <Button onClick={() => setEnvironmentDeleteTarget(null)} type="button" variant="ghost">{t("s_4d0b4688c7")}</Button>
+            <Button disabled={busy === "environment"} onClick={() => void deleteEnvironment()} type="button" variant="destructive">{busy === "environment" && <LoaderCircle className="size-3.5 animate-spin" />}{t("s_49209e9ce3")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog onOpenChange={setAddOpen} open={addOpen}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>新增全局记忆</DialogTitle><DialogDescription>适合记录稳定偏好、通用环境约束和需要跨项目保留的经验，不要写入密钥。</DialogDescription></DialogHeader><Textarea autoFocus className="min-h-36" onChange={(event) => setNewMemory(event.target.value)} placeholder="例如：所有前端项目优先使用 pnpm，并在提交前运行 TypeScript 类型检查。" value={newMemory} /><DialogFooter><Button onClick={() => setAddOpen(false)} type="button" variant="ghost">取消</Button><Button disabled={!newMemory.trim() || busy === "add"} onClick={() => void addMemory()} type="button">{busy === "add" && <LoaderCircle className="size-3.5 animate-spin" />}加入记忆</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog onOpenChange={setAddOpen} open={addOpen}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>{t("s_994606baa5")}</DialogTitle><DialogDescription>{t("s_0123b9469f")}</DialogDescription></DialogHeader><Textarea autoFocus className="min-h-36" onChange={(event) => setNewMemory(event.target.value)} placeholder={t("s_03df5b1b01")} value={newMemory} /><DialogFooter><Button onClick={() => setAddOpen(false)} type="button" variant="ghost">{t("s_4d0b4688c7")}</Button><Button disabled={!newMemory.trim() || busy === "add"} onClick={() => void addMemory()} type="button">{busy === "add" && <LoaderCircle className="size-3.5 animate-spin" />}{t("s_ee13e8e80b")}</Button></DialogFooter></DialogContent></Dialog>
 
-      <Dialog onOpenChange={(open) => !open && setDeleteTarget(null)} open={Boolean(deleteTarget)}><DialogContent><DialogHeader><DialogTitle>删除这条记忆？</DialogTitle><DialogDescription>删除后不会再参与跨项目检索和用户画像整理，此操作无法撤销。</DialogDescription></DialogHeader><div className="max-h-32 overflow-y-auto rounded-md bg-muted/50 px-3 py-2 text-xs leading-5">{deleteTarget?.content}</div><DialogFooter><Button onClick={() => setDeleteTarget(null)} type="button" variant="ghost">取消</Button><Button disabled={busy === "delete"} onClick={() => void deleteMemory()} type="button" variant="destructive">{busy === "delete" && <LoaderCircle className="size-3.5 animate-spin" />}删除</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog onOpenChange={(open) => !open && setDeleteTarget(null)} open={Boolean(deleteTarget)}><DialogContent><DialogHeader><DialogTitle>{t("s_465f55bc0a")}</DialogTitle><DialogDescription>{t("s_e0eb73002d")}</DialogDescription></DialogHeader><div className="max-h-32 overflow-y-auto rounded-md bg-muted/50 px-3 py-2 text-xs leading-5">{deleteTarget?.content}</div><DialogFooter><Button onClick={() => setDeleteTarget(null)} type="button" variant="ghost">{t("s_4d0b4688c7")}</Button><Button disabled={busy === "delete"} onClick={() => void deleteMemory()} type="button" variant="destructive">{busy === "delete" && <LoaderCircle className="size-3.5 animate-spin" />}{t("s_3755f56f2f")}</Button></DialogFooter></DialogContent></Dialog>
     </section>
   );
 }

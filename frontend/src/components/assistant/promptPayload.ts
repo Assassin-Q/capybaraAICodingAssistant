@@ -2,6 +2,7 @@ import type { ContextChip } from "@/components/assistant/shared";
 import type { PromptInputFile } from "@/components/ai-elements/prompt-input";
 import type { PromptAttachment } from "@/lib/opencode";
 import type { EmbeddedTextAttachment } from "@/lib/textAttachments";
+import { t } from "@/lib/i18n";
 
 const textExtensions = new Set(["csv", "json", "jsonc", "log", "md", "mdx", "txt", "xml", "yaml", "yml"]);
 
@@ -13,10 +14,10 @@ export const isTextFile = (file: File): boolean => {
 };
 
 const contextInstructions: Record<ContextChip["action"], string> = {
-  add_to_chat: "将下面的代码作为当前任务的上下文。",
-  explain_code: "解释下面代码的作用、关键流程和潜在问题。",
-  generate_test: "为下面代码生成高质量的单元测试。",
-  optimize_code: "分析并优化下面代码，说明修改理由。",
+  add_to_chat: t("s_c57401eb1d"),
+  explain_code: t("s_a19aef03da"),
+  generate_test: t("s_f98a9b921b"),
+  optimize_code: t("s_1c34089065"),
 };
 
 const contextMime = (context: ContextChip): string => {
@@ -28,15 +29,15 @@ const contextMime = (context: ContextChip): string => {
 
 const contextName = (context: ContextChip, index: number): string => {
   const location = context.fileName?.split(/[\\/]/).filter(Boolean).pop();
-  if (context.kind === "directory") return location || `文件夹-${index + 1}`;
-  if (context.kind === "selection") return location ? `${location} · 代码片段` : `代码片段-${index + 1}.txt`;
-  return location || `IDE 文件-${index + 1}.txt`;
+  if (context.kind === "directory") return location || t("s_4d74e7f3e4", { p0: index + 1 });
+  if (context.kind === "selection") return location ? t("s_8b1eb6107f", { p0: location }) : t("s_ec6eb15adf", { p0: index + 1 });
+  return location || t("s_a814b933ae", { p0: index + 1 });
 };
 
 const contextContent = (context: ContextChip): string => {
   const location = context.fileName
-    ? `位置：${context.fileName}${context.lineRange ? `（第 ${context.lineRange.start}-${context.lineRange.end} 行）` : ""}`
-    : "IDEA 代码片段";
+    ? t("s_aa57b03f07", { p0: context.fileName, p1: context.lineRange ? t("s_e8121a5993", { p0: context.lineRange.start, p1: context.lineRange.end }) : "" })
+    : t("s_208eed345a");
   return [contextInstructions[context.action], location, "", context.content].join("\n");
 };
 
@@ -62,9 +63,9 @@ export const fileToPromptAttachment = (file: File, name: string): Promise<Prompt
         resolve({ mime: file.type || "application/octet-stream", name, uri: reader.result });
         return;
       }
-      reject(new Error(`无法读取附件：${name}`));
+      reject(new Error(t("s_fb62058e76", { p0: name })));
     };
-    reader.onerror = () => reject(reader.error ?? new Error(`无法读取附件：${name}`));
+    reader.onerror = () => reject(reader.error ?? new Error(t("s_fb62058e76", { p0: name })));
     reader.readAsDataURL(file);
   });
 
@@ -77,7 +78,7 @@ export const fileToEmbeddedTextAttachment = async (file: File, name: string): Pr
 export const contextPrompt = (contexts: ContextChip[]): string =>
   contexts.map((context) => {
     const location = context.fileName
-      ? `文件：${context.fileName}${context.lineRange ? `（第 ${context.lineRange.start}-${context.lineRange.end} 行）` : ""}`
-      : "IDEA 代码片段";
+      ? t("s_4be036417f", { p0: context.fileName, p1: context.lineRange ? t("s_e8121a5993", { p0: context.lineRange.start, p1: context.lineRange.end }) : "" })
+      : t("s_208eed345a");
     return `${contextInstructions[context.action]}\n${location}\n\n\`\`\`\n${context.content}\n\`\`\``;
   }).join("\n\n");

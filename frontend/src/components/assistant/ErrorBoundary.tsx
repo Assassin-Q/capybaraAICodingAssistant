@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { CircleAlert, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { t } from "@/lib/i18n";
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -27,7 +28,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error(`[capybara] ${this.props.label} 渲染失败`, error, info.componentStack);
+    console.error(t("s_b9604edc26", { p0: this.props.label }), error, info.componentStack);
   }
 
   private reset = () => this.setState({ error: undefined });
@@ -42,13 +43,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         <div className="flex items-start gap-2 text-destructive">
           <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
           <div className="min-w-0 flex-1">
-            <p className="font-medium">{this.props.label}渲染失败</p>
+            <p className="font-medium">{this.props.label}{t("s_b164ae2aaa")}</p>
             <p className="mt-1 break-words font-mono text-[10px] opacity-80">{error.message}</p>
           </div>
         </div>
         <Button className="mt-2" onClick={this.reset} size="sm" type="button" variant="outline">
           <RotateCcw className="size-3.5" />
-          重试渲染
+          {t("s_1dca28b966")}
         </Button>
       </div>
     );

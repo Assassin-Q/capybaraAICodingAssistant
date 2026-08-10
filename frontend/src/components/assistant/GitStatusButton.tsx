@@ -9,6 +9,7 @@ import { gitApi, type GitStatusResponse } from "@/lib/ideaIntegrations";
 import { generateCommitSummary } from "@/lib/commitSummary";
 import type { ModelInfo } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/i18n";
 
 interface GitStatusButtonProps {
   model?: ModelInfo;
@@ -49,7 +50,7 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
   }, [refresh]);
 
   const changeCount = status?.files?.length ?? 0;
-  const untrackedCount = (status?.files ?? []).filter((file) => file.status === "未跟踪").length;
+  const untrackedCount = (status?.files ?? []).filter((file) => file.status === t("s_2f345ab234")).length;
   const hasChanges = changeCount > 0;
 
   const run = async (label: string, action: () => Promise<{ success: boolean; message?: string }>) => {
@@ -57,7 +58,7 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
     setMessage("");
     try {
       const result = await action();
-      setMessage(result.message ?? (result.success ? "完成" : "操作失败"));
+      setMessage(result.message ?? (result.success ? t("s_33246f6a5e") : t("s_09e424b5e8")));
       await refresh();
     } catch (actionError) {
       setMessage(errorMessage(actionError));
@@ -68,7 +69,7 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
 
   const commitWithSummary = async () => {
     setBusy("summary");
-    setMessage("正在让当前模型总结改动…");
+    setMessage(t("s_ad81e85d1f"));
     try {
       const summary = await generateCommitSummary({ model, projectPath, variant });
       setMessage("");
@@ -85,10 +86,10 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
     <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
         <Button
-          aria-label={hasChanges ? `Git：${changeCount} 个改动` : "Git：工作区干净"}
+          aria-label={hasChanges ? t("s_9daf4302ed", { p0: changeCount }) : t("s_044ef935a9")}
           className="relative size-8 shrink-0"
           size="icon"
-          title={`${status.branch ?? "Git"}${hasChanges ? ` · ${changeCount} 个改动` : " · 干净"}`}
+          title={`${status.branch ?? "Git"}${hasChanges ? t("s_96e1a84d2d", { p0: changeCount }) : t("s_7c098875da")}`}
           type="button"
           variant="ghost"
         >
@@ -104,7 +105,7 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
       <PopoverContent align="end" className="w-80 border-border/50 p-0" sideOffset={6}>
         <div className="flex items-center gap-2 border-b border-border/40 px-3 py-2">
           <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate text-xs font-medium">{status.branch ?? "未知分支"}</span>
+          <span className="min-w-0 flex-1 truncate text-xs font-medium">{status.branch ?? t("s_433d7578c0")}</span>
           {status.ahead > 0 && <Badge variant="secondary">↑{status.ahead}</Badge>}
           {status.behind > 0 && <Badge variant="secondary">↓{status.behind}</Badge>}
         </div>
@@ -112,9 +113,8 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
         {branchChanged && (
           <div className="flex items-start gap-2 border-b border-border/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
             <span className="min-w-0 flex-1">
-              分支已从 <span className="font-mono">{branchChanged}</span> 切到{" "}
-              <span className="font-mono">{status.branch}</span>。助手此前读过的文件内容可能已失效，
-              建议新开一个会话，或在提问时说明。
+              {t("s_f7f3bb63a8")} <span className="font-mono">{branchChanged}</span> {t("s_9802e9658b")}{" "}
+              <span className="font-mono">{status.branch}</span>{t("s_4972a9aa2d")}
             </span>
             <Button
               className="h-5 shrink-0 px-1.5 text-[10px]"
@@ -123,21 +123,21 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
               type="button"
               variant="ghost"
             >
-              知道了
+              {t("s_cb63c62e50")}
             </Button>
           </div>
         )}
 
         <div className="max-h-64 overflow-y-auto">
           {changeCount === 0 ? (
-            <p className="px-3 py-6 text-center text-xs text-muted-foreground">工作区干净，没有待提交的改动</p>
+            <p className="px-3 py-6 text-center text-xs text-muted-foreground">{t("s_bb23f90c24")}</p>
           ) : (
             status.files.map((file) => (
               <button
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-accent/60"
                 key={file.path}
                 onClick={() => void run("diff", () => gitApi.openFileDiff(file.path))}
-                title={`${file.path}\n点击在 IDEA 中对比 HEAD 与当前工作区`}
+                title={t("s_36905b2c6c", { p0: file.path })}
                 type="button"
               >
                 <span
@@ -150,7 +150,7 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
                 </span>
                 <span className="min-w-0 flex-1 truncate font-mono text-[11px]">{file.path}</span>
                 {file.binary ? (
-                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">二进制</span>
+                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{t("s_78ff74e37b")}</span>
                 ) : (
                   <span className="shrink-0 font-mono text-[10px] tabular-nums">
                     {file.additions > 0 && (
@@ -168,7 +168,7 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
 
         {changeCount > 0 && (
           <div className="flex items-center gap-2 border-t border-border/40 px-3 py-1.5 text-[10px] text-muted-foreground">
-            <span>共 {changeCount} 个文件</span>
+            <span>{t("s_3b6ef811b8")} {changeCount} {t("s_6218629ae2")}</span>
             {/* Binary files carry no line counts, and `undefined + n` turned the totals into NaN. */}
             <span className="font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
               +{status.files.reduce((total, file) => total + (file.additions || 0), 0)}
@@ -176,7 +176,7 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
             <span className="font-mono tabular-nums text-red-500">
               -{status.files.reduce((total, file) => total + (file.deletions || 0), 0)}
             </span>
-            <span className="ml-auto">点击文件可对比</span>
+            <span className="ml-auto">{t("s_9a3d4fb626")}</span>
           </div>
         )}
 
@@ -184,8 +184,7 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
           <div className="flex items-start gap-2 border-t border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
             <AlertTriangle className="mt-0.5 size-3 shrink-0" />
             <span className="min-w-0 flex-1">
-              有 {untrackedCount} 个文件还没纳入 Git。IDEA 的提交窗口默认不会勾选它们，
-              漏掉就不会进这次提交——请在窗口左侧确认勾上，或先把它们加入 .gitignore。
+              {t("s_fbd5b75066")} {untrackedCount} {t("s_60e91324fb")}
             </span>
           </div>
         )}
@@ -203,7 +202,7 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
             type="button"
           >
             <Sparkles className="size-3.5" />
-            {busy === "summary" ? "正在生成摘要…" : "AI 摘要并提交"}
+            {busy === "summary" ? t("s_50aa8e2a5a") : t("s_b475f71105")}
           </Button>
           <div className="mt-1.5 grid grid-cols-2 gap-1.5">
             <Button
@@ -214,7 +213,7 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
               variant="outline"
             >
               <GitCommitHorizontal className="size-3.5" />
-              直接提交
+              {t("s_f9efd6b1b6")}
             </Button>
             <Button
               disabled={busy !== ""}
@@ -224,11 +223,11 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
               variant="outline"
             >
               <Upload className="size-3.5" />
-              推送
+              {t("s_a71772f65f")}
             </Button>
           </div>
           <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-            都会打开 IDEA 自带窗口，可在那里改摘要、挑文件
+            {t("s_da4bc814da")}
           </p>
         </div>
       </PopoverContent>

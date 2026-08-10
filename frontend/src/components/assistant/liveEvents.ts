@@ -7,6 +7,7 @@ import type {
   SessionMessage,
 } from "@/lib/opencode";
 import { EMPTY_TOKEN_USAGE, hasTokenUsage, parseTokenUsage } from "@/lib/tokenUsage";
+import { t } from "@/lib/i18n";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -448,7 +449,7 @@ const applyStreamEvent = (messages: SessionMessage[], rawType: string, propertie
         || stringValue(asRecord(error?.data)?.message)
         || stringValue(error?.message)
         || stringValue(error?.name)
-        || "OpenCode 执行失败",
+        || t("s_76b4732e4d"),
     }));
   }
 

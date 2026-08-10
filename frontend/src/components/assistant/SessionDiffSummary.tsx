@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ideaApi } from "@/lib/idea";
 import type { SessionFileDiff } from "@/lib/opencode";
+import { t } from "@/lib/i18n";
 
 const INITIAL_FILE_COUNT = 3;
 
@@ -34,7 +35,7 @@ export function SessionDiffSummary({ diffs }: { diffs: SessionFileDiff[] }) {
     void ideaApi.openDiff({
       file: diff.file,
       patch: diff.patch,
-      title: `AI 修改：${diff.file}`,
+      title: t("s_df290a3a52", { p0: diff.file }),
     });
   };
 
@@ -45,7 +46,7 @@ export function SessionDiffSummary({ diffs }: { diffs: SessionFileDiff[] }) {
           <FilePenLine className="size-4" />
         </div>
         <CommitInfo className="min-w-0 gap-0.5">
-          <CommitMessage className="truncate text-xs font-medium">已编辑 {diffs.length} 个文件</CommitMessage>
+          <CommitMessage className="truncate text-xs font-medium">{t("s_c367766fe1")} {diffs.length} {t("s_6218629ae2")}</CommitMessage>
           <CommitMetadata className="gap-1.5">
             <span className="text-emerald-600 dark:text-emerald-400">+{additions}</span>
             <span className="text-red-600 dark:text-red-400">-{deletions}</span>
@@ -58,7 +59,7 @@ export function SessionDiffSummary({ diffs }: { diffs: SessionFileDiff[] }) {
             const canOpen = Boolean(diff.file && diff.patch);
             return (
               <CommitFile
-                aria-label={canOpen ? `在 IDEA 中比较 ${diff.file}` : undefined}
+                aria-label={canOpen ? t("s_f6bb61b30c", { p0: diff.file }) : undefined}
                 className={canOpen
                   ? "group/file cursor-pointer px-1.5 py-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   : "px-1.5 py-1.5"
@@ -72,11 +73,11 @@ export function SessionDiffSummary({ diffs }: { diffs: SessionFileDiff[] }) {
                 }}
                 role={canOpen ? "button" : undefined}
                 tabIndex={canOpen ? 0 : undefined}
-                title={canOpen ? "在 IDEA 中打开三栏差异" : undefined}
+                title={canOpen ? t("s_282607a044") : undefined}
               >
                 <CommitFileInfo>
                   <CommitFilePath className="font-sans text-xs text-muted-foreground">
-                    {diff.file ?? "未知文件"}
+                    {diff.file ?? t("s_9aba7b5e82")}
                   </CommitFilePath>
                 </CommitFileInfo>
                 <CommitFileChanges>
@@ -98,7 +99,7 @@ export function SessionDiffSummary({ diffs }: { diffs: SessionFileDiff[] }) {
               variant="ghost"
             >
               <ChevronDown className="size-3.5" />
-              再显示 {hiddenCount} 个文件
+              {t("s_f64c528096")} {hiddenCount} {t("s_6218629ae2")}
             </Button>
           )}
         </CommitFiles>

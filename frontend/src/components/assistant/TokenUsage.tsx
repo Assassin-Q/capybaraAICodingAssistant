@@ -10,6 +10,7 @@ import { hasTokenUsage, toLanguageModelUsage } from "@/lib/tokenUsage";
 import type { TokenUsage } from "@/lib/opencode";
 import type { ModelRef } from "@/lib/opencode";
 import { variantLabel } from "@/components/assistant/modelVariants";
+import { t } from "@/lib/i18n";
 
 const compactFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
@@ -38,9 +39,9 @@ export function ContextUsageIndicator({ context }: { context?: ContextUsageInfo 
       usage={usage}
     >
       <ContextTrigger
-        aria-label="查看上下文占用"
+        aria-label={t("s_429b34f8cf")}
         className="h-7 min-w-0 gap-1 rounded-md border-0 bg-transparent px-1.5 text-[10px] text-muted-foreground shadow-none hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-0"
-        title="上下文占用"
+        title={t("s_dafb5b06b8")}
       />
       <ContextContent
         align="end"
@@ -50,17 +51,17 @@ export function ContextUsageIndicator({ context }: { context?: ContextUsageInfo 
       >
         <ContextContentHeader className="space-y-2">
           <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="font-medium">上下文窗口</span>
+            <span className="font-medium">{t("s_9a1fbe0bb9")}</span>
             <span className="font-mono tabular-nums text-muted-foreground">{formatPercent(usedPercent)}</span>
           </div>
           <Progress className="bg-muted" value={usedPercent} />
           <div className="text-[11px] text-muted-foreground">
-            已用 {formatTokens(context.usedTokens)}，共 {formatTokens(maxTokens)}
+            {t("s_4c9426f3cb")} {formatTokens(context.usedTokens)}{t("s_e6d3975537")} {formatTokens(maxTokens)}
           </div>
           <div className="flex items-center justify-between gap-3 border-t border-border/30 pt-2 text-[11px]">
-            <span className="text-muted-foreground">模型</span>
+            <span className="text-muted-foreground">{t("s_98fd0cbd9c")}</span>
             <span className="max-w-36 truncate font-mono text-[10px]" title={context.modelId}>
-              {context.model?.name ?? context.modelId ?? "未知模型"}
+              {context.model?.name ?? context.modelId ?? t("s_8b2303608f")}
             </span>
           </div>
         </ContextContentHeader>
@@ -74,23 +75,23 @@ export function TokenUsageSummary({ model, usage }: { model?: ModelRef; usage?: 
 
   const modelName = model?.id
     ? `${model.providerID}/${model.id}`
-    : "未知模型";
+    : t("s_8b2303608f");
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 pt-0.5 text-[10px] text-muted-foreground">
-      <span className="font-medium text-foreground/70">本轮用量</span>
+      <span className="font-medium text-foreground/70">{t("s_566e162e8b")}</span>
       <span className="max-w-48 truncate" title={modelName}>{modelName}</span>
-      {model?.variant && <span>档位 {variantLabel(model.variant)}</span>}
-      <span>输入 {formatTokens(usage?.input ?? 0)}</span>
-      <span>输出 {formatTokens(usage?.output ?? 0)}</span>
-      <span>推理 {formatTokens(usage?.reasoning ?? 0)}</span>
+      {model?.variant && <span>{t("s_2cfe7e4072")} {variantLabel(model.variant)}</span>}
+      <span>{t("s_e8850440f2")} {formatTokens(usage?.input ?? 0)}</span>
+      <span>{t("s_ded698ae1e")} {formatTokens(usage?.output ?? 0)}</span>
+      <span>{t("s_c9d3b085e2")} {formatTokens(usage?.reasoning ?? 0)}</span>
       {usage?.cache.reported ? (
         <>
-          <span title="OpenCode 返回的缓存读取 Token">缓存读 {formatTokens(usage.cache.read)}</span>
-          <span title="OpenCode 返回的缓存写入 Token">缓存写 {formatTokens(usage.cache.write)}</span>
+          <span title={t("s_d9eab7bfeb")}>{t("s_37ec7f1ba3")} {formatTokens(usage.cache.read)}</span>
+          <span title={t("s_2c58c7a1ce")}>{t("s_6d103bdf73")} {formatTokens(usage.cache.write)}</span>
         </>
       ) : (
-        <span title="当前供应商没有返回缓存用量">缓存 不可用</span>
+        <span title={t("s_82d0657b3f")}>{t("s_f9d6d763ff")}</span>
       )}
     </div>
   );

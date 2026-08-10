@@ -1,4 +1,5 @@
 import { CUSTOM_PERSONA_ID, findPersonaPreset, PERSONA_PRESETS } from "@/lib/personaPresets";
+import { t } from "@/lib/i18n";
 import {
   AUTO_PROFESSIONAL_ROLE_ID,
   createDefaultProfessionalRolePreferences,
@@ -16,7 +17,13 @@ export interface PersonaPreferences {
 
 export type ModelVariantLabels = Record<string, Record<string, string>>;
 
+/** Re-exported so callers do not need to reach into the i18n module for the preference shape. */
+import type { LocalePreference } from "@/lib/i18n";
+export type { LocalePreference } from "@/lib/i18n";
+
 export interface WorkspacePreferences {
+  /** `auto` follows the IDE locale; the explicit values are the user's own choice. */
+  language: LocalePreference;
   disabledSkillNames: string[];
   modelVariantLabels: ModelVariantLabels;
   persona: PersonaPreferences;
@@ -24,6 +31,7 @@ export interface WorkspacePreferences {
 }
 
 const DEFAULT_PREFERENCES: WorkspacePreferences = {
+  language: "auto",
   disabledSkillNames: [],
   modelVariantLabels: {},
   persona: {
@@ -102,11 +110,14 @@ const normalize = (value: unknown): WorkspacePreferences => {
       ? {
           enabled: persona.enabled === true,
           instructions: typeof persona.instructions === "string" ? persona.instructions : "",
-          name: typeof persona.name === "string" && persona.name.trim() ? persona.name : "自定义人格",
+          name: typeof persona.name === "string" && persona.name.trim() ? persona.name : t("s_cfeed967b1"),
           presetId: CUSTOM_PERSONA_ID,
         }
       : DEFAULT_PREFERENCES.persona;
   return {
+    // Anything unrecognised falls back to following the environment rather than pinning a
+    // language the user never picked.
+    language: raw.language === "zh" || raw.language === "en" ? raw.language : "auto",
     disabledSkillNames: Array.isArray(raw.disabledSkillNames)
       ? raw.disabledSkillNames.filter((name): name is string => typeof name === "string")
       : [],
