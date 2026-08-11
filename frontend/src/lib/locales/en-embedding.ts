@@ -23,6 +23,8 @@ export const enEmbedding = {
   "memEmb.mode.remoteDesc":
     "Calls an OpenAI-compatible /embeddings endpoint. Uses no disk or memory, but every memory read and write makes an API call.",
 
+  "memEmb.mode.switchNote": "Switching takes effect after OpenCode reloads. The local model has no unload path, so its memory is released when the old process exits; a new process on the remote backend never loads the ONNX runtime at all.",
+
   "memEmb.local.pick": "Choose a local model",
   "memEmb.local.dims": "{count} dims",
   "memEmb.local.context": "{count} context",

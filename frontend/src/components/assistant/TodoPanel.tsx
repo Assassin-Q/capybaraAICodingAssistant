@@ -28,6 +28,7 @@ export function TodoPanel({ active = true, todos }: { active?: boolean; todos: T
 
   const activeTodo = todos.find((todo) => todo.status === "in_progress") ?? unfinished[0];
   const activeIndex = Math.max(0, todos.indexOf(activeTodo));
+  const running = activeTodo.status === "in_progress" && active;
 
   return (
     <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-[calc(100%-1.5rem)] max-w-xl -translate-x-1/2">
@@ -38,10 +39,17 @@ export function TodoPanel({ active = true, todos }: { active?: boolean; todos: T
             className="pointer-events-auto mx-auto flex h-8 max-w-full items-center gap-2 rounded-full bg-popover px-3 text-xs text-popover-foreground shadow-sm ring-1 ring-border/50 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
             type="button"
           >
-            {activeTodo.status === "in_progress"
+            {/* The list items already stopped spinning once the run ended; this one did not, so a
+                turn that finished with an item still marked in_progress left the pill spinning
+                forever. Both now read the same signal. */}
+            {running
               ? <LoaderCircle className="size-3.5 shrink-0 animate-spin text-primary" />
               : <ListTodo className="size-3.5 shrink-0 text-muted-foreground" />}
-            <span className="shrink-0 font-medium">{t("s_137e09917b", { p0: activeIndex + 1, p1: todos.length })}</span>
+            <span className="shrink-0 font-medium">
+              {running
+                ? t("s_137e09917b", { p0: activeIndex + 1, p1: todos.length })
+                : t("todo.stoppedAt", { current: activeIndex + 1, total: todos.length })}
+            </span>
             <span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-border" />
             <span className="min-w-0 truncate text-muted-foreground">{activeTodo.content}</span>
             <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />

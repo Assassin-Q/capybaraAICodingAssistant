@@ -24,6 +24,8 @@ export const enSystem = {
 
   "run.autoRetry": "Connection dropped. Retrying in {seconds}s (attempt {attempt} of {max}). Press stop to cancel.",
 
+  "todo.stoppedAt": "Stopped at step {current} of {total}",
+
   "message.copy": "Copy",
   "message.copied": "Copied",
 

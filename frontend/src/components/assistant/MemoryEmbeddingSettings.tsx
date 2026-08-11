@@ -211,6 +211,8 @@ export function MemoryEmbeddingSettings({ onChanged }: MemoryEmbeddingSettingsPr
         ))}
       </div>
 
+      <p className="mt-2 text-[11px] leading-4 text-muted-foreground">{t("memEmb.mode.switchNote")}</p>
+
       {mode === "local" ? (
         <div className="mt-4 space-y-2">
           <p className="text-xs font-medium">{t("memEmb.local.pick")}</p>

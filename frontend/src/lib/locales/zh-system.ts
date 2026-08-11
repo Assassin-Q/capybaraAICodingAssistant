@@ -29,6 +29,8 @@ export const zhSystem = {
 
   "run.autoRetry": "连接中断，{seconds} 秒后自动重试（第 {attempt}/{max} 次）。点击右下角停止可取消。",
 
+  "todo.stoppedAt": "停在第 {current}/{total} 步",
+
   "message.copy": "复制",
   "message.copied": "已复制",
 

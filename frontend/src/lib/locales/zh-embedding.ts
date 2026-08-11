@@ -27,6 +27,8 @@ export const zhEmbedding = {
   "memEmb.mode.remoteDesc":
     "调用 OpenAI 兼容的 /embeddings 接口。不占磁盘和内存，但每次存取记忆都会发起一次 API 调用。",
 
+  "memEmb.mode.switchNote": "切换后需重新载入 OpenCode 才生效。本地模型没有卸载接口，它占用的内存随旧进程退出一并释放；新进程走远程时不会加载 ONNX 运行时，也就不再占内存。",
+
   "memEmb.local.pick": "选择本地模型",
   "memEmb.local.dims": "{count} 维",
   "memEmb.local.context": "{count} 上下文",

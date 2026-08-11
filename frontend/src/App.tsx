@@ -833,6 +833,32 @@ function App() {
     runAllowancesRef.current.clear();
   }, [selectedSessionID]);
 
+  /**
+   * Re-reads the task list once a round is over.
+   *
+   * The panel otherwise only learns about todos from `session.todo` events, and the last
+   * `todowrite` of a turn frequently lands while the run is already winding down — the event is
+   * missed and the pill keeps showing a step the model finished. Asking once at the end costs a
+   * single request and makes the final state match what OpenCode actually stored.
+   */
+  useEffect(() => {
+    if (runStatus !== "ready" && runStatus !== "error") return;
+    if (!selectedSessionID || !projectPath) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void openCodeApi
+        .getTodos(selectedSessionID, projectPath)
+        .then((next) => {
+          if (!cancelled) setTodos(next);
+        })
+        .catch(() => undefined);
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [projectPath, runStatus, selectedSessionID]);
+
   useEffect(() => {
     void checkForUpdate().then(setUpdateStatus).catch(() => undefined);
   }, []);
