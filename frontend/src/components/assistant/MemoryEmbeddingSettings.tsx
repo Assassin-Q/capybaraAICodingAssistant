@@ -20,14 +20,6 @@ const formatBytes = (bytes: number): string => {
   return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
 };
 
-/**
- * Loading a model costs more than its file: onnxruntime keeps the weights plus an allocation
- * arena and the per-run workspace. Two and a half times the file size is the low end of what we
- * measured, and quoting the file size alone is how users end up surprised by an allocation
- * failure, so the panel states the larger number.
- */
-const runtimeFootprint = (bytes: number): string => formatBytes(Math.round(bytes * 2.5));
-
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 export function MemoryEmbeddingSettings({ onChanged }: MemoryEmbeddingSettingsProps) {
@@ -250,7 +242,13 @@ export function MemoryEmbeddingSettings({ onChanged }: MemoryEmbeddingSettingsPr
                   size: formatBytes(selected?.downloadBytes ?? 0),
                 })}
               </li>
-              <li>{t("memEmb.footprint.memory", { size: runtimeFootprint(selected?.downloadBytes ?? 0) })}</li>
+              <li>
+                {t("memEmb.footprint.memory", {
+                  peak: formatBytes(selected?.peakBytes ?? 0),
+                  resident: formatBytes(selected?.residentBytes ?? 0),
+                })}
+              </li>
+              <li>{t("memEmb.footprint.context")}</li>
               <li>{t("memEmb.footprint.quantized")}</li>
               <li>{t("memEmb.footprint.mirror")}</li>
               {Boolean(status?.cacheBytes) && (
@@ -365,8 +363,13 @@ function LocalModelRow({
           <span className="mt-1 block text-[11px] text-muted-foreground">
             {t("memEmb.local.dims", { count: option.dimensions })} ·{" "}
             {t("memEmb.local.context", { count: option.contextTokens })} ·{" "}
-            {option.multilingual ? t("memEmb.local.multilingual") : t("memEmb.local.englishOnly")} ·{" "}
-            {formatBytes(option.downloadBytes)}
+            {option.multilingual ? t("memEmb.local.multilingual") : t("memEmb.local.englishOnly")}
+          </span>
+          <span className="mt-0.5 block text-[11px] text-muted-foreground">
+            {t("memEmb.local.cost", {
+              disk: formatBytes(option.downloadBytes),
+              peak: formatBytes(option.peakBytes),
+            })}
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-1">

@@ -143,6 +143,10 @@ export interface EmbeddingModelOption {
   contextTokens: number;
   /** Real content-length of the quantised weights, measured against the mirror. */
   downloadBytes: number;
+  /** Measured resident-set growth once the runtime and weights are loaded. */
+  residentBytes: number;
+  /** Measured resident-set growth after embedding a near-maximum-length input. */
+  peakBytes: number;
   multilingual: boolean;
   note: string;
 }

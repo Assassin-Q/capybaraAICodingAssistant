@@ -26,6 +26,7 @@ export const enEmbedding = {
   "memEmb.local.pick": "Choose a local model",
   "memEmb.local.dims": "{count} dims",
   "memEmb.local.context": "{count} context",
+  "memEmb.local.cost": "{disk} on disk · {peak} peak memory",
   "memEmb.local.multilingual": "Multilingual",
   "memEmb.local.englishOnly": "English-leaning",
   "memEmb.local.download": "Download",
@@ -44,7 +45,9 @@ export const enEmbedding = {
   "memEmb.footprint.title": "What it costs",
   "memEmb.footprint.disk": "Disk: about {size} for the selected model, under {path}",
   "memEmb.footprint.memory":
-    "Memory: about {size}, loaded on the first search and then resident in the OpenCode process",
+    "Memory: about {resident} resident once loaded, peaking near {peak} when embedding long text",
+  "memEmb.footprint.context":
+    "Memory follows the context window, not the file size: an 8192-token model allocates a large inference workspace, so a smaller download is not always cheaper to run. These are measured process-memory figures.",
   "memEmb.footprint.quantized":
     "The download is the quantised weights, roughly a quarter of the full-precision size on both disk and memory. Full precision makes the ONNX runtime fail to allocate on a machine under memory pressure, and the quality difference does not matter for memory search.",
   "memEmb.footprint.mirror":

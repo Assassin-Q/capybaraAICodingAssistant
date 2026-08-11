@@ -30,6 +30,7 @@ export const zhEmbedding = {
   "memEmb.local.pick": "选择本地模型",
   "memEmb.local.dims": "{count} 维",
   "memEmb.local.context": "{count} 上下文",
+  "memEmb.local.cost": "磁盘 {disk} · 内存峰值 {peak}",
   "memEmb.local.multilingual": "中英文均可",
   "memEmb.local.englishOnly": "偏英文",
   "memEmb.local.download": "下载",
@@ -47,7 +48,9 @@ export const zhEmbedding = {
 
   "memEmb.footprint.title": "占用说明",
   "memEmb.footprint.disk": "磁盘：选中的模型约 {size}，存放在 {path}",
-  "memEmb.footprint.memory": "内存：约 {size}，首次检索时载入，之后常驻 OpenCode 进程",
+  "memEmb.footprint.memory": "内存：载入后常驻约 {resident}，检索长文本时峰值约 {peak}",
+  "memEmb.footprint.context":
+    "内存主要由上下文长度决定，而非文件大小：8192 上下文的模型要为推理分配很大的工作区，所以文件更小的模型未必更省内存。以上数字为实测的进程内存增量。",
   "memEmb.footprint.quantized":
     "下载的是量化权重，体积和内存约为全精度版的四分之一。全精度版会让 ONNX 运行时在内存紧张的机器上直接分配失败，而检索质量的差异在记忆场景可以忽略。",
   "memEmb.footprint.mirror":

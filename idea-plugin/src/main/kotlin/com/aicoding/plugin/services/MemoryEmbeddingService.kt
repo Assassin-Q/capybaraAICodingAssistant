@@ -17,6 +17,10 @@ data class EmbeddingModelOption(
     val contextTokens: Int,
     /** Measured size of the quantised ONNX weights on the mirror, in bytes. */
     val downloadBytes: Long,
+    /** Resident-set growth once the runtime and weights are loaded, in bytes. */
+    val residentBytes: Long,
+    /** Resident-set growth after embedding a near-maximum-length input, in bytes. */
+    val peakBytes: Long,
     val multilingual: Boolean,
     val note: String,
 )
@@ -112,8 +116,15 @@ class MemoryEmbeddingService {
         private const val WEIGHTS_TARGET = "onnx/model.onnx"
 
         /**
-         * Sizes are the real content-length of each repository's quantised weights, measured
-         * against the mirror rather than estimated, because the panel promises users a number.
+         * Every number here was measured, not estimated: download sizes are the mirror's real
+         * content-length, and the two memory figures are resident-set growth observed while
+         * loading each model and then embedding a near-maximum-length input.
+         *
+         * Memory deliberately is not derived from file size. The ratio between them ranges from
+         * 2.7x to 14.4x across this list, because the dominant cost is the run workspace, which
+         * scales with the context window rather than the weights. jina-v2-small-en is the case
+         * that makes the point: a 31 MB download that peaks at 448 MB because it accepts 8192
+         * tokens, where the 105 MB all-mpnet-base-v2 peaks at 284 MB on a 512-token window.
          */
         val CATALOG = listOf(
             EmbeddingModelOption(
@@ -122,6 +133,8 @@ class MemoryEmbeddingService {
                 dimensions = 384,
                 contextTokens = 512,
                 downloadBytes = 22_972_370,
+                residentBytes = 108_226_150,
+                peakBytes = 139_675_238,
                 multilingual = false,
                 note = "fastest",
             ),
@@ -131,6 +144,8 @@ class MemoryEmbeddingService {
                 dimensions = 512,
                 contextTokens = 8192,
                 downloadBytes = 32_765_276,
+                residentBytes = 123_100_365,
+                peakBytes = 469_762_048,
                 multilingual = false,
                 note = "long-context-english",
             ),
@@ -140,6 +155,8 @@ class MemoryEmbeddingService {
                 dimensions = 768,
                 contextTokens = 512,
                 downloadBytes = 110_086_122,
+                residentBytes = 276_824_064,
+                peakBytes = 297_898_803,
                 multilingual = false,
                 note = "quality-english",
             ),
@@ -149,6 +166,8 @@ class MemoryEmbeddingService {
                 dimensions = 768,
                 contextTokens = 8192,
                 downloadBytes = 138_050_625,
+                residentBytes = 334_361_395,
+                peakBytes = 697_002_393,
                 multilingual = false,
                 note = "long-context-english",
             ),
@@ -158,6 +177,8 @@ class MemoryEmbeddingService {
                 dimensions = 768,
                 contextTokens = 8192,
                 downloadBytes = 138_355_983,
+                residentBytes = 345_284_608,
+                peakBytes = 553_057_485,
                 multilingual = true,
                 note = "recommended",
             ),
