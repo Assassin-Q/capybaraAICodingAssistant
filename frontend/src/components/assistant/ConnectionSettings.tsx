@@ -153,7 +153,11 @@ export function ConnectionSettings({ baseUrl, connected, language, onChanged, on
       <div className="border-t border-border pt-5">
         <LanguageSettings onChange={onLanguageChange} value={language} />
 
-        <AppearanceSettings />
+        {/* The language buttons ran straight into the appearance heading. A divider and real
+            spacing make the two read as sibling sections rather than one long block. */}
+        <div className="mt-6 border-t border-border pt-6">
+          <AppearanceSettings />
+        </div>
       </div>
 
       <ConfirmDialog

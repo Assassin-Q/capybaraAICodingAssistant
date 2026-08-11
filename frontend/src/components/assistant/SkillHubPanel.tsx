@@ -289,7 +289,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <SettingsHeader
-        description={t("s_b771750ad7")}
+        description={locale === "en" ? t("skillhub.clawhubSubtitle") : t("s_b771750ad7")}
         loading={loading}
         onRefresh={() => void load(query)}
         title="SkillHub"
@@ -370,7 +370,9 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
             }))]}
             value={category}
           />
-          <FilterMenu
+          {/* clawhub.ai publishes from one source and marks nothing as needing an API key, so
+              these two filters would only ever offer a single meaningless choice there. */}
+          {locale !== "en" && <FilterMenu
             label={t("s_c63f79e636")}
             onChange={(value) => {
               setSource(value);
@@ -381,8 +383,8 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
               label: sourceLabels()[value] ?? value,
             }))]}
             value={source}
-          />
-          <FilterMenu
+          />}
+          {locale !== "en" && <FilterMenu
             label="API Key"
             onChange={(value) => {
               setApiKey(value);
@@ -396,7 +398,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
               { value: "required", label: t("s_aa170923aa") },
             ]}
             value={apiKey}
-          />
+          />}
         </div>
       </div>
 

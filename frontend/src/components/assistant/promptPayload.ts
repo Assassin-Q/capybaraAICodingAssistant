@@ -22,6 +22,7 @@ const contextInstructions = (): Record<ContextChip["action"], string> => ({
 });
 
 const contextMime = (context: ContextChip): string => {
+  if (context.kind === "skill") return "text/x-idea-skill";
   if (context.kind === "directory") return "text/x-idea-directory";
   if (context.kind === "selection") return "text/x-idea-selection";
   if (context.kind === "binary") return "application/x-idea-binary";
@@ -29,6 +30,8 @@ const contextMime = (context: ContextChip): string => {
 };
 
 const contextName = (context: ContextChip, index: number): string => {
+  // Named by the skill, not by its file — every one of them is called SKILL.md.
+  if (context.kind === "skill") return context.fileName || t("s_a814b933ae", { p0: index + 1 });
   const location = context.fileName?.split(/[\\/]/).filter(Boolean).pop();
   if (context.kind === "directory") return location || t("s_4d74e7f3e4", { p0: index + 1 });
   if (context.kind === "selection") return location ? t("s_8b1eb6107f", { p0: location }) : t("s_ec6eb15adf", { p0: index + 1 });
@@ -36,6 +39,11 @@ const contextName = (context: ContextChip, index: number): string => {
 };
 
 const contextContent = (context: ContextChip): string => {
+  // Skills live outside the project — ~/.claude/skills and friends — so the model gets the
+  // absolute path rather than a workspace-relative one it could not resolve.
+  if (context.kind === "skill") {
+    return t("skill.contextInstruction", { name: context.fileName ?? "", path: context.content });
+  }
   const location = context.fileName
     ? t("s_aa57b03f07", { p0: context.fileName, p1: context.lineRange ? t("s_e8121a5993", { p0: context.lineRange.start, p1: context.lineRange.end }) : "" })
     : t("s_208eed345a");

@@ -30,6 +30,9 @@ export const enSystem = {
   "message.copied": "Copied",
 
   "diff.collapseFiles": "Collapse",
+  "skillhub.clawhubSubtitle": "Data from ClawHub (clawhub.ai)",
+  "skill.contextInstruction": "Use the \"{name}\" skill. It lives outside this project; its instructions are at the absolute path {path}. Read that file first and follow what it says.",
+  "skill.chipLabel": "Skill",
   "skill.enabled": "Enabled",
 
   "opencode.installTitle": "OpenCode is not installed",

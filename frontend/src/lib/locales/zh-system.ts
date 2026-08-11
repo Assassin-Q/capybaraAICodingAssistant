@@ -35,6 +35,9 @@ export const zhSystem = {
   "message.copied": "已复制",
 
   "diff.collapseFiles": "收起",
+  "skillhub.clawhubSubtitle": "数据来自 ClawHub（clawhub.ai）",
+  "skill.contextInstruction": "请使用技能「{name}」。该技能不在当前项目内，其说明文件位于本机绝对路径：{path}。请先读取该文件，按其中的说明执行。",
+  "skill.chipLabel": "技能",
   "skill.enabled": "已启用",
 
   "opencode.installTitle": "尚未安装 OpenCode",

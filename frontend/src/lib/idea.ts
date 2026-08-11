@@ -8,7 +8,7 @@ export interface IdeContextEvent {
   id: string;
   action: "add_to_chat" | "explain_code" | "optimize_code" | "generate_test";
   content: string;
-  kind?: "file" | "directory" | "selection" | "binary";
+  kind?: "file" | "directory" | "selection" | "binary" | "skill";
   fileName?: string;
   lineRange?: IdeLineRange;
   timestamp: number;

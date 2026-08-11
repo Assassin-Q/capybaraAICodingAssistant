@@ -135,7 +135,9 @@ class ClawHubCatalogService {
             )
         }
         val query = request.query.trim().lowercase()
-        val topic = request.category?.trim()?.lowercase().orEmpty()
+        // The panel sends "all" for an unset filter, not an empty string. Treating it as a topic
+        // matched nothing — no skill is tagged "all" — so every search came back empty.
+        val topic = request.category?.trim()?.lowercase().orEmpty().takeIf { it != "all" }.orEmpty()
 
         val filtered = all
             .filter { skill ->

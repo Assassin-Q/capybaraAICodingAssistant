@@ -733,6 +733,29 @@ function App() {
     sessionID: selectedSessionID,
   });
 
+  /**
+   * Adds a skill as a context chip.
+   *
+   * Not routed through the IDEA file attach: that validates the path against the project content
+   * roots, and skills legitimately live outside them — in ~/.claude/skills and ~/.agents/skills —
+   * so every global skill came back as "not inside the current project". The chip carries the
+   * skill's name for display and its absolute path for the model.
+   */
+  const attachSkillContext = useCallback((name: string, location: string) => {
+    setContexts((current) => {
+      if (current.some((context) => context.kind === "skill" && context.fileName === name)) return current;
+      return [...current, {
+        action: "add_to_chat" as const,
+        addedAt: Date.now(),
+        content: location,
+        fileName: name,
+        id: `skill:${name}`,
+        kind: "skill" as const,
+        timestamp: Date.now(),
+      }];
+    });
+  }, []);
+
   const handlePrompt = useCallback(async ({ text, files }: PromptInputMessage) => {
     if (!selectedSessionID || !projectPath || submitting.current) return false;
     const typedText = text.trim();
@@ -1147,6 +1170,7 @@ function App() {
     }}
     onSessionTitleSave={() => void saveSessionTitle()}
     onSetComposerText={setComposerText}
+    onAttachSkill={attachSkillContext}
     autoRetryNotice={autoRetry.secondsLeft > 0
       ? t("run.autoRetry", { attempt: autoRetry.attempt, max: AUTO_RETRY_MAX_ATTEMPTS, seconds: autoRetry.secondsLeft })
       : undefined}

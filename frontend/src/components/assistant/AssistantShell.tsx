@@ -76,6 +76,8 @@ export interface AssistantShellProps {
   contexts: ContextChipData[];
   /** Rendered above the composer while an automatic retry is pending. */
   autoRetryNotice?: string;
+  /** Adds a skill reference chip; skills sit outside the project so they cannot be attached as files. */
+  onAttachSkill: (name: string, location: string) => void;
   composerText: string;
   conversationTurns: ConversationTurn[];
   currentPermissions: PermissionRequest[];
@@ -288,6 +290,7 @@ export function AssistantShell(props: AssistantShellProps) {
     compacting,
     updateStatus,
     autoRetryNotice,
+    onAttachSkill,
     composerText,
     conversationTurns,
     currentPermissions,
@@ -529,6 +532,7 @@ export function AssistantShell(props: AssistantShellProps) {
               disabledSkillNames={preferences.disabledSkillNames}
               mcpNames={mcpNames}
               onAttachFile={attachProjectFile}
+              onAttachSkill={onAttachSkill}
               onCompact={compactSession}
               onInsert={onSetComposerText}
               query={composerText}

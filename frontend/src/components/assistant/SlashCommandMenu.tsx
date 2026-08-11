@@ -14,6 +14,8 @@ interface SlashCommandMenuProps {
   mcpNames: string[];
   /** Attaches a project file as context, mirroring the editor's right-click action. */
   onAttachFile: (path: string) => void;
+  /** Skills are referenced by name and absolute path, not attached as project files. */
+  onAttachSkill: (name: string, location: string) => void;
   /** Runs a manual session compaction. */
   onCompact: () => void;
   onInsert: (text: string) => void;
@@ -98,6 +100,7 @@ export function SlashCommandMenu({
   disabledSkillNames,
   mcpNames,
   onAttachFile,
+  onAttachSkill,
   onCompact,
   onInsert,
   query,
@@ -214,7 +217,7 @@ export function SlashCommandMenu({
        * own instructions part of the prompt, and every skill on disk works the same way.
        */
       skills.filter((skill) => !disabled.has(skill.name)).forEach((skill) => values.push({
-        action: skill.location ? () => onAttachFile(skill.location) : undefined,
+        action: skill.location ? () => onAttachSkill(skill.name, skill.location) : undefined,
         description: skill.description ?? t("s_c9422bb291"),
         id: `skill:${skill.name}`,
         insert: skill.location ? undefined : `$${skill.name} `,
@@ -264,7 +267,7 @@ export function SlashCommandMenu({
       .sort((left, right) => left.score - right.score || left.index - right.index)
       .map((item) => item.entry)
       .filter((entry, index, all) => all.findIndex((item) => item.id === entry.id) === index);
-  }, [agents, commands, disabled, fileHits, fileMode, mcpNames, onAttachFile, onCompact, prefix, skills, term]);
+  }, [agents, commands, disabled, fileHits, fileMode, mcpNames, onAttachFile, onAttachSkill, onCompact, prefix, skills, term]);
 
   const choose = useMemo(() => (entry: CommandEntry) => {
     if (entry.action) {

@@ -24,8 +24,16 @@ const RETRYABLE = [
   /temporarily unavailable|overloaded|try again/i,
 ];
 
-/** Rejections that look transient but are not; these must never trigger a retry. */
+/**
+ * Never retried, checked before the list above.
+ *
+ * The first group is the user stopping the run. An interrupted stream reports itself in the same
+ * language as a dropped one, so without this a deliberate stop was answered with "connection
+ * dropped, retrying in 30s" — the panel arguing with the button the user just pressed.
+ */
 const NOT_RETRYABLE = [
+  /provider turn interrupted|request aborted|aborterror/i,
+  /\b(?:cancell?ed|interrupted|abort(?:ed)?)\b/i,
   /insufficient_quota|exceeded your current quota|billing/i,
   /invalid[_ ]api[_ ]key|unauthorized|forbidden/i,
   /model_not_found|is not supported/i,
