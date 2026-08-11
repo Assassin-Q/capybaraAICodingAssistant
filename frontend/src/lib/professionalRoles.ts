@@ -21,7 +21,8 @@ export interface ProfessionalRolePreferences {
 
 export const AUTO_PROFESSIONAL_ROLE_ID = "auto";
 
-export const PROFESSIONAL_ROLE_PRESETS: ProfessionalRolePreset[] = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+export const professionalRolePresets = (): ProfessionalRolePreset[] => [
   {
     id: "architect",
     name: t("s_d7e771fa3c"),
@@ -73,11 +74,11 @@ export const PROFESSIONAL_ROLE_PRESETS: ProfessionalRolePreset[] = [
 ];
 
 export const findProfessionalRolePreset = (id: string): ProfessionalRolePreset | undefined =>
-  PROFESSIONAL_ROLE_PRESETS.find((preset) => preset.id === id);
+  professionalRolePresets().find((preset) => preset.id === id);
 
 export const createDefaultProfessionalRolePreferences = (): ProfessionalRolePreferences => ({
   enabled: false,
-  roles: Object.fromEntries(PROFESSIONAL_ROLE_PRESETS.map((preset) => [
+  roles: Object.fromEntries(professionalRolePresets().map((preset) => [
     preset.id,
     { enabled: true, instructions: preset.instructions, mcpNames: [], skillNames: [] },
   ])),

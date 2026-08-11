@@ -10,7 +10,8 @@ interface CommitSummaryOptions {
   variant?: string;
 }
 
-const PROMPT_HEADER = [
+/** Built per call so the prompt follows the current locale, not the one at import time. */
+const promptHeader = (): string => [
   t("s_cc49fd1dd9"),
   t("s_4990aefffc"),
   t("s_1da87a4e18"),
@@ -49,7 +50,7 @@ export async function generateCommitSummary({
     await openCodeApi.sendPrompt(session.id, {
       directory: projectPath,
       model: modelRef,
-      text: `${PROMPT_HEADER}${body}`,
+      text: `${promptHeader()}${body}`,
     });
 
     // Poll until the run settles; the throwaway session has no tools, so this is quick.

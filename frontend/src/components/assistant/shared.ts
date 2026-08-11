@@ -8,12 +8,13 @@ export interface ContextChip extends IdeContextEvent {
   addedAt: number;
 }
 
-export const actionLabels: Record<IdeContextEvent["action"], string> = {
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+export const actionLabels = (): Record<IdeContextEvent["action"], string> => ({
   add_to_chat: t("s_471f0dcad9"),
   explain_code: t("s_625cb72e0e"),
   generate_test: t("s_519ea0b247"),
   optimize_code: t("s_59c4239b75"),
-};
+});
 
 export const modelKey = (model: ModelRef): string => model.providerID + "/" + model.id;
 

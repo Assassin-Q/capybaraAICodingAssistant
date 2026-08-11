@@ -10,7 +10,7 @@ export function ContextChip({ context, onRemove }: { context: ContextChipData; o
     ? context.fileName + (context.lineRange ? ":" + context.lineRange.start + "-" + context.lineRange.end : "")
     : t("s_208eed345a");
   const Icon = context.kind === "directory" ? FolderOpen : FileCode2;
-  const kindLabel = context.kind === "directory" ? t("s_46ecac2910") : context.kind === "selection" ? t("s_41f497eb47") : actionLabels[context.action];
+  const kindLabel = context.kind === "directory" ? t("s_46ecac2910") : context.kind === "selection" ? t("s_41f497eb47") : actionLabels()[context.action];
   return (
     <div className="flex min-w-0 max-w-full items-center gap-1 rounded-md border border-border bg-muted/45 px-2 py-1 text-xs text-muted-foreground">
       <Icon className="size-3.5 shrink-0" />

@@ -26,11 +26,13 @@ export function LanguageSettings({ onChange, value }: LanguageSettingsProps) {
 
   return (
     <section className="grid gap-3">
-      <div className="flex items-center gap-2">
-        <Languages className="size-4 text-muted-foreground" />
+      {/* Matches SettingsHeader rather than inventing its own scale, so the connection tab reads
+          as one page instead of a section that shrank. */}
+      <div className="flex items-start gap-2">
+        <Languages className="mt-1 size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
-          <h3 className="text-sm font-medium">{t("i18n.title")}</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">{t("i18n.description")}</p>
+          <h2 className="text-lg font-semibold">{t("i18n.title")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t("i18n.description")}</p>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">

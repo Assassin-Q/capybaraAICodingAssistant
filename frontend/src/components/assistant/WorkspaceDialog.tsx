@@ -44,7 +44,8 @@ interface WorkspaceDialogProps {
   updateStatus?: UpdateStatus;
 }
 
-const sections = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const sections = () => [
   { icon: Wifi, id: "connection", label: t("s_7328deebb5") },
   { icon: Cpu, id: "models", label: t("s_98fd0cbd9c") },
   { icon: BrainCircuit, id: "persona", label: t("s_6b26695e4d") },
@@ -57,7 +58,7 @@ const sections = [
 /** Sections that manage their own scrolling instead of scrolling the whole page. */
 const containedSections = new Set(["models", "skills", "plugins", "mcp"]);
 
-export type SectionID = typeof sections[number]["id"];
+export type SectionID = ReturnType<typeof sections>[number]["id"];
 
 export function WorkspaceDialog({
   baseUrl,
@@ -83,7 +84,7 @@ export function WorkspaceDialog({
     }
   }, [initialSection, open, projectPath]);
 
-  const pageTitle = useMemo(() => sections.find((section) => section.id === activeSection)?.label ?? t("s_7debf9cb03"), [activeSection]);
+  const pageTitle = useMemo(() => sections().find((section) => section.id === activeSection)?.label ?? t("s_7debf9cb03"), [activeSection]);
   const updatePreferences = (next: WorkspacePreferences) => {
     const saved = saveWorkspacePreferences(projectPath, next);
     setPreferences(saved);
@@ -98,7 +99,7 @@ export function WorkspaceDialog({
       <aside className="flex w-14 shrink-0 flex-col border-r border-border bg-muted/30 py-2 sm:w-52 sm:p-3">
         <div className="mb-3 flex h-8 items-center gap-2 px-2 sm:px-1"><Cable className="size-4 shrink-0" /><span className="hidden truncate text-sm font-semibold sm:block">{t("s_2de736aa52")}</span></div>
         <nav aria-label={t("s_a8c7ae4f8e")} className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-1 sm:px-0">
-          {sections.map((section) => {
+          {sections().map((section) => {
             const Icon = section.icon;
             const selected = activeSection === section.id;
             return <Button aria-current={selected ? "page" : undefined} aria-label={section.label} className={cn("w-full justify-center gap-2 px-2 sm:justify-start", selected && "bg-secondary")} key={section.id} onClick={() => setActiveSection(section.id)} size="sm" title={section.label} type="button" variant="ghost"><Icon className="size-4 shrink-0" /><span className="hidden sm:inline">{section.label}</span></Button>;

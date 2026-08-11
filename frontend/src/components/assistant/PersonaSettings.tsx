@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { CUSTOM_PERSONA_ID, findPersonaPreset, PERSONA_PRESETS } from "@/lib/personaPresets";
+import { CUSTOM_PERSONA_ID, findPersonaPreset, personaPresets } from "@/lib/personaPresets";
 import type { WorkspacePreferences } from "@/lib/preferences";
 import type { SkillInfo } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
@@ -92,7 +92,7 @@ function ToneRoleSettings({ onSave, preferences }: ToneRoleSettingsProps) {
         <div className="min-w-0">
           <p className="mb-2 text-xs font-medium text-muted-foreground">{t("s_4dfbee9012")}</p>
           <div className="flex gap-2 overflow-x-auto pb-1 md:max-h-[31rem] md:flex-col md:overflow-x-hidden md:overflow-y-auto md:pr-1">
-            {PERSONA_PRESETS.map((preset) => {
+            {personaPresets().map((preset) => {
               const selected = persona.presetId === preset.id;
               return <button aria-pressed={selected} className={cn("min-w-44 rounded-md px-3 py-2.5 text-left transition-colors md:min-w-0", selected ? "bg-secondary text-secondary-foreground" : "hover:bg-muted")} key={preset.id} onClick={() => choosePreset(preset.id)} type="button"><span className="flex items-center gap-2 text-sm font-medium"><span className="min-w-0 flex-1 truncate">{preset.name}</span>{selected && <Check className="size-3.5 shrink-0" />}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{preset.description}</span></button>;
             })}

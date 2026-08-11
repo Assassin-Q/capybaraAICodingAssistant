@@ -46,7 +46,8 @@ interface DraftState {
   scope: ManagedScope;
 }
 
-const bridgeTools = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const bridgeTools = () => [
   { description: t("s_054f5caff5"), icon: Play, name: "idea_run_configuration" },
   { description: t("s_9d18262d07"), icon: ScrollText, name: "idea_read_run_log" },
   { description: t("s_124a851d69"), icon: FolderTree, name: "idea_project_context" },
@@ -153,7 +154,7 @@ function IdeaBridgePanel() {
           {/* Eleven tools rendered inline pushed every other plugin below the fold, so the list
               scrolls inside the card instead of growing it. */}
           <div className="max-h-56 overflow-y-auto overscroll-contain rounded-md bg-background/45">
-            {bridgeTools.map((tool) => {
+            {bridgeTools().map((tool) => {
               const Icon = tool.icon;
               return (
                 <div className="flex min-w-0 items-start gap-2.5 border-t border-border/35 px-2.5 py-2 first:border-t-0" key={tool.name}>

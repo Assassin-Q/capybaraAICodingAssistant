@@ -2,7 +2,8 @@ import { t } from "@/lib/i18n";
 const PERSONA_CONTEXT_START = "<capybara-persona-context>";
 const PERSONA_CONTEXT_END = "</capybara-persona-context>";
 
-const PERSONA_CONTEXT_RULES = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const personaContextRules = (): string => [
   "<system-reminder>",
   t("s_2d8dfba824"),
   t("s_cff8d8423a"),
@@ -15,7 +16,8 @@ const PERSONA_CONTEXT_RULES = [
   "</system-reminder>",
 ].join("\n");
 
-const LEGACY_PERSONA_BOUNDARIES = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const legacyPersonaBoundaries = (): string[][] => [
   [t("s_c980c12673"), t("s_30cc58513a")],
   [t("s_f47c245c62"), t("s_20972a2284")],
   [t("s_d5ae9b9e71"), t("s_07d73ad332")],
@@ -25,7 +27,7 @@ const LEGACY_PERSONA_BOUNDARIES = [
 ] as const;
 
 const stripLegacyPersonaContext = (text: string): string => {
-  const boundary = LEGACY_PERSONA_BOUNDARIES.find(([start]) => text.startsWith(start));
+  const boundary = legacyPersonaBoundaries().find(([start]) => text.startsWith(start));
   if (!boundary) return text;
   const end = text.indexOf(boundary[1], boundary[0].length);
   if (end < 0) return text;
@@ -37,7 +39,7 @@ export const attachPersonaContext = (text: string, instructions?: string): strin
   if (!normalized) return text;
   return [
     PERSONA_CONTEXT_START,
-    PERSONA_CONTEXT_RULES,
+    personaContextRules(),
     normalized,
     PERSONA_CONTEXT_END,
     "",

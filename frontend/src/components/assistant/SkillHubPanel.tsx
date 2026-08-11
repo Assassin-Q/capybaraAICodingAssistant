@@ -43,7 +43,7 @@ import {
   type ManagedSkillInfo,
 } from "@/lib/ideaIntegrations";
 import { cn } from "@/lib/utils";
-import { t } from "@/lib/i18n";
+import { getLocale, t } from "@/lib/i18n";
 
 interface SkillHubPanelProps {
   onInstalled: () => void;
@@ -80,7 +80,8 @@ function FilterMenu({ label, value, options, onChange }: FilterMenuProps) {
 }
 
 /** Mirrors SkillHub's own scene categories. */
-const categoryLabels: Record<string, string> = {
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const categoryLabels = (): Record<string, string> => ({
   "ai-agent": "AI Agent",
   "business-ops": t("s_63b0a125d3"),
   "content-creation": t("s_f0aa02e6aa"),
@@ -91,20 +92,22 @@ const categoryLabels: Record<string, string> = {
   "knowledge-management": t("s_55187c9a79"),
   "office-efficiency": t("s_6cb229dd88"),
   professional: t("s_5d09753c20"),
-};
+});
 
-const sourceLabels: Record<string, string> = {
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const sourceLabels = (): Record<string, string> => ({
   clawhub: "SkillHub",
   community: t("s_367c1ec5d7"),
   enterprise: t("s_00c5fdb039"),
-};
+});
 
 /**
  * Only the orderings the listing endpoint actually accepts. `GET /api/skills` answers anything
  * else with `400 参数错误：sortBy 不支持（updated_at/downloads/stars/installs/score）`, so
  * SkillHub's own 推荐精选 (`curated_score`) and 近期飙升 (`rank`) are absent rather than faked.
  */
-const sortOptions = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const sortOptions = () => [
   { id: "score", label: t("s_778fc8f994") },
   { id: "downloads", label: t("s_2a6c7441d8") },
   { id: "stars", label: t("s_bcc5c1db11") },
@@ -112,9 +115,13 @@ const sortOptions = [
   { id: "updated_at", label: t("s_10f6cdccba") },
 ] as const;
 
-type SortId = typeof sortOptions[number]["id"];
+type SortId = ReturnType<typeof sortOptions>[number]["id"];
 
-const compact = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1, notation: "compact" });
+const compact = (): Intl.NumberFormat =>
+  new Intl.NumberFormat(getLocale() === "zh" ? "zh-CN" : "en-US", {
+    maximumFractionDigits: 1,
+    notation: "compact",
+  });
 
 function SkillIcon({ skill }: { skill: SkillHubSkill }) {
   const [failed, setFailed] = useState(false);
@@ -209,8 +216,8 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
     };
   }, [load]);
 
-  const categories = Object.keys(categoryLabels);
-  const sources = Object.keys(sourceLabels);
+  const categories = Object.keys(categoryLabels());
+  const sources = Object.keys(sourceLabels());
   const visible = results ?? [];
   const pageCount = Math.max(1, Math.ceil(total / 20));
 
@@ -301,7 +308,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
       </div>
 
       <div className="flex flex-wrap items-center gap-1">
-        {sortOptions.map((option) => (
+        {sortOptions().map((option) => (
           <Button
             className="h-7 px-2 text-[11px]"
             key={option.id}
@@ -339,7 +346,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
             }}
             options={[{ value: "all", label: t("s_80bedda93c") }, ...categories.map((value) => ({
               value,
-              label: categoryLabels[value] ?? value,
+              label: categoryLabels()[value] ?? value,
             }))]}
             value={category}
           />
@@ -351,7 +358,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
             }}
             options={[{ value: "all", label: t("s_7e8aac04ce") }, ...sources.map((value) => ({
               value,
-              label: sourceLabels[value] ?? value,
+              label: sourceLabels()[value] ?? value,
             }))]}
             value={source}
           />
@@ -395,7 +402,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
                   <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                     <h3 className="truncate text-sm font-medium">{skill.name ?? skill.slug}</h3>
                     {skill.category && (
-                      <Badge variant="secondary">{categoryLabels[skill.category] ?? skill.category}</Badge>
+                      <Badge variant="secondary">{categoryLabels()[skill.category] ?? skill.category}</Badge>
                     )}
                     {skill.requiresApiKey && (
                       <Badge variant="outline">
@@ -412,11 +419,11 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
               <div className="flex shrink-0 flex-col items-end gap-0.5 text-[10px] text-muted-foreground">
                 <span className="inline-flex items-center gap-0.5">
                   <Star className="size-2.5" />
-                  {compact.format(skill.stars)}
+                  {compact().format(skill.stars)}
                 </span>
                 <span className="inline-flex items-center gap-0.5">
                   <Download className="size-2.5" />
-                  {compact.format(skill.downloads)}
+                  {compact().format(skill.downloads)}
                 </span>
               </div>
               <DropdownMenu modal={false}>

@@ -13,12 +13,13 @@ export const isTextFile = (file: File): boolean => {
   return Boolean(extension && textExtensions.has(extension));
 };
 
-const contextInstructions: Record<ContextChip["action"], string> = {
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const contextInstructions = (): Record<ContextChip["action"], string> => ({
   add_to_chat: t("s_c57401eb1d"),
   explain_code: t("s_a19aef03da"),
   generate_test: t("s_f98a9b921b"),
   optimize_code: t("s_1c34089065"),
-};
+});
 
 const contextMime = (context: ContextChip): string => {
   if (context.kind === "directory") return "text/x-idea-directory";
@@ -38,7 +39,7 @@ const contextContent = (context: ContextChip): string => {
   const location = context.fileName
     ? t("s_aa57b03f07", { p0: context.fileName, p1: context.lineRange ? t("s_e8121a5993", { p0: context.lineRange.start, p1: context.lineRange.end }) : "" })
     : t("s_208eed345a");
-  return [contextInstructions[context.action], location, "", context.content].join("\n");
+  return [contextInstructions()[context.action], location, "", context.content].join("\n");
 };
 
 export const contextToPromptInputFile = (context: ContextChip, index: number): PromptInputFile => {
@@ -80,5 +81,5 @@ export const contextPrompt = (contexts: ContextChip[]): string =>
     const location = context.fileName
       ? t("s_4be036417f", { p0: context.fileName, p1: context.lineRange ? t("s_e8121a5993", { p0: context.lineRange.start, p1: context.lineRange.end }) : "" })
       : t("s_208eed345a");
-    return `${contextInstructions[context.action]}\n${location}\n\n\`\`\`\n${context.content}\n\`\`\``;
+    return `${contextInstructions()[context.action]}\n${location}\n\n\`\`\`\n${context.content}\n\`\`\``;
   }).join("\n\n");

@@ -20,6 +20,8 @@ export const zhSystem = {
   "update.download": "下载",
   "update.tooltip": "有可用更新",
 
+  "skill.shadowed": "被同名技能覆盖",
+
   "opencode.installTitle": "尚未安装 OpenCode",
   "opencode.upgradeTitle": "OpenCode 版本过低",
   "opencode.copyCommand": "复制命令",

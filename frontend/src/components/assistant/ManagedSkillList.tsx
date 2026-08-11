@@ -30,14 +30,15 @@ interface ManagedSkillListProps {
 /** Windows hands back both separators and mixed case; comparison needs one shape. */
 const normalizePath = (value: string): string => value.replace(/\\/g, "/").toLowerCase();
 
-const sourceLabels: Record<string, string> = {
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const sourceLabels = (): Record<string, string> => ({
   agents: "Agents",
   claude: "Claude Code",
   import: t("s_60e2bcad85"),
   opencode: "OpenCode",
-};
+});
 
-const scopeFilters: Array<{ id: ManagedScope | "all"; label: string }> = [
+const scopeFilters = (): Array<{ id: ManagedScope | "all"; label: string }> => [
   { id: "all", label: t("s_778fc8f994") },
   { id: "project", label: t("s_22336e6b89") },
   { id: "global", label: t("s_a5644f4bbf") },
@@ -52,6 +53,8 @@ export function ManagedSkillList({
   const [skills, setSkills] = useState<ManagedSkillInfo[]>([]);
   /** Paths OpenCode has loaded; null means we could not reach it, which is not the same as none. */
   const [loadedPaths, setLoadedPaths] = useState<Set<string> | null>(null);
+  /** Names OpenCode loaded, used to tell a shadowed duplicate apart from one that simply failed. */
+  const [loadedNames, setLoadedNames] = useState<Set<string> | null>(null);
   const [scope, setScope] = useState<ManagedScope | "all">("all");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -74,6 +77,7 @@ export function ManagedSkillList({
       ]);
       setSkills(onDisk);
       setLoadedPaths(live === null ? null : new Set(live.map((skill) => normalizePath(skill.location))));
+      setLoadedNames(live === null ? null : new Set(live.map((skill) => skill.name)));
       setError("");
     } catch (loadError) {
       setError(errorMessage(loadError));
@@ -155,10 +159,23 @@ export function ManagedSkillList({
     [loadedPaths]
   );
 
+  /**
+   * A same-named skill loaded from somewhere else.
+   *
+   * OpenCode registers one skill per name, so a project copy of ui-ux-pro-max shadows the
+   * ~/.claude copy. The shadowed file is working as designed; reporting it as "not loaded" reads
+   * as a fault the user cannot fix, and no amount of restarting changes it.
+   */
+  const isShadowed = useCallback(
+    (skill: ManagedSkillInfo) =>
+      !isLoaded(skill) && loadedNames !== null && loadedNames.has(skill.name),
+    [isLoaded, loadedNames]
+  );
+
   /** Enabled on disk but absent from OpenCode's live list — a reload picks these up. */
   const pendingReload = useMemo(
-    () => skills.filter((skill) => skill.enabled && !isLoaded(skill)),
-    [isLoaded, skills]
+    () => skills.filter((skill) => skill.enabled && !isLoaded(skill) && !isShadowed(skill)),
+    [isLoaded, isShadowed, skills]
   );
 
   const restartService = async () => {
@@ -184,6 +201,7 @@ export function ManagedSkillList({
     if (!skill.enabled) return { label: t("s_6c7dcbb73a"), variant: "outline" as const };
     if (loadedPaths === null) return { label: t("s_d43762b683"), variant: "outline" as const };
     if (isLoaded(skill)) return { label: t("s_b19bae5d13"), variant: "secondary" as const };
+    if (isShadowed(skill)) return { label: t("skill.shadowed"), variant: "outline" as const };
     return { label: t("s_8cfbd5f5a6"), variant: "outline" as const };
   };
 
@@ -226,7 +244,7 @@ export function ManagedSkillList({
 
 
       <div className="flex flex-wrap items-center gap-2">
-        {scopeFilters.map((item) => (
+        {scopeFilters().map((item) => (
           <Button
             key={item.id}
             onClick={() => setScope(item.id)}
@@ -275,7 +293,7 @@ export function ManagedSkillList({
                     <h3 className="truncate text-sm font-medium">{skill.name}</h3>
                     <Badge variant={state.variant}>{state.label}</Badge>
                     <Badge variant="outline">{skill.scope === "project" ? t("s_22336e6b89") : t("s_a5644f4bbf")}</Badge>
-                    <Badge variant="outline">{sourceLabels[skill.source] ?? skill.source}</Badge>
+                    <Badge variant="outline">{sourceLabels()[skill.source] ?? skill.source}</Badge>
                   </div>
                   <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
                     {skill.description ?? t("s_7e73fb8978")}

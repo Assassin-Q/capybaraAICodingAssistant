@@ -31,8 +31,6 @@ data class ManagedSkillInfo(
     val source: String,
     val enabled: Boolean,
     val editable: Boolean = true,
-    /** False when the file sits deeper than the single level OpenCode scans, so no restart helps. */
-    val autoLoadable: Boolean = true,
     /** The containing directory, which is the key OpenCode registers the skill under. */
     val directoryName: String = "",
     /** From the SKILL.md frontmatter, so SkillHub can mark which release is installed locally. */
@@ -236,9 +234,12 @@ class SkillManagementService(private val project: Project) {
                 .map { path -> parseSkill(path, root) }
                 .toList()
         }
-        // Anything OpenCode cannot reach is dropped rather than listed. Showing it only ever
-        // produced a row the user could toggle, restart for, and never actually load.
-    }.filter { it.autoLoadable }.distinctBy { it.location.lowercase() }.sortedWith(
+        // Everything found on disk is listed. An earlier version dropped anything nested deeper
+        // than `<root>/<name>/SKILL.md`, on the belief that OpenCode only scans one level. The
+        // live list disproves it: all eight gsap skills load from
+        // `~/.claude/skills/gsap-skills-main/skills/<name>/SKILL.md`, three levels down. Filtering
+        // on that guess hid working skills and left no way to manage them.
+    }.distinctBy { it.location.lowercase() }.sortedWith(
         compareBy<ManagedSkillInfo> { it.scope }.thenBy { it.name.lowercase() },
     )
 
@@ -533,11 +534,6 @@ class SkillManagementService(private val project: Project) {
             val index = line.indexOf(':')
             if (index <= 0) null else line.take(index).trim() to line.drop(index + 1).trim().trim('"', '\'')
         }.toMap()
-        // OpenCode auto-loads exactly `<root>/<name>/SKILL.md` — one level, no deeper. We walk 8
-        // levels so a bundle like `gsap-skills-main/skills/gsap-core/SKILL.md` is still listed and
-        // manageable, but it will never appear in OpenCode's live list no matter how often the
-        // service restarts. Saying so here is what stops the UI promising a reload that cannot work.
-        val depth = runCatching { root.path.relativize(path.parent).nameCount }.getOrDefault(1)
         return ManagedSkillInfo(
             name = values["name"]?.ifBlank { null } ?: path.parent.name,
             description = values["description"]?.ifBlank { null },
@@ -545,7 +541,6 @@ class SkillManagementService(private val project: Project) {
             scope = root.scope,
             source = root.source,
             enabled = path.fileName.toString() == "SKILL.md",
-            autoLoadable = depth == 1,
             version = values["version"]?.ifBlank { null },
             // OpenCode keys its live list by directory, which is not always the frontmatter name:
             // `frontend-design-v2-2.0.0/SKILL.md` declares `name: frontend-design`. Matching on one

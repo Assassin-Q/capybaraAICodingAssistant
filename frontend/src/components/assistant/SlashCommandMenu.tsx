@@ -43,7 +43,8 @@ interface CommandEntry {
  * what makes the two-step flow fall out for free: the second menu is the same component reacting
  * to the new prefix, rather than a separate mode this one has to track.
  */
-const GATEWAYS: Array<{ description: string; kind: EntryKind; label: string; prefix: string }> = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const gateways = (): Array<{ description: string; kind: EntryKind; label: string; prefix: string }> => [
   { description: t("s_d52e883472"), kind: "skill", label: t("s_57d1b9097c"), prefix: "$" },
   { description: t("s_69bc073da7"), kind: "agent", label: t("s_16bb55f008"), prefix: "@" },
 ];
@@ -54,7 +55,8 @@ const GATEWAYS: Array<{ description: string; kind: EntryKind; label: string; pre
  * Keeping the query in the composer text is what makes the second step work without a mode flag:
  * everything after the command is the search term, so the same text-driven path drives both menus.
  */
-const FILE_COMMAND = t("s_22a59aa648");
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const fileCommand = (): string => t("s_22a59aa648");
 
 const sourceLabel = (kind: EntryKind): string => {
   if (kind === "agent") return t("s_16bb55f008");
@@ -106,9 +108,9 @@ export function SlashCommandMenu({
   const [fileHits, setFileHits] = useState<FileSearchHit[]>([]);
   const [fileSearching, setFileSearching] = useState(false);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const fileMode = query.startsWith(FILE_COMMAND);
+  const fileMode = query.startsWith(fileCommand());
   const prefix = fileMode ? "" : query.slice(0, 1);
-  const term = fileMode ? query.slice(FILE_COMMAND.length).trim() : query.slice(1).trim();
+  const term = fileMode ? query.slice(fileCommand().length).trim() : query.slice(1).trim();
   const disabled = useMemo(() => new Set(disabledSkillNames), [disabledSkillNames]);
 
   /**
@@ -171,12 +173,12 @@ export function SlashCommandMenu({
       values.push({
         description: t("s_47cf3e7d9e"),
         id: "cmd:file",
-        insert: FILE_COMMAND,
+        insert: fileCommand(),
         kind: "file",
         label: t("s_2d730c6b6e"),
         sourceLabel: t("s_5da56aba3c"),
       });
-      GATEWAYS.forEach((gateway) => values.push({
+      gateways().forEach((gateway) => values.push({
         description: t("s_12f3b7ca48", { p0: gateway.description, p1: gateway.prefix }),
         id: `gateway:${gateway.prefix}`,
         insert: gateway.prefix,
@@ -266,7 +268,7 @@ export function SlashCommandMenu({
     }
     // A gateway rewrites the composer to a bare trigger, and the file command hands over to the
     // file picker — neither may be marked dismissed or the menu they exist to open closes at once.
-    if (entry.insert && entry.insert.length > 1 && entry.insert !== FILE_COMMAND) {
+    if (entry.insert && entry.insert.length > 1 && entry.insert !== fileCommand()) {
       setDismissedPrefix(entry.insert.trim());
     }
     onInsert(entry.insert ?? "");

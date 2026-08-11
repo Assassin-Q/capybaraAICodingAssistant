@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  PROFESSIONAL_ROLE_PRESETS,
+  professionalRolePresets,
   type ProfessionalRoleConfig,
 } from "@/lib/professionalRoles";
 import type { WorkspacePreferences } from "@/lib/preferences";
@@ -87,15 +87,15 @@ function AssociationPicker({ emptyLabel, label, onChange, options, placeholder, 
 
 export function ProfessionalRoleSettings({ mcpNames, onSave, preferences, skills }: ProfessionalRoleSettingsProps) {
   const [roles, setRoles] = useState(preferences.professionalRoles);
-  const [selectedId, setSelectedId] = useState(PROFESSIONAL_ROLE_PRESETS[0].id);
+  const [selectedId, setSelectedId] = useState(professionalRolePresets()[0].id);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setRoles(preferences.professionalRoles);
   }, [preferences.professionalRoles]);
 
-  const selectedPreset = PROFESSIONAL_ROLE_PRESETS.find((preset) => preset.id === selectedId)
-    ?? PROFESSIONAL_ROLE_PRESETS[0];
+  const selectedPreset = professionalRolePresets().find((preset) => preset.id === selectedId)
+    ?? professionalRolePresets()[0];
   const selectedRole = roles.roles[selectedPreset.id];
   const skillOptions = useMemo(() => skills
     .filter((skill, index, values) => values.findIndex((candidate) => candidate.name === skill.name) === index)
@@ -177,7 +177,7 @@ export function ProfessionalRoleSettings({ mcpNames, onSave, preferences, skills
         <div className="min-w-0">
           <p className="mb-2 text-xs font-medium text-muted-foreground">{t("s_50282b519b")}</p>
           <div className="flex gap-2 overflow-x-auto pb-1 md:max-h-[34rem] md:flex-col md:overflow-x-hidden md:overflow-y-auto md:pr-1">
-            {PROFESSIONAL_ROLE_PRESETS.map((preset) => {
+            {professionalRolePresets().map((preset) => {
               const selected = preset.id === selectedPreset.id;
               const enabled = roles.roles[preset.id]?.enabled !== false;
               return (

@@ -43,7 +43,8 @@ export type ToolHeaderProps = {
   | { type: DynamicToolUIPart["type"]; state: DynamicToolUIPart["state"]; toolName: string }
 );
 
-const statusLabels: Record<ToolPart["state"], string> = {
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const statusLabels = (): Record<ToolPart["state"], string> => ({
   "approval-requested": t("s_25a45621ed"),
   "approval-responded": t("s_712c9a0ec7"),
   "input-available": t("s_1f425b6bf0"),
@@ -51,7 +52,7 @@ const statusLabels: Record<ToolPart["state"], string> = {
   "output-available": t("s_e99b48a29b"),
   "output-denied": t("s_4c7c52c706"),
   "output-error": t("s_9746cfc7d2"),
-};
+});
 
 const statusIcons: Record<ToolPart["state"], ReactNode> = {
   "approval-requested": <ClockIcon className="size-3 text-amber-600" />,
@@ -66,7 +67,7 @@ const statusIcons: Record<ToolPart["state"], ReactNode> = {
 export const getStatusBadge = (status: ToolPart["state"]) => (
   <Badge className="h-5 gap-1 rounded-md border-0 bg-transparent px-0 text-[10px] font-normal text-muted-foreground" variant="ghost">
     {statusIcons[status]}
-    {statusLabels[status]}
+    {statusLabels()[status]}
   </Badge>
 );
 

@@ -9,18 +9,23 @@ import { skillsApi } from "@/lib/ideaIntegrations";
 import type { SkillHubDetail, SkillHubTraceDimension } from "@/lib/ideaIntegrations";
 import type { ManagedScope } from "@/lib/ideaIntegrations";
 import { cn } from "@/lib/utils";
-import { t } from "@/lib/i18n";
+import { getLocale, t } from "@/lib/i18n";
 
-const compact = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1, notation: "compact" });
+const compact = (): Intl.NumberFormat =>
+  new Intl.NumberFormat(getLocale() === "zh" ? "zh-CN" : "en-US", {
+    maximumFractionDigits: 1,
+    notation: "compact",
+  });
 
-const tabs = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const tabs = () => [
   { id: "overview", label: t("s_153042ed9e") },
   { id: "files", label: t("s_49deaf7da2") },
   { id: "versions", label: t("s_8770418ba3") },
   { id: "trace", label: t("s_7f68264e69") },
 ] as const;
 
-type TabID = typeof tabs[number]["id"];
+type TabID = ReturnType<typeof tabs>[number]["id"];
 
 const formatDate = (value: number): string =>
   value > 0 ? new Date(value).toLocaleDateString("zh-CN") : "—";
@@ -223,13 +228,13 @@ export function SkillHubDetailView({
       </div>
 
       <div className="grid grid-cols-3 gap-2 rounded-md bg-muted/35 px-3 py-2 text-center">
-        <div><p className="text-[10px] text-muted-foreground">{t("s_2b9d013177")}</p><p className="font-mono text-sm">{compact.format(detail.downloads)}</p></div>
-        <div><p className="text-[10px] text-muted-foreground">{t("s_d07cee786a")}</p><p className="font-mono text-sm">{compact.format(detail.stars)}</p></div>
-        <div><p className="text-[10px] text-muted-foreground">{t("s_087db63ab1")}</p><p className="font-mono text-sm">{compact.format(detail.installs)}</p></div>
+        <div><p className="text-[10px] text-muted-foreground">{t("s_2b9d013177")}</p><p className="font-mono text-sm">{compact().format(detail.downloads)}</p></div>
+        <div><p className="text-[10px] text-muted-foreground">{t("s_d07cee786a")}</p><p className="font-mono text-sm">{compact().format(detail.stars)}</p></div>
+        <div><p className="text-[10px] text-muted-foreground">{t("s_087db63ab1")}</p><p className="font-mono text-sm">{compact().format(detail.installs)}</p></div>
       </div>
 
       <nav className="flex shrink-0 gap-1 border-b border-border/50">
-        {tabs.map((entry) => (
+        {tabs().map((entry) => (
           <button
             className={cn(
               "border-b-2 px-3 py-1.5 text-xs transition-colors",

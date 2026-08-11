@@ -4,18 +4,20 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import type { TodoInfo } from "@/lib/opencode";
 import { t } from "@/lib/i18n";
 
-const priorityLabel: Record<string, string> = {
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const priorityLabel = (): Record<string, string> => ({
   high: t("s_b096b3f5ac"),
   low: t("s_b9ee259b7f"),
   medium: t("s_0869071c92"),
-};
+});
 
-const statusLabel: Record<string, string> = {
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const statusLabel = (): Record<string, string> => ({
   cancelled: t("s_a5ffdc95ee"),
   completed: t("s_e99b48a29b"),
   in_progress: t("s_6f1972e48e"),
   pending: t("s_59a9eb4e65"),
-};
+});
 
 const isFinished = (todo: TodoInfo): boolean =>
   todo.status === "completed" || todo.status === "cancelled";
@@ -67,8 +69,8 @@ export function TodoPanel({ active = true, todos }: { active?: boolean; todos: T
                     {todo.content}
                   </span>
                   <span className="shrink-0 text-[10px] text-muted-foreground">
-                    {statusLabel[todo.status] ?? todo.status}
-                    {todo.priority && ` · ${priorityLabel[todo.priority] ?? todo.priority}`}
+                    {statusLabel()[todo.status] ?? todo.status}
+                    {todo.priority && ` · ${priorityLabel()[todo.priority] ?? todo.priority}`}
                   </span>
                 </div>
               );

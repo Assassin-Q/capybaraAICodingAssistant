@@ -15,6 +15,8 @@ export const enSystem = {
   "update.download": "Download",
   "update.tooltip": "An update is available",
 
+  "skill.shadowed": "Shadowed by a same-named skill",
+
   "opencode.installTitle": "OpenCode is not installed",
   "opencode.upgradeTitle": "OpenCode is too old",
   "opencode.copyCommand": "Copy command",

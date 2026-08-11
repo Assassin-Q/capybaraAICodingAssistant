@@ -8,16 +8,18 @@ export interface PersonaPreset {
 
 export const CUSTOM_PERSONA_ID = "custom";
 
-const ENGINEERING_BANTER_RULES = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const engineeringBanterRules = (): string => [
   t("s_ef4bd3ca69"),
   t("s_9fcdf0b982"),
   t("s_4ccc945fd4"),
 ].join("\n");
 
 const buildInstructions = (instructions: string[]): string =>
-  [...instructions, ENGINEERING_BANTER_RULES].join("\n");
+  [...instructions, engineeringBanterRules()].join("\n");
 
-export const PERSONA_PRESETS: PersonaPreset[] = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+export const personaPresets = (): PersonaPreset[] => [
   {
     id: "hakimi",
     name: t("s_c83964d8f2"),
@@ -76,4 +78,4 @@ export const PERSONA_PRESETS: PersonaPreset[] = [
 ];
 
 export const findPersonaPreset = (id: string): PersonaPreset | undefined =>
-  PERSONA_PRESETS.find((preset) => preset.id === id);
+  personaPresets().find((preset) => preset.id === id);

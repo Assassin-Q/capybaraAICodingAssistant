@@ -13,7 +13,7 @@ import {
 import {
   AUTO_PROFESSIONAL_ROLE_ID,
   findProfessionalRolePreset,
-  PROFESSIONAL_ROLE_PRESETS,
+  professionalRolePresets,
   type ProfessionalRolePreferences,
 } from "@/lib/professionalRoles";
 
@@ -27,7 +27,7 @@ export function ProfessionalRolePicker({ onChange, preferences }: ProfessionalRo
   // and reading `.enabled` off that undefined crashed the whole composer.
   if (!preferences?.enabled) return null;
   const roles = preferences.roles ?? {};
-  const enabledRoles = PROFESSIONAL_ROLE_PRESETS.filter((preset) => roles[preset.id]?.enabled);
+  const enabledRoles = professionalRolePresets().filter((preset) => roles[preset.id]?.enabled);
   const selected = findProfessionalRolePreset(preferences.selectedRoleId);
   const label = selected && roles[selected.id]?.enabled ? selected.name : t("s_13f490e30b");
   return (

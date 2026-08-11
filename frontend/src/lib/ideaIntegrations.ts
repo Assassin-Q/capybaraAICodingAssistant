@@ -12,7 +12,6 @@ export interface ManagedSkillInfo {
   enabled: boolean;
   editable?: boolean;
   /** False when the file is nested deeper than the one level OpenCode scans — no restart helps. */
-  autoLoadable?: boolean;
   /** Containing directory, which is the key OpenCode registers the skill under. */
   directoryName?: string;
   /** From the SKILL.md frontmatter; used to mark the installed release on SkillHub. */

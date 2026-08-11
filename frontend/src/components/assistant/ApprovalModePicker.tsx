@@ -32,15 +32,15 @@ export function ApprovalModePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [activeMode, setActiveMode] = useState<ApprovalMode | null>(null);
-  const selected = approvalModeOptions.find((item) => item.id === value) ?? approvalModeOptions[0];
+  const selected = approvalModeOptions().find((item) => item.id === value) ?? approvalModeOptions()[0];
   const SelectedIcon = modeIcon((selected?.id ?? "ask") as ApprovalMode);
 
   const moveActive = (direction: 1 | -1) => {
-    const currentIndex = approvalModeOptions.findIndex((option) => option.id === activeMode);
+    const currentIndex = approvalModeOptions().findIndex((option) => option.id === activeMode);
     const nextIndex = currentIndex < 0
-      ? (direction === 1 ? 0 : approvalModeOptions.length - 1)
-      : (currentIndex + direction + approvalModeOptions.length) % approvalModeOptions.length;
-    setActiveMode(approvalModeOptions[nextIndex]?.id ?? null);
+      ? (direction === 1 ? 0 : approvalModeOptions().length - 1)
+      : (currentIndex + direction + approvalModeOptions().length) % approvalModeOptions().length;
+    setActiveMode(approvalModeOptions()[nextIndex]?.id ?? null);
   };
 
   const close = () => {
@@ -92,7 +92,7 @@ export function ApprovalModePicker({
       >
         <ModelSelectorList className="p-1">
           <ModelSelectorGroup heading={t("s_1072712e57")}>
-            {approvalModeOptions.map((option) => {
+            {approvalModeOptions().map((option) => {
               const Icon = modeIcon(option.id);
               return (
                 <ModelSelectorItem

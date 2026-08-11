@@ -55,7 +55,8 @@ interface ProviderDraft {
 
 type SdkType = "openai-responses" | "openai-compatible" | "anthropic";
 
-const sdkOptions: Array<{ description: string; id: SdkType; label: string; npm: string }> = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const sdkOptions = (): Array<{ description: string; id: SdkType; label: string; npm: string }> => [
   { description: t("s_0a5429258b"), id: "openai-responses", label: "OpenAI Responses", npm: "@ai-sdk/openai" },
   { description: t("s_bd0735704b"), id: "openai-compatible", label: t("s_83a19c76d9"), npm: "@ai-sdk/openai-compatible" },
   { description: "Anthropic Messages API", id: "anthropic", label: "Anthropic", npm: "@ai-sdk/anthropic" },
@@ -225,12 +226,14 @@ function CapabilityToggle({ checked, label, onCheckedChange }: { checked: boolea
   return <label className="flex min-h-9 items-center gap-2 rounded-md bg-muted/45 px-2 text-xs"><Switch checked={checked} onCheckedChange={onCheckedChange} /><span>{label}</span></label>;
 }
 
-const inputModalities: Array<{ id: ModelModality; label: string }> = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const inputModalityOptions = (): Array<{ id: ModelModality; label: string }> => [
   { id: "text", label: t("s_f1926e9b33") }, { id: "image", label: t("s_be8da62ea1") }, { id: "audio", label: t("s_461189f186") },
   { id: "video", label: t("s_fa4e33b698") }, { id: "pdf", label: "PDF" },
 ];
 
-const outputModalities: Array<{ id: ModelModality; label: string }> = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const outputModalityOptions = (): Array<{ id: ModelModality; label: string }> => [
   { id: "text", label: t("s_f1926e9b33") }, { id: "audio", label: t("s_461189f186") },
 ];
 
@@ -456,7 +459,7 @@ export function ModelSettings({
         return;
       }
       const existing = config.provider?.[id] ?? {};
-      const selectedSdk = sdkOptions.find((option) => option.id === providerDraft.sdkType);
+      const selectedSdk = sdkOptions().find((option) => option.id === providerDraft.sdkType);
       const npm = selectedSdk?.npm ?? providerDraft.npm.trim();
       const provider: ProviderConfig = {
         ...existing,
@@ -667,7 +670,7 @@ export function ModelSettings({
         <div className="grid gap-2">
           <p className="text-xs font-medium">{t("s_487296a07f")}</p>
           <div className="grid grid-cols-2 gap-2">
-            {inputModalities.map((item) => (
+            {inputModalityOptions().map((item) => (
               <CapabilityToggle
                 checked={modelDraft.inputModalities.includes(item.id)}
                 key={item.id}
@@ -683,7 +686,7 @@ export function ModelSettings({
         <div className="grid gap-2">
           <p className="text-xs font-medium">{t("s_68a9c25a41")}</p>
           <div className="grid grid-cols-2 gap-2">
-            {outputModalities.map((item) => (
+            {outputModalityOptions().map((item) => (
               <CapabilityToggle
                 checked={modelDraft.outputModalities.includes(item.id)}
                 key={item.id}
@@ -740,7 +743,7 @@ export function ModelSettings({
         <div className="grid gap-3 sm:grid-cols-2">
           <SettingField label={t("s_4ce9ed14e3")}><Input disabled={!isNewProvider} onChange={(event) => setProviderDraft((current) => ({ ...current, id: event.target.value.trim() }))} placeholder={t("s_4c7a7eac7f")} value={providerDraft.id} /></SettingField>
           <SettingField label={t("s_75ae6a8a7d")}><Input onChange={(event) => setProviderDraft((current) => ({ ...current, name: event.target.value }))} placeholder={t("s_15df463d1a")} value={providerDraft.name} /></SettingField>
-          <SettingField label={t("s_e56c552b72")}><Select onValueChange={(value: SdkType) => { const option = sdkOptions.find((item) => item.id === value); setProviderDraft((current) => ({ ...current, npm: option?.npm ?? current.npm, sdkType: value })); }} value={providerDraft.sdkType}><SelectTrigger className="w-full border-border/60 shadow-none"><SelectValue /></SelectTrigger><SelectContent className="border-0 ring-1 ring-border/40">{sdkOptions.map((option) => <SelectItem key={option.id} value={option.id}><span className="flex flex-col"><span>{option.label}</span><span className="text-[10px] text-muted-foreground">{option.description}</span></span></SelectItem>)}</SelectContent></Select></SettingField>
+          <SettingField label={t("s_e56c552b72")}><Select onValueChange={(value: SdkType) => { const option = sdkOptions().find((item) => item.id === value); setProviderDraft((current) => ({ ...current, npm: option?.npm ?? current.npm, sdkType: value })); }} value={providerDraft.sdkType}><SelectTrigger className="w-full border-border/60 shadow-none"><SelectValue /></SelectTrigger><SelectContent className="border-0 ring-1 ring-border/40">{sdkOptions().map((option) => <SelectItem key={option.id} value={option.id}><span className="flex flex-col"><span>{option.label}</span><span className="text-[10px] text-muted-foreground">{option.description}</span></span></SelectItem>)}</SelectContent></Select></SettingField>
           <SettingField label="Base URL"><Input onChange={(event) => setProviderDraft((current) => ({ ...current, baseURL: event.target.value }))} placeholder="https://api.example.com/v1" value={providerDraft.baseURL} /></SettingField>
           <SettingField label="API Key"><div className="relative"><Input onChange={(event) => setProviderDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder={t("s_f72dee10c7")} type={showKey ? "text" : "password"} value={providerDraft.apiKey} /><Button aria-label={showKey ? t("s_f3d9423a57") : t("s_caddc83f01")} className="absolute right-1 top-1" onClick={() => setShowKey((value) => !value)} size="icon-xs" title={showKey ? t("s_f3d9423a57") : t("s_caddc83f01")} type="button" variant="ghost">{showKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}</Button></div></SettingField>
           <label className="flex items-end gap-2 pb-2 text-xs"><Switch checked={!providerDraft.disabled} onCheckedChange={(checked) => setProviderDraft((current) => ({ ...current, disabled: !checked }))} />{t("s_4c519b46e8")}</label>

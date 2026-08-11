@@ -3,7 +3,8 @@ import type { AssistantMessage, SessionMessage } from "@/lib/opencode";
 import { EMPTY_TOKEN_USAGE } from "@/lib/tokenUsage";
 import { t } from "@/lib/i18n";
 
-export const DEFAULT_EMPTY_RUN_ERROR = t("s_204b96ed88");
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+export const defaultEmptyRunError = (): string => t("s_204b96ed88");
 
 const runAssistants = (messages: SessionMessage[], prompt: ActivePrompt): AssistantMessage[] =>
   messages.filter((message): message is AssistantMessage => message.type === "assistant" && (

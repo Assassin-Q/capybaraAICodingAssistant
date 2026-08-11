@@ -13,7 +13,8 @@ export interface ApprovalModeOption {
   label: string;
 }
 
-export const approvalModeOptions: ApprovalModeOption[] = [
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+export const approvalModeOptions = (): ApprovalModeOption[] => [
   {
     description: t("s_a557a9a148"),
     id: "ask",

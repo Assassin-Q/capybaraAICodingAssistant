@@ -735,12 +735,20 @@ function App() {
    * actually looking at and leaves OpenCode configuration untouched.
    */
   const runAllowancesRef = useRef(new Set<string>());
-  const allowanceKey = (sessionID: string, action: string) => sessionID + "|" + action.trim().toLowerCase();
+  /**
+   * Keyed on the action alone, deliberately.
+   *
+   * A task that hands work to a subagent runs it in a separate session, so including the session
+   * id meant the grant stopped applying the moment the work moved one level down — which is the
+   * opposite of what "allow for this task" promises. Cross-session leakage is prevented by
+   * clearing on session switch instead.
+   */
+  const allowanceKey = (action: string) => action.trim().toLowerCase();
 
   const autoAnswerPermissions = useCallback((requests: PermissionRequest[]): PermissionRequest[] => {
     if (!projectPath) return requests;
     return requests.filter((request) => {
-      const allowedForRun = runAllowancesRef.current.has(allowanceKey(request.sessionID, request.action));
+      const allowedForRun = runAllowancesRef.current.has(allowanceKey(request.action));
       if (!allowedForRun && !approvalModeAllows(approvalModeRef.current, request.action)) return true;
       // Replies are fire-and-forget, so the id is remembered: polling re-delivers a request until
       // OpenCode drops it, and a second reply to the same id is an error rather than a no-op.
@@ -760,9 +768,20 @@ function App() {
     });
   }, [projectPath]);
 
-  // The allowance lasts exactly as long as the run the user granted it during.
+  /**
+   * The allowance covers one whole task: from the request the user made to the answer they get
+   * back, including every tool call and subagent step in between.
+   *
+   * It used to be cleared whenever the run reported "ready", which sounds equivalent but is not.
+   * "Ready" is inferred from the session going idle, and a pending permission prompt makes the
+   * session idle — it is waiting on the user, not working. So granting "allow for this task" put
+   * the run into exactly the state that revoked it, and the next tool call asked again.
+   *
+   * Submitting the next prompt is the one unambiguous signal that the previous task is over, so
+   * that is what ends the grant.
+   */
   useEffect(() => {
-    if (runStatus === "ready" || runStatus === "error") runAllowancesRef.current.clear();
+    if (runStatus === "submitted") runAllowancesRef.current.clear();
   }, [runStatus]);
   useEffect(() => {
     runAllowancesRef.current.clear();
@@ -780,7 +799,7 @@ function App() {
     // OpenCode as a plain "once", so nothing is written to its database and the approval mode
     // stays the authority once the run is over.
     const effective: PermissionReply = reply === "always" ? "once" : reply;
-    if (reply === "always") runAllowancesRef.current.add(allowanceKey(request.sessionID, request.action));
+    if (reply === "always") runAllowancesRef.current.add(allowanceKey(request.action));
     try {
       await openCodeApi.replyPermission(request.sessionID, request.id, effective, projectPath);
     } catch (replyError) {

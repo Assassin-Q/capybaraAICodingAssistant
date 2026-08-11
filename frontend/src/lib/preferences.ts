@@ -1,10 +1,10 @@
-import { CUSTOM_PERSONA_ID, findPersonaPreset, PERSONA_PRESETS } from "@/lib/personaPresets";
+import { CUSTOM_PERSONA_ID, findPersonaPreset, personaPresets } from "@/lib/personaPresets";
 import { t } from "@/lib/i18n";
 import {
   AUTO_PROFESSIONAL_ROLE_ID,
   createDefaultProfessionalRolePreferences,
   findProfessionalRolePreset,
-  PROFESSIONAL_ROLE_PRESETS,
+  professionalRolePresets,
   type ProfessionalRolePreferences,
 } from "@/lib/professionalRoles";
 
@@ -36,9 +36,9 @@ const DEFAULT_PREFERENCES: WorkspacePreferences = {
   modelVariantLabels: {},
   persona: {
     enabled: false,
-    name: PERSONA_PRESETS[0].name,
-    presetId: PERSONA_PRESETS[0].id,
-    instructions: PERSONA_PRESETS[0].instructions,
+    name: personaPresets()[0].name,
+    presetId: personaPresets()[0].id,
+    instructions: personaPresets()[0].instructions,
   },
   professionalRoles: createDefaultProfessionalRolePreferences(),
 };
@@ -75,7 +75,7 @@ const normalizeProfessionalRoles = (value: unknown): ProfessionalRolePreferences
   const rawRoles = raw.roles && typeof raw.roles === "object" && !Array.isArray(raw.roles)
     ? raw.roles as Record<string, unknown>
     : {};
-  const roles = Object.fromEntries(PROFESSIONAL_ROLE_PRESETS.map((preset) => {
+  const roles = Object.fromEntries(professionalRolePresets().map((preset) => {
     const candidate = rawRoles[preset.id];
     const role = candidate && typeof candidate === "object" && !Array.isArray(candidate)
       ? candidate as Partial<ProfessionalRolePreferences["roles"][string]>

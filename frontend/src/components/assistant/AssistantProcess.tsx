@@ -22,7 +22,8 @@ import type {
   TodoInfo,
 } from "@/lib/opencode";
 
-const toolLabels: Record<string, string> = {
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const toolLabels = (): Record<string, string> => ({
   apply_patch: t("s_80e1ecebdb"),
   bash: t("s_bf162782f5"),
   edit: t("s_fa65902674"),
@@ -46,9 +47,10 @@ const toolLabels: Record<string, string> = {
   todo: t("s_94464c4619"),
   todowrite: t("s_94464c4619"),
   write: t("s_e620fd4b1f"),
-};
+});
 
-const toolActions: Record<string, string> = {
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const toolActions = (): Record<string, string> => ({
   apply_patch: t("s_b4ddc6bbab"),
   bash: t("s_f3f2330801"),
   edit: t("s_b4ddc6bbab"),
@@ -72,11 +74,11 @@ const toolActions: Record<string, string> = {
   todo: t("s_13b6dc6f05"),
   todowrite: t("s_13b6dc6f05"),
   write: t("s_b4ddc6bbab"),
-};
+});
 
-const toolTitle = (name: string): string => toolLabels[name.toLowerCase()] ?? name;
+const toolTitle = (name: string): string => toolLabels()[name.toLowerCase()] ?? name;
 
-const toolAction = (name: string): string => toolActions[name.toLowerCase()] ?? t("s_536714e7dd", { p0: name });
+const toolAction = (name: string): string => toolActions()[name.toLowerCase()] ?? t("s_536714e7dd", { p0: name });
 
 const normalizedToolValue = (value: unknown): unknown => {
   if (typeof value !== "string") return value;

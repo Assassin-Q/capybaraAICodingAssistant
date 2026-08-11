@@ -151,14 +151,15 @@ export interface AssistantShellProps {
  * disagrees with what happened — compaction in particular rewrites the history, and OpenCode runs
  * it on its own when the context fills up. A session that shrinks with no explanation looks broken.
  */
-const SESSION_EVENT_LABELS: Record<Exclude<ConversationTurn["type"], "user" | "assistant">, string> = {
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const sessionEventLabels = (): Record<Exclude<ConversationTurn["type"], "user" | "assistant">, string> => ({
   "agent-switched": t("s_252776162d"),
   compaction: t("s_062189d7b1"),
   "model-switched": t("s_ead4831a76"),
   shell: t("s_cf0b5df0dd"),
   synthetic: t("s_78bf71686a"),
   system: t("s_f581d83fe2"),
-};
+});
 
 /** The event detail worth putting on the divider, when the payload carries one. */
 const sessionEventDetail = (turn: ConversationTurn): string | undefined => {
@@ -173,7 +174,8 @@ const sessionEventDetail = (turn: ConversationTurn): string | undefined => {
 
 /** Characters that open the composer picker. Kept beside the placeholder hint that advertises them. */
 const TRIGGER_CHARACTERS = ["/", "@", "$"];
-const COMPOSER_HINT = t("s_1484fbdcaf");
+/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
+const composerHint = () => t("s_1484fbdcaf");
 
 function StatusDot({ connected, update }: { connected: boolean | null; update?: UpdateStatus }) {
   // An available release outranks the plain connected state: the dot is the only always-visible
@@ -384,7 +386,7 @@ export function AssistantShell(props: AssistantShellProps) {
         </ErrorBoundary>,
       ];
     }
-    const label = SESSION_EVENT_LABELS[message.type];
+    const label = sessionEventLabels()[message.type];
     const detail = sessionEventDetail(message);
     return [
       <ConversationDivider
@@ -562,7 +564,7 @@ export function AssistantShell(props: AssistantShellProps) {
           >
             <PromptInput className="rounded-[10px] border border-border/60 bg-card shadow-none" onSubmit={submitPrompt} onTextChange={onSetComposerText} text={composerText}>
               <PromptInputAttachments />
-              <PromptInputTextarea className="min-h-10 max-h-28 py-2 text-sm" disabled={booting || !selectedSessionID} placeholder={contexts.length > 0 ? t("s_0e75c177e7") : COMPOSER_HINT} />
+              <PromptInputTextarea className="min-h-10 max-h-28 py-2 text-sm" disabled={booting || !selectedSessionID} placeholder={contexts.length > 0 ? t("s_0e75c177e7") : composerHint()} />
               <PromptInputFooter className="px-1.5 pb-1 pt-0.5">
                 <PromptInputTools className="flex min-w-0 flex-wrap gap-0.5">
                   <PromptInputAttachmentButton />
