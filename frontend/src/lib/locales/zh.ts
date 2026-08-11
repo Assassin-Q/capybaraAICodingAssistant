@@ -538,7 +538,7 @@ export const zh = {
   s_91cf661942: "表单适合常见配置，JSON 可维护完整高级字段。",
   s_91f9f469b5: "运行 IDEA Gradle",
   s_926c54e983: "插件范围",
-  s_92e9685020: "扫描 .opencode/skills、~/.config/opencode/skills，以及 Claude Code 兼容的 .claude/skills 和 .agents/skills。仅列出 <根目录>/<名称>/SKILL.md 这一层——嵌套更深的目录 OpenCode 不会加载，因此不显示。「待重启服务加载」表示文件已就位但 OpenCode 还没读到，可到「连接」页重启服务。",
+  s_92e9685020: "扫描 .opencode/skills、~/.config/opencode/skills，以及 Claude Code 兼容的 .claude/skills 和 .agents/skills，包含嵌套在子目录中的技能包。这里列出的技能就是输入框中 $ 可以选择的技能——选中后会把该 SKILL.md 作为上下文附上，不依赖 OpenCode 是否扫描到它，也不需要重启服务。",
   s_93ac7be2bc: " 等",
   s_93ddc16fe9: "新增记忆",
   s_94306b2fc3: "发送消息",

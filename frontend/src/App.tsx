@@ -17,6 +17,7 @@ import {
 } from "@/components/assistant/appRuntime";
 import { ideaApi } from "@/lib/idea";
 import { loadWorkspacePreferences, saveWorkspacePreferences } from "@/lib/preferences";
+import { skillsApi } from "@/lib/ideaIntegrations";
 import { useRunLifecycle, type ActivePrompt } from "@/hooks/useRunLifecycle";
 import { AUTO_RETRY_MAX_ATTEMPTS, useAutoRetry } from "@/hooks/useAutoRetry";
 import { useBatchedOpenCodeEvents } from "@/hooks/useBatchedOpenCodeEvents";
@@ -52,6 +53,27 @@ import { checkForUpdate, type UpdateStatus } from "@/lib/updateCheck";
 import { approvalModeAllows, type ApprovalMode } from "@/lib/approvalMode";
 import { buildProfessionalRoleInstructions } from "@/lib/professionalRoles";
 import { t } from "@/lib/i18n";
+/**
+ * The skills the composer offers come from disk, not from OpenCode's live registry.
+ *
+ * The registry only holds what OpenCode's own scan picked up, so whether a skill could be used at
+ * all depended on that scan and on restarting the service. The settings page already lists every
+ * SKILL.md it can find, and selecting one now attaches that file — what is listed is exactly what
+ * can be used.
+ */
+const loadDiskSkills = async (): Promise<SkillInfo[]> => {
+  const managed = await skillsApi.list().catch(() => []);
+  return managed
+    .filter((skill) => skill.enabled)
+    .map((skill) => ({
+      content: "",
+      description: skill.description,
+      location: skill.location,
+      name: skill.name,
+      slash: false,
+    }));
+};
+
 interface QuestionAnswers { [requestID: string]: string[][]; }
 
 function App() {
@@ -275,7 +297,7 @@ function App() {
         openCodeApi.listAgents(projectPath),
         openCodeApi.listSessions(projectPath),
         openCodeApi.listCommands(projectPath),
-        openCodeApi.listSkills(projectPath),
+        loadDiskSkills(),
         openCodeApi.getConfig(projectPath),
       ]);
       const sessionID = selectedSessionID && nextSessions.some((session) => session.id === selectedSessionID)
@@ -382,7 +404,7 @@ function App() {
           openCodeApi.listAgents(directory),
           openCodeApi.listSessions(directory),
           openCodeApi.listCommands(directory),
-          openCodeApi.listSkills(directory),
+          loadDiskSkills(),
           openCodeApi.getConfig(directory),
         ]);
         if (cancelled) return;

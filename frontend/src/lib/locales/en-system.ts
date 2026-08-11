@@ -30,7 +30,7 @@ export const enSystem = {
   "message.copied": "Copied",
 
   "diff.collapseFiles": "Collapse",
-  "skill.shadowed": "Shadowed by a same-named skill",
+  "skill.enabled": "Enabled",
 
   "opencode.installTitle": "OpenCode is not installed",
   "opencode.upgradeTitle": "OpenCode is too old",

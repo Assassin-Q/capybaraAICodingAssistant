@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, PackageOpen, RotateCcw, Search, Sparkles, Trash2 } from "lucide-react";
+import { Download, PackageOpen, Search, Sparkles, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,7 @@ import {
   useSettingsFeedback,
 } from "@/components/assistant/settingsShared";
 import { errorMessage } from "@/components/assistant/shared";
-import { ideaApi } from "@/lib/idea";
 import { skillsApi, type ManagedScope, type ManagedSkillInfo } from "@/lib/ideaIntegrations";
-import { openCodeApi, setOpenCodeBaseUrl } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
 
@@ -27,8 +25,6 @@ interface ManagedSkillListProps {
   reloadToken?: number;
 }
 
-/** Windows hands back both separators and mixed case; comparison needs one shape. */
-const normalizePath = (value: string): string => value.replace(/\\/g, "/").toLowerCase();
 
 /** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
 const sourceLabels = (): Record<string, string> => ({
@@ -51,33 +47,17 @@ export function ManagedSkillList({
   reloadToken,
 }: ManagedSkillListProps) {
   const [skills, setSkills] = useState<ManagedSkillInfo[]>([]);
-  /** Paths OpenCode has loaded; null means we could not reach it, which is not the same as none. */
-  const [loadedPaths, setLoadedPaths] = useState<Set<string> | null>(null);
-  /** Names OpenCode loaded, used to tell a shadowed duplicate apart from one that simply failed. */
-  const [loadedNames, setLoadedNames] = useState<Set<string> | null>(null);
   const [scope, setScope] = useState<ManagedScope | "all">("all");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [restarting, setRestarting] = useState(false);
   const { error, notice, report, setError } = useSettingsFeedback();
   const confirm = useConfirm();
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [onDisk, live] = await Promise.all([
-        skillsApi.list(),
-        // null, not [] — swallowing the failure into an empty list made "we could not ask
-        // OpenCode" indistinguishable from "OpenCode loaded nothing", which flagged every
-        // enabled skill as needing a restart that would have changed nothing.
-        projectPath
-          ? openCodeApi.listSkills(projectPath).catch(() => null)
-          : Promise.resolve(null),
-      ]);
-      setSkills(onDisk);
-      setLoadedPaths(live === null ? null : new Set(live.map((skill) => normalizePath(skill.location))));
-      setLoadedNames(live === null ? null : new Set(live.map((skill) => skill.name)));
+      setSkills(await skillsApi.list());
       setError("");
     } catch (loadError) {
       setError(errorMessage(loadError));
@@ -146,64 +126,22 @@ export function ManagedSkillList({
       title: t("s_d14ab24cdc", { p0: skill.name }),
     });
 
-  /**
-   * Matched on the file path, not the name.
-   *
-   * Two skills can share a name across scopes — a project copy and a ~/.claude copy of
-   * ui-ux-pro-max, say — and name matching then reported the unloaded one as loaded because its
-   * twin was. The path is what OpenCode actually loaded, so it is what gets compared.
-   */
-  const isLoaded = useCallback(
-    (skill: ManagedSkillInfo) =>
-      loadedPaths !== null && loadedPaths.has(normalizePath(skill.location)),
-    [loadedPaths]
-  );
+
+
+
 
   /**
-   * A same-named skill loaded from somewhere else.
+   * Only two states remain: on disk and enabled, or on disk and disabled.
    *
-   * OpenCode registers one skill per name, so a project copy of ui-ux-pro-max shadows the
-   * ~/.claude copy. The shadowed file is working as designed; reporting it as "not loaded" reads
-   * as a fault the user cannot fix, and no amount of restarting changes it.
+   * "Loaded" used to be a third, read from OpenCode's live registry. It was never something the
+   * user could act on — a skill that OpenCode had not scanned still could not be used no matter
+   * how often the service restarted — and now that picking a skill attaches its SKILL.md, the
+   * registry does not decide anything. Reporting a state that changes nothing was just noise.
    */
-  const isShadowed = useCallback(
-    (skill: ManagedSkillInfo) =>
-      !isLoaded(skill) && loadedNames !== null && loadedNames.has(skill.name),
-    [isLoaded, loadedNames]
-  );
-
-  /** Enabled on disk but absent from OpenCode's live list — a reload picks these up. */
-  const pendingReload = useMemo(
-    () => skills.filter((skill) => skill.enabled && !isLoaded(skill) && !isShadowed(skill)),
-    [isLoaded, isShadowed, skills]
-  );
-
-  const restartService = async () => {
-    setRestarting(true);
-    try {
-      const runtime = await ideaApi.restartOpenCode();
-      if (runtime.error) {
-        setError(runtime.error);
-        return;
-      }
-      if (runtime.baseUrl) setOpenCodeBaseUrl(runtime.baseUrl);
-      // Give OpenCode a moment to finish scanning skills before re-reading.
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-      await refresh();
-    } catch (restartError) {
-      setError(errorMessage(restartError));
-    } finally {
-      setRestarting(false);
-    }
-  };
-
-  const loadState = (skill: ManagedSkillInfo) => {
-    if (!skill.enabled) return { label: t("s_6c7dcbb73a"), variant: "outline" as const };
-    if (loadedPaths === null) return { label: t("s_d43762b683"), variant: "outline" as const };
-    if (isLoaded(skill)) return { label: t("s_b19bae5d13"), variant: "secondary" as const };
-    if (isShadowed(skill)) return { label: t("skill.shadowed"), variant: "outline" as const };
-    return { label: t("s_8cfbd5f5a6"), variant: "outline" as const };
-  };
+  const loadState = (skill: ManagedSkillInfo) =>
+    skill.enabled
+      ? { label: t("skill.enabled"), variant: "secondary" as const }
+      : { label: t("s_6c7dcbb73a"), variant: "outline" as const };
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
@@ -227,20 +165,6 @@ export function ManagedSkillList({
       />
 
       <SettingsMessage error={error} notice={notice} />
-
-      {pendingReload.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-          <RotateCcw className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <span className="min-w-0 flex-1 text-xs text-amber-700 dark:text-amber-400">
-            {t("s_fbd5b75066")} {pendingReload.length} {t("s_b92ac75ad5")}{pendingReload.slice(0, 3).map((skill) => skill.name).join("、")}
-            {pendingReload.length > 3 ? t("s_93ac7be2bc") : ""}{t("s_4d47092361")}
-          </span>
-          <Button disabled={restarting} onClick={() => void restartService()} size="sm" type="button">
-            <RotateCcw className={cn("size-3.5", restarting && "animate-spin")} />
-            {t("s_692962c043")}
-          </Button>
-        </div>
-      )}
 
 
       <div className="flex flex-wrap items-center gap-2">
@@ -284,7 +208,7 @@ export function ManagedSkillList({
                   <Sparkles
                     className={cn(
                       "size-3.5",
-                      skill.enabled && isLoaded(skill) ? "text-emerald-500" : "text-muted-foreground"
+                      skill.enabled ? "text-emerald-500" : "text-muted-foreground"
                     )}
                   />
                 </div>

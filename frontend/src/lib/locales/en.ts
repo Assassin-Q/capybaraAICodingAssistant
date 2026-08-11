@@ -538,7 +538,7 @@ export const en = {
   s_91cf661942: "The form covers common setups; JSON exposes every advanced field.",
   s_91f9f469b5: "Run IDEA Gradle",
   s_926c54e983: "Plugin scope",
-  s_92e9685020: "Scans .opencode/skills, ~/.config/opencode/skills, and the Claude Code layouts .claude/skills and .agents/skills. Only <root>/<name>/SKILL.md is listed — OpenCode does not load anything nested deeper, so it is not shown. \"Loads after restart\" means the file is in place but OpenCode has not read it yet; restart the service from the Connection page.",
+  s_92e9685020: "Scans .opencode/skills, ~/.config/opencode/skills, and the Claude Code compatible .claude/skills and .agents/skills, including bundles nested in subdirectories. What is listed here is exactly what $ offers in the composer — picking one attaches its SKILL.md as context, so it does not depend on whether OpenCode scanned it and needs no restart.",
   s_93ac7be2bc: " etc.",
   s_93ddc16fe9: "Add memory",
   s_94306b2fc3: "Send message",

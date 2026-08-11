@@ -35,7 +35,7 @@ export const zhSystem = {
   "message.copied": "已复制",
 
   "diff.collapseFiles": "收起",
-  "skill.shadowed": "被同名技能覆盖",
+  "skill.enabled": "已启用",
 
   "opencode.installTitle": "尚未安装 OpenCode",
   "opencode.upgradeTitle": "OpenCode 版本过低",
