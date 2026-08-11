@@ -52,6 +52,7 @@ import { getContextUsage } from "@/lib/tokenUsage";
 import { checkForUpdate, type UpdateStatus } from "@/lib/updateCheck";
 import { approvalModeAllows, type ApprovalMode } from "@/lib/approvalMode";
 import { buildProfessionalRoleInstructions } from "@/lib/professionalRoles";
+import { describeImagesForTextModel, modelAcceptsImages } from "@/lib/visionFallback";
 import { t } from "@/lib/i18n";
 /**
  * The skills the composer offers come from disk, not from OpenCode's live registry.
@@ -136,6 +137,8 @@ function App() {
   const [composerText, setComposerText] = useState("");
   /** A command picked from the / menu, shown as a chip and applied when the message is sent. */
   const [pendingCommand, setPendingCommand] = useState<string>();
+  /** True while a vision model is turning attached images into text. */
+  const [visionBusy, setVisionBusy] = useState(false);
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const [editingQueuedPrompt, setEditingQueuedPrompt] = useState<QueuedPrompt>();
   const [streamingAssistantID, setStreamingAssistantID] = useState<string>();
@@ -669,15 +672,46 @@ function App() {
         ...current.filter((message) => message.id !== messageID),
         createOptimisticUserMessage(messageID, text, attachments),
       ]);
+      /**
+       * Images are converted to text when the conversation model cannot read them.
+       *
+       * A text-only model is either handed an attachment it rejects outright or, on some relays,
+       * one that is silently dropped — and the second is worse, because the screenshot still shows
+       * up in the transcript and the answer simply ignores it. A vision model describes them first
+       * and only the description travels on. With no vision model configured nothing changes: the
+       * images are sent as they were, and any failure stays visible rather than being papered over.
+       */
+      let outgoingFiles = transportAttachments;
+      let outgoingText = fullPrompt;
+      const visionModel = preferences.visionModel;
+      if (visionModel && !modelAcceptsImages(selectedModel) && transportAttachments.some((file) => file.mime.startsWith("image/"))) {
+        setVisionBusy(true);
+        try {
+          const described = await describeImagesForTextModel({
+            attachments: transportAttachments,
+            projectPath,
+            visionModel: { id: visionModel.modelID, providerID: visionModel.providerID },
+          });
+          outgoingFiles = described.attachments;
+          outgoingText = `${fullPrompt}${described.text}`;
+        } catch (visionError) {
+          // The prompt still goes out with the images attached: refusing to send at all would be a
+          // worse outcome than letting the provider decide what to do with them.
+          setError(errorMessage(visionError));
+        } finally {
+          setVisionBusy(false);
+        }
+      }
+
       const payload = {
         agent: selectedAgentID || undefined,
         agents: mentionedSubagents(text, agents).map((name) => ({ name })),
         directory: projectPath,
-        files: transportAttachments,
+        files: outgoingFiles,
         messageID,
         model,
         personaInstructions: roleInstructions || undefined,
-        text: fullPrompt,
+        text: outgoingText,
       };
       // Kept verbatim so an automatic retry replays exactly what was sent, attachments included.
       // Rebuilding it from the rendered history would lose them: the transport attachments are
@@ -695,7 +729,7 @@ function App() {
     } finally {
       submitting.current = false;
     }
-  }, [agents, commands, ensureSelectedModelVariant, mcpNames, pollSessionStatus, preferences, projectPath, selectedAgentID, selectedSessionID, skills]);
+  }, [agents, commands, ensureSelectedModelVariant, mcpNames, pollSessionStatus, preferences, projectPath, selectedAgentID, selectedModel, selectedSessionID, skills]);
 
   /**
    * Replays the failed prompt under its original message id.
@@ -1182,12 +1216,15 @@ function App() {
     onSessionTitleSave={() => void saveSessionTitle()}
     onSetComposerText={setComposerText}
     onAttachSkill={attachSkillContext}
+    onCancelAutoRetry={autoRetry.secondsLeft > 0 ? autoRetry.cancel : undefined}
     onClearCommand={() => setPendingCommand(undefined)}
     onSelectCommand={setPendingCommand}
     pendingCommand={pendingCommand}
-    autoRetryNotice={autoRetry.secondsLeft > 0
-      ? t("run.autoRetry", { attempt: autoRetry.attempt, max: AUTO_RETRY_MAX_ATTEMPTS, seconds: autoRetry.secondsLeft })
-      : undefined}
+    autoRetryNotice={visionBusy
+      ? t("vision.busy")
+      : autoRetry.secondsLeft > 0
+        ? t("run.autoRetry", { attempt: autoRetry.attempt, max: AUTO_RETRY_MAX_ATTEMPTS, seconds: autoRetry.secondsLeft })
+        : undefined}
     onStop={() => {
       // Stopping is the user's override on the automatic retry as well: cancel first so a pending
       // attempt cannot fire thirty seconds after they asked the run to stop.

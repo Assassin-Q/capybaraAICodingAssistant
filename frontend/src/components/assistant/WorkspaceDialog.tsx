@@ -16,6 +16,7 @@ import { ConnectionSettings } from "@/components/assistant/ConnectionSettings";
 import { MemorySettings } from "@/components/assistant/MemorySettings";
 import { McpSettings } from "@/components/assistant/McpSettings";
 import { ModelSettings } from "@/components/assistant/ModelSettings";
+import { VisionModelSetting } from "@/components/assistant/VisionModelSetting";
 import { PersonaSettings } from "@/components/assistant/PersonaSettings";
 import { PluginSettings } from "@/components/assistant/PluginSettings";
 import { SkillSettings } from "@/components/assistant/SkillSettings";
@@ -126,15 +127,24 @@ export function WorkspaceDialog({
             />
           )}
           {activeSection === "models" && (
-            <ModelSettings
-              modelVariantLabels={preferences.modelVariantLabels}
-              onChanged={onConfigurationChanged}
-              onModelVariantLabelsChange={(modelVariantLabels) => updatePreferences({
-                ...preferences,
-                modelVariantLabels,
-              })}
-              projectPath={projectPath}
-            />
+            <>
+              <ModelSettings
+                modelVariantLabels={preferences.modelVariantLabels}
+                onChanged={onConfigurationChanged}
+                onModelVariantLabelsChange={(modelVariantLabels) => updatePreferences({
+                  ...preferences,
+                  modelVariantLabels,
+                })}
+                projectPath={projectPath}
+              />
+              {/* Sits with the models rather than in the composer: it is a property of the model
+                  line-up, not of any one conversation. */}
+              <VisionModelSetting
+                models={models}
+                onChange={(visionModel) => updatePreferences({ ...preferences, visionModel })}
+                value={preferences.visionModel}
+              />
+            </>
           )}
           {activeSection === "persona" && <PersonaSettings mcpNames={mcpNames} onSave={updatePreferences} preferences={preferences} skills={skills} />}
           {activeSection === "memory" && <MemorySettings models={models} onChanged={onConfigurationChanged} />}

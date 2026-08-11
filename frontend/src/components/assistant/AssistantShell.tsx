@@ -76,6 +76,8 @@ export interface AssistantShellProps {
   contexts: ContextChipData[];
   /** Rendered above the composer while an automatic retry is pending. */
   autoRetryNotice?: string;
+  /** Cancels the pending retry. Present only while one is scheduled. */
+  onCancelAutoRetry?: () => void;
   /** Adds a skill reference chip; skills sit outside the project so they cannot be attached as files. */
   onAttachSkill: (name: string, location: string) => void;
   /** The command pinned above the composer, applied when the message is sent. */
@@ -294,6 +296,7 @@ export function AssistantShell(props: AssistantShellProps) {
     compacting,
     updateStatus,
     autoRetryNotice,
+    onCancelAutoRetry,
     onAttachSkill,
     pendingCommand,
     onSelectCommand,
@@ -568,7 +571,17 @@ export function AssistantShell(props: AssistantShellProps) {
             </div>
           )}
           {autoRetryNotice && (
-            <p className="px-1 pb-1 text-[11px] leading-4 text-amber-600 dark:text-amber-500">{autoRetryNotice}</p>
+            <div className="flex items-center gap-2 px-1 pb-1">
+              <p className="min-w-0 flex-1 text-[11px] leading-4 text-amber-600 dark:text-amber-500">{autoRetryNotice}</p>
+              {/* The cancel lives here rather than on the composer button. Once the run has ended
+                  that button is "send" again, so pointing the user at "stop" sent them looking for
+                  a control that was no longer on screen. */}
+              {onCancelAutoRetry && (
+                <Button className="h-6 shrink-0 px-2 text-[11px]" onClick={onCancelAutoRetry} size="sm" type="button" variant="ghost">
+                  {t("run.cancelRetry")}
+                </Button>
+              )}
+            </div>
           )}
           <PromptQueue items={queuedPrompts} onClear={onQueueClear} onDelete={onQueueDelete} onEdit={onQueueEdit} />
           {browserAnnotations.length > 0 && (

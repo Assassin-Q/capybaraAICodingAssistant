@@ -21,8 +21,8 @@ export const enSystem = {
   "memoryPlugin.opencode-working-memory": "Folds extraction into OpenCode own compaction, so it costs no extra model call. No vector search.",
   "memoryPlugin.opencode-hindsight": "A hosted memory service from Vectorize.",
   "memoryPlugin.nowledge-mem": "The OpenCode integration for Nowledge Mem.",
-
-  "run.autoRetry": "Connection dropped. Retrying in {seconds}s (attempt {attempt} of {max}). Press stop to cancel.",
+  "run.autoRetry": "Connection dropped. Retrying in {seconds}s (attempt {attempt} of {max}).",
+  "run.cancelRetry": "Cancel retry",
 
   "todo.stoppedAt": "Stopped at step {current} of {total}",
 
@@ -33,6 +33,17 @@ export const enSystem = {
   "skillhub.clawhubSubtitle": "Data from ClawHub (clawhub.ai)",
   "skill.contextInstruction": "Use the \"{name}\" skill. It lives outside this project; its instructions are at the absolute path {path}. Read that file first and follow what it says.",
   "skill.chipLabel": "Skill",
+  "vision.header": "[Image analysis] The conversation model cannot read images. These {count} image(s) were described by a vision model:",
+  "vision.entry": "{name}: {description}",
+  "vision.prompt": "Describe this image ({name}) in full: transcribe any text verbatim, and state UI elements, structure, error messages, code and data accurately. Describe only what you can actually see; do not speculate.",
+  "vision.failed": "(analysis failed: {error})",
+  "vision.empty": "The vision model returned nothing",
+  "vision.settingsTitle": "Vision model",
+  "vision.settingsHint": "Used to turn images into text when the conversation model cannot read them. Leave unset to send images unchanged.",
+  "vision.none": "Disabled",
+  "vision.noneAvailable": "No model with image input is configured yet — add one above first.",
+  "vision.busy": "Analysing images…",
+
   "command.chipLabel": "Command",
   "command.clear": "Remove command",
   "skill.enabled": "Enabled",

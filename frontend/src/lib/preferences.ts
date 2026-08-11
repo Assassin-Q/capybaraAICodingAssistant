@@ -28,6 +28,11 @@ export interface WorkspacePreferences {
   modelVariantLabels: ModelVariantLabels;
   persona: PersonaPreferences;
   professionalRoles: ProfessionalRolePreferences;
+  /**
+   * Describes images for conversation models that cannot read them. Undefined leaves images
+   * untouched, which is the right default: converting silently would hide a real capability gap.
+   */
+  visionModel?: { providerID: string; modelID: string };
 }
 
 const DEFAULT_PREFERENCES: WorkspacePreferences = {
@@ -124,7 +129,17 @@ const normalize = (value: unknown): WorkspacePreferences => {
     modelVariantLabels: normalizeModelVariantLabels(raw.modelVariantLabels),
     persona: normalizedPersona,
     professionalRoles: normalizeProfessionalRoles(raw.professionalRoles),
+    visionModel: normalizeVisionModel(raw.visionModel),
   };
+};
+
+/** Both halves have to be present; a partial reference would fail at send time, not at load. */
+const normalizeVisionModel = (value: unknown): WorkspacePreferences["visionModel"] => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const providerID = typeof record.providerID === "string" ? record.providerID.trim() : "";
+  const modelID = typeof record.modelID === "string" ? record.modelID.trim() : "";
+  return providerID && modelID ? { modelID, providerID } : undefined;
 };
 
 export const loadWorkspacePreferences = (projectPath?: string): WorkspacePreferences => {

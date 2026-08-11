@@ -26,8 +26,8 @@ export const zhSystem = {
   "memoryPlugin.opencode-working-memory": "把提取折进 OpenCode 自带的 compaction，不产生额外模型调用；没有向量检索。",
   "memoryPlugin.opencode-hindsight": "Vectorize 提供的托管记忆服务。",
   "memoryPlugin.nowledge-mem": "Nowledge Mem 的 OpenCode 集成。",
-
-  "run.autoRetry": "连接中断，{seconds} 秒后自动重试（第 {attempt}/{max} 次）。点击右下角停止可取消。",
+  "run.autoRetry": "连接中断，{seconds} 秒后自动重试（第 {attempt}/{max} 次）。",
+  "run.cancelRetry": "取消重试",
 
   "todo.stoppedAt": "停在第 {current}/{total} 步",
 
@@ -38,6 +38,17 @@ export const zhSystem = {
   "skillhub.clawhubSubtitle": "数据来自 ClawHub（clawhub.ai）",
   "skill.contextInstruction": "请使用技能「{name}」。该技能不在当前项目内，其说明文件位于本机绝对路径：{path}。请先读取该文件，按其中的说明执行。",
   "skill.chipLabel": "技能",
+  "vision.header": "【图片解析】当前对话模型不支持读取图片，以下 {count} 张图片由视觉模型转述：",
+  "vision.entry": "{name}：{description}",
+  "vision.prompt": "请详尽描述这张图片（{name}）的内容：包含的文字请原样转录，界面元素、结构、报错信息、代码和数据都要准确写出。只描述你实际看到的，不要推测。",
+  "vision.failed": "（解析失败：{error}）",
+  "vision.empty": "视觉模型没有返回内容",
+  "vision.settingsTitle": "视觉模型",
+  "vision.settingsHint": "当对话模型不支持图片时，用它把图片转成文字再发给对话模型。留空则不处理，图片会按原样发送。",
+  "vision.none": "不启用",
+  "vision.noneAvailable": "当前没有支持图片输入的模型，请先在上方添加一个。",
+  "vision.busy": "正在解析图片…",
+
   "command.chipLabel": "命令",
   "command.clear": "移除命令",
   "skill.enabled": "已启用",
