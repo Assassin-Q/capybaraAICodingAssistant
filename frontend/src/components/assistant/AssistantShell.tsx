@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, ChevronLeft, CircleAlert, History, MessageSquarePlus, Moon, Pencil, RefreshCw, Settings2, Sun, X } from "lucide-react";
+import { Bot, ChevronLeft, CircleAlert, History, MessageSquarePlus, Moon, Pencil, RefreshCw, Settings2, Sun, TerminalSquare, X } from "lucide-react";
 import { BorderBeam } from "border-beam";
 
 import { ConversationEmptyState } from "@/components/ai-elements/conversation";
@@ -78,6 +78,10 @@ export interface AssistantShellProps {
   autoRetryNotice?: string;
   /** Adds a skill reference chip; skills sit outside the project so they cannot be attached as files. */
   onAttachSkill: (name: string, location: string) => void;
+  /** The command pinned above the composer, applied when the message is sent. */
+  pendingCommand?: string;
+  onSelectCommand: (name: string) => void;
+  onClearCommand: () => void;
   composerText: string;
   conversationTurns: ConversationTurn[];
   currentPermissions: PermissionRequest[];
@@ -291,6 +295,9 @@ export function AssistantShell(props: AssistantShellProps) {
     updateStatus,
     autoRetryNotice,
     onAttachSkill,
+    pendingCommand,
+    onSelectCommand,
+    onClearCommand,
     composerText,
     conversationTurns,
     currentPermissions,
@@ -547,6 +554,7 @@ export function AssistantShell(props: AssistantShellProps) {
               mcpNames={mcpNames}
               onAttachFile={attachProjectFile}
               onAttachSkill={onAttachSkill}
+              onSelectCommand={onSelectCommand}
               onCompact={compactSession}
               onInsert={onSetComposerText}
               query={composerText}
@@ -572,7 +580,24 @@ export function AssistantShell(props: AssistantShellProps) {
               />
             </div>
           )}
-          {contexts.length > 0 && <div className="mb-2 flex min-w-0 flex-wrap gap-1.5">{contexts.map((context) => <ContextChip context={context} key={`${context.id}-${context.addedAt}`} onRemove={() => onContextsChange(contexts.filter((item) => item.id !== context.id))} />)}</div>}
+          {/* The command sits with the other chips rather than in the text. Typing it into the
+              composer made it part of what the user was writing, so editing the message meant
+              editing around it — and deleting a character silently turned it into prose. */}
+          {(contexts.length > 0 || pendingCommand) && (
+            <div className="mb-2 flex min-w-0 flex-wrap gap-1.5">
+              {pendingCommand && (
+                <div className="flex min-w-0 max-w-full items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs text-foreground">
+                  <TerminalSquare className="size-3.5 shrink-0 text-primary" />
+                  <span className="truncate font-medium">/{pendingCommand}</span>
+                  <span className="shrink-0 text-[10px] text-muted-foreground">{t("command.chipLabel")}</span>
+                  <Button aria-label={t("command.clear")} className="-mr-1 size-5 shrink-0" onClick={onClearCommand} size="icon" title={t("command.clear")} type="button" variant="ghost">
+                    <X className="size-3" />
+                  </Button>
+                </div>
+              )}
+              {contexts.map((context) => <ContextChip context={context} key={`${context.id}-${context.addedAt}`} onRemove={() => onContextsChange(contexts.filter((item) => item.id !== context.id))} />)}
+            </div>
+          )}
           <BorderBeam
             active={!booting && Boolean(selectedSessionID)}
             className="w-full"

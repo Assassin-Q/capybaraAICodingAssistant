@@ -33,6 +33,8 @@ export const enSystem = {
   "skillhub.clawhubSubtitle": "Data from ClawHub (clawhub.ai)",
   "skill.contextInstruction": "Use the \"{name}\" skill. It lives outside this project; its instructions are at the absolute path {path}. Read that file first and follow what it says.",
   "skill.chipLabel": "Skill",
+  "command.chipLabel": "Command",
+  "command.clear": "Remove command",
   "skill.enabled": "Enabled",
 
   "opencode.installTitle": "OpenCode is not installed",

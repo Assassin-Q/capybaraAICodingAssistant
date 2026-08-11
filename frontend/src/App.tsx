@@ -134,6 +134,8 @@ function App() {
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSectionID>("connection");
   const [composerText, setComposerText] = useState("");
+  /** A command picked from the / menu, shown as a chip and applied when the message is sent. */
+  const [pendingCommand, setPendingCommand] = useState<string>();
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const [editingQueuedPrompt, setEditingQueuedPrompt] = useState<QueuedPrompt>();
   const [streamingAssistantID, setStreamingAssistantID] = useState<string>();
@@ -759,8 +761,17 @@ function App() {
   const handlePrompt = useCallback(async ({ text, files }: PromptInputMessage) => {
     if (!selectedSessionID || !projectPath || submitting.current) return false;
     const typedText = text.trim();
-    if (!typedText && contexts.length === 0 && files.length === 0) return false;
-    const commandText = typedText.startsWith("$") ? `/${typedText.slice(1)}` : typedText;
+    if (!typedText && !pendingCommand && contexts.length === 0 && files.length === 0) return false;
+    /**
+     * The pinned command is applied here rather than living in the composer text.
+     *
+     * Everything downstream still receives the familiar `/name arguments` form, so the command
+     * execution path is untouched — only where the name is kept between picking it and sending
+     * has changed.
+     */
+    const withCommand = pendingCommand ? `/${pendingCommand} ${typedText}`.trim() : typedText;
+    const commandText = withCommand.startsWith("$") ? `/${withCommand.slice(1)}` : withCommand;
+    setPendingCommand(undefined);
     const contextFiles = contexts.map(contextToPromptInputFile);
     const request: PromptInputMessage = {
       files: [...(files.length > 0 ? files : editingQueuedPrompt?.files ?? []), ...contextFiles],
@@ -774,7 +785,7 @@ function App() {
       return true;
     }
     return sendPromptNow(request);
-  }, [contexts, editingQueuedPrompt, isGenerating, projectPath, selectedSessionID, sendPromptNow]);
+  }, [contexts, editingQueuedPrompt, isGenerating, pendingCommand, projectPath, selectedSessionID, sendPromptNow]);
 
   useEffect(() => {
     if (!projectPath || !selectedSessionID || isGenerating || activePrompt.current || queueDrainPaused.current) return;
@@ -1171,6 +1182,9 @@ function App() {
     onSessionTitleSave={() => void saveSessionTitle()}
     onSetComposerText={setComposerText}
     onAttachSkill={attachSkillContext}
+    onClearCommand={() => setPendingCommand(undefined)}
+    onSelectCommand={setPendingCommand}
+    pendingCommand={pendingCommand}
     autoRetryNotice={autoRetry.secondsLeft > 0
       ? t("run.autoRetry", { attempt: autoRetry.attempt, max: AUTO_RETRY_MAX_ATTEMPTS, seconds: autoRetry.secondsLeft })
       : undefined}

@@ -16,6 +16,8 @@ interface SlashCommandMenuProps {
   onAttachFile: (path: string) => void;
   /** Skills are referenced by name and absolute path, not attached as project files. */
   onAttachSkill: (name: string, location: string) => void;
+  /** Selecting a command pins it as a card above the composer instead of typing it in. */
+  onSelectCommand: (name: string) => void;
   /** Runs a manual session compaction. */
   onCompact: () => void;
   onInsert: (text: string) => void;
@@ -103,6 +105,7 @@ export function SlashCommandMenu({
   onAttachSkill,
   onCompact,
   onInsert,
+  onSelectCommand,
   query,
   skills,
 }: SlashCommandMenuProps) {
@@ -158,9 +161,9 @@ export function SlashCommandMenu({
 
     if (prefix === "/") {
       values.push({
+        action: () => onSelectCommand("init"),
         description: t("s_8337e72fc3"),
         id: "cmd:init",
-        insert: "/init ",
         kind: "command",
         label: "/init",
         sourceLabel: sourceLabel("command"),
@@ -197,9 +200,11 @@ export function SlashCommandMenu({
             ? "skill"
             : "command";
         values.push({
+          // Pinned as a card rather than typed in: the command name is not part of what the user
+          // is writing, and leaving it in the text meant editing around it.
+          action: () => onSelectCommand(command.name),
           description: command.description ?? t("s_420903c36c"),
           id: `cmd:${command.name}`,
-          insert: `/${command.name} `,
           kind,
           label: `/${command.name}`,
           sourceLabel: sourceLabel(kind),
@@ -267,7 +272,7 @@ export function SlashCommandMenu({
       .sort((left, right) => left.score - right.score || left.index - right.index)
       .map((item) => item.entry)
       .filter((entry, index, all) => all.findIndex((item) => item.id === entry.id) === index);
-  }, [agents, commands, disabled, fileHits, fileMode, mcpNames, onAttachFile, onAttachSkill, onCompact, prefix, skills, term]);
+  }, [agents, commands, disabled, fileHits, fileMode, mcpNames, onAttachFile, onAttachSkill, onCompact, onSelectCommand, prefix, skills, term]);
 
   const choose = useMemo(() => (entry: CommandEntry) => {
     if (entry.action) {
