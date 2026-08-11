@@ -10,6 +10,9 @@ import com.aicoding.plugin.services.BrowserControlResponse
 import com.aicoding.plugin.services.BrowserControlService
 import com.aicoding.plugin.services.ChatMessage
 import com.aicoding.plugin.services.DevelopmentEnvironmentsRequest
+import com.aicoding.plugin.services.MemoryEmbeddingDownloadRequest
+import com.aicoding.plugin.services.MemoryEmbeddingRequest
+import com.aicoding.plugin.services.MemoryEmbeddingService
 import com.aicoding.plugin.services.GitCommitDialogRequest
 import com.aicoding.plugin.services.GitFileDiffRequest
 import com.aicoding.plugin.services.FileAttachRequest
@@ -151,6 +154,7 @@ class HttpServerManager(private val project: Project) {
     private val messageService = project.getService(MessageService::class.java)
     private val openCodeServer = OpenCodeServerManager(project.basePath)
     private val memorySystem = MemorySystemService(project, openCodeServer)
+    private val memoryEmbedding = MemoryEmbeddingService()
     private val ideaDiffService = IdeaDiffService(project)
     private val snapshotDiffService = OpenCodeSnapshotDiffService()
     private val skillService = SkillManagementService(project)
@@ -353,6 +357,14 @@ class HttpServerManager(private val project: Project) {
                         writeResponse(exchange, 200, memorySystem.refreshUserProfile(), "application/json; charset=utf-8")
                     exchange.requestURI.path == "/api/memory/dashboard" && exchange.requestMethod == "POST" ->
                         writeJson(exchange, 200, memorySystem.openDashboard())
+                    exchange.requestURI.path == "/api/memory/embedding" && exchange.requestMethod == "GET" ->
+                        writeJson(exchange, 200, memoryEmbedding.status())
+                    exchange.requestURI.path == "/api/memory/embedding" && exchange.requestMethod == "POST" ->
+                        writeJson(exchange, 200, memoryEmbedding.updateSettings(body<MemoryEmbeddingRequest>(exchange)))
+                    exchange.requestURI.path == "/api/memory/embedding/download" && exchange.requestMethod == "POST" ->
+                        writeJson(exchange, 200, memoryEmbedding.startDownload(body<MemoryEmbeddingDownloadRequest>(exchange).model))
+                    exchange.requestURI.path == "/api/memory/embedding/model" && exchange.requestMethod == "DELETE" ->
+                        writeJson(exchange, 200, memoryEmbedding.deleteModel(queryParam(exchange, "id").orEmpty()))
                     exchange.requestURI.path == "/api/health" && exchange.requestMethod == "GET" ->
                         writeJson(exchange, 200, HealthResponse(true, port))
                     exchange.requestURI.path == "/api/server-info" && exchange.requestMethod == "GET" ->

@@ -28,6 +28,7 @@ import {
   EnvironmentVariablesTitle,
   EnvironmentVariablesToggle,
 } from "@/components/ai-elements/environment-variables";
+import { MemoryEmbeddingSettings } from "@/components/assistant/MemoryEmbeddingSettings";
 import { MemoryModelPicker } from "@/components/assistant/MemoryModelPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,7 +53,7 @@ import type {
   MemoryUserProfile,
 } from "@/lib/idea";
 import type { ModelInfo } from "@/lib/opencode";
-import { t } from "@/lib/i18n";
+import { getLocale, t } from "@/lib/i18n";
 
 interface MemorySettingsProps {
   models: ModelInfo[];
@@ -78,7 +79,10 @@ const settingsFromStatus = (status: MemorySystemStatus): MemorySettingsRequest =
 const formatDate = (value?: number | string): string => {
   if (!value) return t("s_6da92c1601");
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? t("s_d9c32a4c3d") : date.toLocaleString("zh-CN", { hour12: false });
+  // Formatting followed the Chinese locale even with the panel in English, which is the one place
+  // a hardcoded locale survives a translation pass unnoticed.
+  const locale = getLocale() === "zh" ? "zh-CN" : "en-US";
+  return Number.isNaN(date.getTime()) ? t("s_d9c32a4c3d") : date.toLocaleString(locale, { hour12: false });
 };
 
 const profileRows = (profile: MemoryUserProfile | null) => [
@@ -413,6 +417,8 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
           {status?.restartRequired && <p className="text-[11px] leading-4 text-amber-600 dark:text-amber-500">{t("s_05d0a72e19")}</p>}
         </div>
       </section>
+
+      <MemoryEmbeddingSettings onChanged={() => void refresh()} />
 
       <section className="border-b border-border/50 py-6">
         <div className="flex items-center gap-2"><Sparkles className="size-4 text-muted-foreground" /><h3 className="text-sm font-semibold">{t("s_7ea0593117")}</h3></div>

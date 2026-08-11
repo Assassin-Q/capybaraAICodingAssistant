@@ -820,82 +820,7 @@ class MemorySystemService(
         json.decodeFromString<List<DevelopmentEnvironmentInfo>>(environmentFile.readText(Charsets.UTF_8))
     }.getOrDefault(emptyList())
 
-    private fun sanitizeJsonc(source: String): String {
-        val withoutComments = StringBuilder(source.length)
-        var inString = false
-        var escaped = false
-        var lineComment = false
-        var blockComment = false
-        var index = 0
-        while (index < source.length) {
-            val char = source[index]
-            val next = source.getOrNull(index + 1)
-            when {
-                lineComment && char == '\n' -> {
-                    lineComment = false
-                    withoutComments.append(char)
-                }
-                lineComment -> Unit
-                blockComment && char == '*' && next == '/' -> {
-                    blockComment = false
-                    index++
-                }
-                blockComment -> if (char == '\n') withoutComments.append(char)
-                inString -> {
-                    withoutComments.append(char)
-                    if (escaped) escaped = false
-                    else if (char == '\\') escaped = true
-                    else if (char == '"') inString = false
-                }
-                char == '"' -> {
-                    inString = true
-                    withoutComments.append(char)
-                }
-                char == '/' && next == '/' -> {
-                    lineComment = true
-                    index++
-                }
-                char == '/' && next == '*' -> {
-                    blockComment = true
-                    index++
-                }
-                else -> withoutComments.append(char)
-            }
-            index++
-        }
-        val result = StringBuilder(withoutComments.length)
-        inString = false
-        escaped = false
-        index = 0
-        while (index < withoutComments.length) {
-            val char = withoutComments[index]
-            if (inString) {
-                result.append(char)
-                if (escaped) escaped = false
-                else if (char == '\\') escaped = true
-                else if (char == '"') inString = false
-                index++
-                continue
-            }
-            if (char == '"') {
-                inString = true
-                result.append(char)
-                index++
-                continue
-            }
-            if (char == ',') {
-                var cursor = index + 1
-                while (cursor < withoutComments.length && withoutComments[cursor].isWhitespace()) cursor++
-                if (withoutComments.getOrNull(cursor) == '}' || withoutComments.getOrNull(cursor) == ']') {
-                    index++
-                    continue
-                }
-            }
-            result.append(char)
-            index++
-        }
-        return result.toString()
-    }
+    private fun sanitizeJsonc(source: String): String = MemoryConfigFile.sanitizeJsonc(source)
 
     private fun parseObject(value: String): JsonObject = runCatching {
         json.parseToJsonElement(value).jsonObject
@@ -915,11 +840,7 @@ class MemorySystemService(
         put("error", JsonPrimitive(message))
     }.toString()
 
-    private fun expandPath(path: String): String = when {
-        path == "~" -> System.getProperty("user.home")
-        path.startsWith("~/") || path.startsWith("~\\") -> File(System.getProperty("user.home"), path.drop(2)).absolutePath
-        else -> path
-    }
+    private fun expandPath(path: String): String = MemoryConfigFile.expandPath(path)
 
     private fun validateStoragePath(path: String?): String? {
         val value = path?.trim() ?: return null

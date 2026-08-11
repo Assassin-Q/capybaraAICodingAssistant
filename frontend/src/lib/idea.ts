@@ -136,6 +136,60 @@ export interface MemoryActionResponse {
   message?: string;
 }
 
+export interface EmbeddingModelOption {
+  id: string;
+  name: string;
+  dimensions: number;
+  contextTokens: number;
+  /** Real content-length of the quantised weights, measured against the mirror. */
+  downloadBytes: number;
+  multilingual: boolean;
+  note: string;
+}
+
+export interface InstalledEmbeddingModel {
+  id: string;
+  bytes: number;
+  complete: boolean;
+}
+
+export interface MemoryEmbeddingStatus {
+  mode: "local" | "remote";
+  localModel: string;
+  remoteBaseUrl: string;
+  remoteModel: string;
+  /** The stored key never leaves the IDE; only whether one exists. */
+  remoteKeySet: boolean;
+  options: EmbeddingModelOption[];
+  installed: InstalledEmbeddingModel[];
+  cacheDirectory: string;
+  cacheBytes: number;
+  downloading: boolean;
+  downloadModel: string;
+  downloadReceived: number;
+  downloadTotal: number;
+  downloadError: string;
+  textProvider: string;
+  textModel: string;
+  restartRequired: boolean;
+  error: string;
+}
+
+export interface MemoryEmbeddingRequest {
+  mode: "local" | "remote";
+  localModel?: string;
+  remoteBaseUrl?: string;
+  remoteModel?: string;
+  /** Omit to keep the stored key. */
+  remoteApiKey?: string;
+}
+
+export interface MemoryEmbeddingResponse {
+  success: boolean;
+  status?: MemoryEmbeddingStatus;
+  message?: string;
+}
+
 export interface MemoryItem {
   id: string;
   content: string;
@@ -411,6 +465,25 @@ export const ideaApi = {
     request<MemoryActionResponse>("/memory/settings", {
       body: JSON.stringify(settings),
       method: "POST",
+    }),
+
+  getMemoryEmbedding: () => request<MemoryEmbeddingStatus>("/memory/embedding"),
+
+  updateMemoryEmbedding: (settings: MemoryEmbeddingRequest) =>
+    request<MemoryEmbeddingResponse>("/memory/embedding", {
+      body: JSON.stringify(settings),
+      method: "POST",
+    }),
+
+  downloadEmbeddingModel: (model: string) =>
+    request<MemoryEmbeddingResponse>("/memory/embedding/download", {
+      body: JSON.stringify({ model }),
+      method: "POST",
+    }),
+
+  deleteEmbeddingModel: (id: string) =>
+    request<MemoryEmbeddingResponse>(`/memory/embedding/model?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
     }),
 
   scanDevelopmentEnvironments: (sync = true) =>
