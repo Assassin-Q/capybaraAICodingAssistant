@@ -880,26 +880,6 @@ function App() {
     }
   }, [approvalMode, projectPath, selectedSessionID]);
 
-  /**
-   * Ways out of a poisoned session. A failed turn stays in the history and rides along with every
-   * later request, so one provider rejection otherwise breaks the rest of the conversation.
-   */
-  const handleRecoverTurn = useCallback(async (action: "revert" | "fork", messageID: string) => {
-    if (!selectedSessionID || !projectPath) return;
-    try {
-      if (action === "revert") {
-        await openCodeApi.revertSession(selectedSessionID, messageID, projectPath);
-        await refreshWorkspaceRef.current?.(true);
-        return;
-      }
-      const forked = await openCodeApi.forkSession(selectedSessionID, messageID, projectPath);
-      setSessions((current) => [forked, ...current.filter((item) => item.id !== forked.id)]);
-      setSelectedSessionID(forked.id);
-    } catch (recoverError) {
-      setError(errorMessage(recoverError));
-    }
-  }, [projectPath, selectedSessionID]);
-
   const handleModelChange = useCallback(async (value: string) => {
     if (!selectedSessionID || value === resolvedModelKey) return;
     const nextModel = selectableModels.find((model) => modelKey(model) === value);
@@ -1046,7 +1026,6 @@ function App() {
     onProfessionalRoleChange={handleProfessionalRoleChange}
     pendingApprovalSessionIDs={pendingApprovalSessionIDs}
     onPrompt={handlePrompt}
-    onRecoverTurn={handleRecoverTurn}
     onQuestionChange={handleQuestionChange}
     onQuestionReject={(request) => void handleQuestionReject(request)}
     onQuestionReply={(request) => void handleQuestionReply(request)}

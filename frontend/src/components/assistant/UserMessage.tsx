@@ -1,4 +1,4 @@
-import { FileCode2, FolderOpen } from "lucide-react";
+import { Check, Copy, FileCode2, FolderOpen } from "lucide-react";
 import { useState } from "react";
 import type { KeyboardEvent } from "react";
 
@@ -10,6 +10,7 @@ import {
   getMediaCategory,
 } from "@/components/ai-elements/attachments";
 import { AttachmentPreviewDialog } from "@/components/ai-elements/attachment-preview-dialog";
+import { Button } from "@/components/ui/button";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import type { AttachmentData } from "@/components/ai-elements/attachments";
 import type { UserMessage as UserMessageData } from "@/lib/opencode";
@@ -40,10 +41,19 @@ export function UserMessage({ message }: { message: UserMessageData }) {
   const documentFiles = files.filter((file) => getMediaCategory(file) !== "image");
   const [preview, setPreview] = useState<AttachmentData>();
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const openPreview = (file: AttachmentData) => {
     setPreview(file);
     setPreviewOpen(true);
+  };
+
+  const copyText = () => {
+    if (!message.text) return;
+    void navigator.clipboard?.writeText(message.text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    }).catch(() => undefined);
   };
 
   return (
@@ -111,6 +121,24 @@ export function UserMessage({ message }: { message: UserMessageData }) {
             );
           })}
         </Attachments>
+      )}
+      {/* Last child on purpose: attachments render above it, so a message with files can never
+          cover the button. The row keeps its height whether or not the button is visible, so
+          hovering a message does not shift the conversation under the pointer. */}
+      {message.text && (
+        <div className="ml-auto flex h-6 items-center">
+          <Button
+            aria-label={t("message.copy")}
+            className="size-6 text-muted-foreground opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+            onClick={copyText}
+            size="icon-sm"
+            title={copied ? t("message.copied") : t("message.copy")}
+            type="button"
+            variant="ghost"
+          >
+            {copied ? <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="size-3.5" />}
+          </Button>
+        </div>
       )}
       <AttachmentPreviewDialog attachment={preview?.type === "file" ? preview : undefined} onOpenChange={setPreviewOpen} open={previewOpen} />
     </Message>

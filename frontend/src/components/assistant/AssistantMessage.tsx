@@ -1,5 +1,4 @@
-import { Button } from "@/components/ui/button";
-import { CircleAlert, GitFork, Undo2 } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import { memo } from "react";
 
 import { Message, MessageContent } from "@/components/ai-elements/message";
@@ -59,7 +58,6 @@ export const AssistantMessage = memo(function AssistantMessage({
   isStreaming,
   diffs = [],
   onOpenSession,
-  onRecover,
   runActive = false,
 }: {
   diffs?: SessionFileDiff[];
@@ -71,8 +69,6 @@ export const AssistantMessage = memo(function AssistantMessage({
    */
   runActive?: boolean;
   message: AssistantMessageData;
-  /** Offered on a failed turn so a provider rejection cannot poison the rest of the session. */
-  onRecover?: (action: "revert" | "fork", messageID: string) => void;
   /** Opens the subagent session a task call created. */
   onOpenSession?: (sessionID: string) => void;
 }) {
@@ -98,36 +94,14 @@ export const AssistantMessage = memo(function AssistantMessage({
               <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
               <span className="min-w-0 break-words">{visibleError}</span>
             </div>
-            {/* A failed turn stays in the history and every later request carries it along, so one
-                provider rejection can poison the rest of the session. These are the ways out. */}
-            {onRecover && (
-              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-destructive/20 pt-2">
-                <span className="text-[11px] opacity-80">{t("s_e703caaf44")}</span>
-                <Button
-                  className="h-6 px-2 text-[11px]"
-                  onClick={() => onRecover("revert", message.parentID ?? message.id)}
-                  size="sm"
-                  title={t("s_0e48b03531")}
-                  type="button"
-                  variant="outline"
-                >
-                  <Undo2 className="size-3" />{t("s_69f65907a6")}
-                </Button>
-                <Button
-                  className="h-6 px-2 text-[11px]"
-                  // Branches from the prompt, not from the failed reply. A run that died before OpenCode
-                  // persisted any assistant message leaves only a locally synthesised turn, whose id
-                  // the server rejects with BadRequest; the parent user message always exists.
-                  onClick={() => onRecover("fork", message.parentID ?? message.id)}
-                  size="sm"
-                  title={t("s_6bb896d47e")}
-                  type="button"
-                  variant="outline"
-                >
-                  <GitFork className="size-3" />{t("s_0bb7a29205")}
-                </Button>
-              </div>
-            )}
+            {/* No recovery buttons here on purpose.
+                "Save as new session" forked at `parentID`, and OpenCode's fork is exclusive of the
+                message it is given — so the user's own prompt was dropped too, and a failure on the
+                first turn produced an entirely empty session. "Back to before the error" called
+                revert, which does not remove anything: it records `session.revert` and expects the
+                client to stop rendering past that point, which this panel never did. Both looked
+                like dead buttons. The card states the error and nothing else until the revert state
+                is actually rendered. */}
           </div>
         )}
         {isStreaming && !hasProcess && !hasConclusion && <ThinkingLine />}

@@ -1,4 +1,4 @@
-import { ChevronDown, Columns3, FilePenLine } from "lucide-react";
+import { ChevronDown, ChevronUp, Columns3, FilePenLine } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -90,16 +90,18 @@ export function SessionDiffSummary({ diffs }: { diffs: SessionFileDiff[] }) {
               </CommitFile>
             );
           })}
-          {hiddenCount > 0 && (
+          {/* Keyed on the total, not on how many are hidden: once expanded nothing is hidden, so
+              the old condition removed the control and left no way back to the short list. */}
+          {diffs.length > INITIAL_FILE_COUNT && (
             <Button
               className="h-7 w-full justify-start gap-1.5 px-1.5 text-xs text-muted-foreground"
-              onClick={() => setShowAll(true)}
+              onClick={() => setShowAll((current) => !current)}
               size="sm"
               type="button"
               variant="ghost"
             >
-              <ChevronDown className="size-3.5" />
-              {t("s_f64c528096")} {hiddenCount} {t("s_6218629ae2")}
+              {showAll ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+              {showAll ? t("diff.collapseFiles") : `${t("s_f64c528096")} ${hiddenCount} ${t("s_6218629ae2")}`}
             </Button>
           )}
         </CommitFiles>
