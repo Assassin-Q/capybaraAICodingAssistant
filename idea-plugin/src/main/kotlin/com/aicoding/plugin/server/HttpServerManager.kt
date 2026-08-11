@@ -663,7 +663,9 @@ class HttpServerManager(private val project: Project) {
                 writeJson(exchange, 200, skillService.setEnabled(body<SkillLocationRequest>(exchange)))
             route == "/delete" && method == "POST" ->
                 writeJson(exchange, 200, skillService.delete(body<SkillLocationRequest>(exchange)))
-            route == "/hub/status" && method == "GET" -> writeJson(exchange, 200, skillService.skillHubStatus())
+            route == "/hub/status" && method == "GET" ->
+                writeJson(exchange, 200, skillService.skillHubStatus(queryParam(exchange, "locale") ?: "zh"))
+            route == "/hub/topics" && method == "GET" -> writeJson(exchange, 200, skillService.clawHubTopics())
             route == "/hub/search" && method == "POST" ->
                 writeJson(exchange, 200, skillService.searchSkillHub(body<SkillHubSearchRequest>(exchange)))
             route == "/hub/install" && method == "POST" ->

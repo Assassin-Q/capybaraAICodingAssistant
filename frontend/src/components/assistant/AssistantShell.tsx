@@ -74,6 +74,8 @@ export interface AssistantShellProps {
   connected: boolean | null;
   contextUsage?: ContextUsageInfo;
   contexts: ContextChipData[];
+  /** Rendered above the composer while an automatic retry is pending. */
+  autoRetryNotice?: string;
   composerText: string;
   conversationTurns: ConversationTurn[];
   currentPermissions: PermissionRequest[];
@@ -285,6 +287,7 @@ export function AssistantShell(props: AssistantShellProps) {
     contexts,
     compacting,
     updateStatus,
+    autoRetryNotice,
     composerText,
     conversationTurns,
     currentPermissions,
@@ -537,6 +540,9 @@ export function AssistantShell(props: AssistantShellProps) {
               <span className="min-w-0 flex-1 truncate">{composerNotice}</span>
               <Button aria-label={t("s_c620893e29")} className="size-5 shrink-0" onClick={() => setComposerNotice("")} size="icon" type="button" variant="ghost"><X className="size-3" /></Button>
             </div>
+          )}
+          {autoRetryNotice && (
+            <p className="px-1 pb-1 text-[11px] leading-4 text-amber-600 dark:text-amber-500">{autoRetryNotice}</p>
           )}
           <PromptQueue items={queuedPrompts} onClear={onQueueClear} onDelete={onQueueDelete} onEdit={onQueueEdit} />
           {browserAnnotations.length > 0 && (

@@ -64,6 +64,8 @@ data class SkillHubSearchRequest(
     val category: String? = null,
     val source: String? = null,
     val requiresApiKey: Boolean? = null,
+    /** "en" routes to clawhub.ai; anything else keeps the Chinese catalogue. */
+    val locale: String = "zh",
 )
 
 @Serializable
@@ -211,6 +213,8 @@ internal fun networkFailureMessage(error: Throwable, fallback: String): String =
 }
 
 class SkillManagementService(private val project: Project) {
+    private val clawHub = ClawHubCatalogService()
+
     private val json = Json { ignoreUnknownKeys = true }
     private val httpClient: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(6))
@@ -291,7 +295,15 @@ class SkillManagementService(private val project: Project) {
         SkillActionResponse(true, "技能已删除")
     }.getOrElse { SkillActionResponse(false, it.message ?: "无法删除技能") }
 
-    fun skillHubStatus(): SkillHubStatus = runCatching {
+    fun skillHubStatus(locale: String = "zh"): SkillHubStatus {
+        if (locale.equals("en", ignoreCase = true)) return clawHub.status()
+        return skillHubStatusCn()
+    }
+
+    /** Topics for the English catalogue; the Chinese one ships a fixed scene list instead. */
+    fun clawHubTopics(): List<String> = runCatching { clawHub.topics() }.getOrDefault(emptyList())
+
+    private fun skillHubStatusCn(): SkillHubStatus = runCatching {
         val response = httpClient.send(
             HttpRequest.newBuilder(URI.create("$CATALOG_ENDPOINT?page=1&pageSize=1&sortBy=score&order=desc&keyword="))
                 .header("Accept", "application/json")
@@ -370,7 +382,12 @@ class SkillManagementService(private val project: Project) {
         )
     }.getOrElse { SkillHubSearchResponse(false, page = 1, pageSize = 20, message = networkFailureMessage(it, "SkillHub 搜索失败")) }
 
-    fun searchSkillHub(request: SkillHubSearchRequest): SkillHubSearchResponse = runCatching {
+    fun searchSkillHub(request: SkillHubSearchRequest): SkillHubSearchResponse {
+        if (request.locale.equals("en", ignoreCase = true)) return clawHub.search(request)
+        return searchSkillHubCn(request)
+    }
+
+    private fun searchSkillHubCn(request: SkillHubSearchRequest): SkillHubSearchResponse = runCatching {
         val query = request.query.trim()
         require(query.length <= 120) { "SkillHub 搜索关键词过长" }
         val limit = request.limit.coerceIn(1, 100)

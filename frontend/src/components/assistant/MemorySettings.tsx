@@ -76,6 +76,18 @@ const settingsFromStatus = (status: MemorySystemStatus): MemorySettingsRequest =
   storagePath: status.storagePath,
 });
 
+/**
+ * The catalogue of memory plugins is compiled into the IDE plugin, so its descriptions arrive as
+ * Chinese regardless of the interface language. Translating by id here keeps the backend as the
+ * source of truth for *which* plugins exist while letting the panel speak the user's language; an
+ * id we do not know about falls back to whatever text the backend sent.
+ */
+const pluginDescription = (plugin: { description: string; id: string }): string => {
+  const key = `memoryPlugin.${plugin.id}` as never;
+  const translated = t(key);
+  return translated === key ? plugin.description : translated;
+};
+
 const formatDate = (value?: number | string): string => {
   if (!value) return t("s_6da92c1601");
   const date = new Date(value);
@@ -395,7 +407,7 @@ export function MemorySettings({ models, onChanged }: MemorySettingsProps) {
             {(status?.plugins ?? []).map((plugin) => (
               <div className="min-w-44 rounded-md bg-muted/50 px-3 py-2" key={plugin.id}>
                 <div className="flex items-center gap-2"><span className="text-xs font-medium">{plugin.name}</span>{plugin.fullIntegration && <Badge variant="secondary">{t("s_673cd296a4")}</Badge>}</div>
-                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{plugin.description}</p>
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{pluginDescription(plugin)}</p>
               </div>
             ))}
             {status && status.plugins.length === 0 && <span className="text-xs text-muted-foreground">{t("s_c296a2a618")}</span>}

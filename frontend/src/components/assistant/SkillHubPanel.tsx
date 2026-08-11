@@ -145,6 +145,11 @@ function SkillIcon({ skill }: { skill: SkillHubSkill }) {
 
 export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
   const [status, setStatus] = useState<SkillHubStatus>();
+  /**
+   * Which catalogue this panel is showing. English uses clawhub.ai, everything else
+   * skillhub.cn — two different services with different data, not two translations of one.
+   */
+  const locale = getLocale();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortId>("score");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
@@ -172,6 +177,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
           order,
           page: nextPage,
           query: searchQuery.trim(),
+          locale,
           requiresApiKey: apiKey === "all" ? undefined : apiKey === "required",
           sortBy: sort,
           source,
@@ -194,7 +200,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
         setLoading(false);
       }
     },
-    [apiKey, category, order, setError, sort, source]
+    [apiKey, category, locale, order, setError, sort, source]
   );
 
   useEffect(() => {
@@ -204,7 +210,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
   useEffect(() => {
     let cancelled = false;
     void skillsApi
-      .hubStatus()
+      .hubStatus(locale)
       .then((next) => {
         if (cancelled) return;
         setStatus(next);
@@ -214,9 +220,20 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [load]);
+  }, [load, locale]);
 
-  const categories = Object.keys(categoryLabels());
+  /**
+   * clawhub.ai has no fixed category list — every skill carries free-form topics — so in English
+   * the filter is built from whatever the catalogue currently holds rather than from a table that
+   * describes a different site.
+   */
+  const [topics, setTopics] = useState<string[]>([]);
+  useEffect(() => {
+    if (locale !== "en") return;
+    void skillsApi.hubTopics().then(setTopics).catch(() => setTopics([]));
+  }, [locale]);
+
+  const categories = locale === "en" ? topics : Object.keys(categoryLabels());
   const sources = Object.keys(sourceLabels());
   const visible = results ?? [];
   const pageCount = Math.max(1, Math.ceil(total / 20));
@@ -234,6 +251,16 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
   };
 
   const install = async (skill: SkillHubSkill, scope: ManagedScope) => {
+    // clawhub.ai publishes listings, detail and per-version file manifests, but nothing that
+    // returns file content — every download-shaped path answers 404 and the manifest entries
+    // carry no URL. Installing straight into the workspace is therefore not possible, so the
+    // skill page is opened instead of failing with a message the user cannot act on.
+    if (skill.source === "clawhub") {
+      const url = skill.homepage;
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      setNotice(t("skillhub.openExternally"));
+      return;
+    }
     setBusy(skill.slug);
     setNotice(t("s_cea45d92d8", { p0: skill.slug }));
     try {
@@ -346,7 +373,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
             }}
             options={[{ value: "all", label: t("s_80bedda93c") }, ...categories.map((value) => ({
               value,
-              label: categoryLabels()[value] ?? value,
+              label: locale === "en" ? value : (categoryLabels()[value] ?? value),
             }))]}
             value={category}
           />
@@ -402,7 +429,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
                   <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                     <h3 className="truncate text-sm font-medium">{skill.name ?? skill.slug}</h3>
                     {skill.category && (
-                      <Badge variant="secondary">{categoryLabels()[skill.category] ?? skill.category}</Badge>
+                      <Badge variant="secondary">{locale === "en" ? skill.category : (categoryLabels()[skill.category] ?? skill.category)}</Badge>
                     )}
                     {skill.requiresApiKey && (
                       <Badge variant="outline">

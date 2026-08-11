@@ -15,11 +15,21 @@ export const enSystem = {
   "update.download": "Download",
   "update.tooltip": "An update is available",
 
+  "memoryPlugin.opencode-mem": "A local Turso/libSQL vector store with automatic capture, a cross-project user profile and a management UI. Automatic capture costs one extra model call.",
+  "memoryPlugin.opencode-agent-memory": "A local memory harness built on editable memory blocks and AGENTS.md.",
+  "memoryPlugin.opencode-supermemory": "Supermemory cloud memory, self-hostable with npx supermemory local. By default the data leaves this machine.",
+  "memoryPlugin.opencode-working-memory": "Folds extraction into OpenCode own compaction, so it costs no extra model call. No vector search.",
+  "memoryPlugin.opencode-hindsight": "A hosted memory service from Vectorize.",
+  "memoryPlugin.nowledge-mem": "The OpenCode integration for Nowledge Mem.",
+
+  "run.autoRetry": "Connection dropped. Retrying in {seconds}s (attempt {attempt} of {max}). Press stop to cancel.",
+
   "message.copy": "Copy",
   "message.copied": "Copied",
 
   "diff.collapseFiles": "Collapse",
 
+  "skillhub.openExternally": "clawhub.ai exposes no file download endpoint, so the skill page has been opened in your browser. Follow the instructions there to install it.",
   "skill.shadowed": "Shadowed by a same-named skill",
 
   "opencode.installTitle": "OpenCode is not installed",

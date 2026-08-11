@@ -20,11 +20,21 @@ export const zhSystem = {
   "update.download": "下载",
   "update.tooltip": "有可用更新",
 
+  "memoryPlugin.opencode-mem": "本地 Turso/libSQL 向量库，自动捕获、跨项目用户画像与管理面板。自动捕获会额外调用一次模型。",
+  "memoryPlugin.opencode-agent-memory": "基于可编辑记忆块和 AGENTS.md 的本地记忆 harness。",
+  "memoryPlugin.opencode-supermemory": "Supermemory 云端记忆，可用 npx supermemory local 自托管。默认数据会离开本机。",
+  "memoryPlugin.opencode-working-memory": "把提取折进 OpenCode 自带的 compaction，不产生额外模型调用；没有向量检索。",
+  "memoryPlugin.opencode-hindsight": "Vectorize 提供的托管记忆服务。",
+  "memoryPlugin.nowledge-mem": "Nowledge Mem 的 OpenCode 集成。",
+
+  "run.autoRetry": "连接中断，{seconds} 秒后自动重试（第 {attempt}/{max} 次）。点击右下角停止可取消。",
+
   "message.copy": "复制",
   "message.copied": "已复制",
 
   "diff.collapseFiles": "收起",
 
+  "skillhub.openExternally": "clawhub.ai 没有提供文件下载接口，已在浏览器中打开该技能页面，请按页面说明手动安装。",
   "skill.shadowed": "被同名技能覆盖",
 
   "opencode.installTitle": "尚未安装 OpenCode",

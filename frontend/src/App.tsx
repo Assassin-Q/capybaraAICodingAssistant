@@ -18,6 +18,7 @@ import {
 import { ideaApi } from "@/lib/idea";
 import { loadWorkspacePreferences, saveWorkspacePreferences } from "@/lib/preferences";
 import { useRunLifecycle, type ActivePrompt } from "@/hooks/useRunLifecycle";
+import { AUTO_RETRY_MAX_ATTEMPTS, useAutoRetry } from "@/hooks/useAutoRetry";
 import { useBatchedOpenCodeEvents } from "@/hooks/useBatchedOpenCodeEvents";
 import { useInteractiveStatePolling } from "@/hooks/useInteractiveStatePolling";
 import { useIdeaTheme } from "@/hooks/useIdeaTheme";
@@ -133,6 +134,8 @@ function App() {
   const queueDrainPaused = useRef(false);
   const promptGeneration = useRef(0);
   const selectedSessionIDRef = useRef(selectedSessionID);
+  /** The last prompt sent, so a transient failure can be replayed without the user retyping it. */
+  const replayablePrompt = useRef<{ payload: Parameters<typeof openCodeApi.sendPrompt>[1]; sessionID: string }>();
   const refreshWorkspaceRef = useRef<(includeMessages?: boolean) => Promise<void>>();
 
   const eventStreamRefs = useMemo(() => ({
@@ -642,7 +645,7 @@ function App() {
         ...current.filter((message) => message.id !== messageID),
         createOptimisticUserMessage(messageID, text, attachments),
       ]);
-      await openCodeApi.sendPrompt(selectedSessionID, {
+      const payload = {
         agent: selectedAgentID || undefined,
         agents: mentionedSubagents(text, agents).map((name) => ({ name })),
         directory: projectPath,
@@ -651,7 +654,12 @@ function App() {
         model,
         personaInstructions: roleInstructions || undefined,
         text: fullPrompt,
-      });
+      };
+      // Kept verbatim so an automatic retry replays exactly what was sent, attachments included.
+      // Rebuilding it from the rendered history would lose them: the transport attachments are
+      // browser File objects that only exist on the way in.
+      replayablePrompt.current = { payload, sessionID: selectedSessionID };
+      await openCodeApi.sendPrompt(selectedSessionID, payload);
       setRunStatus("streaming");
       pollSessionStatus(selectedSessionID, generation);
       return true;
@@ -664,6 +672,44 @@ function App() {
       submitting.current = false;
     }
   }, [agents, commands, ensureSelectedModelVariant, mcpNames, pollSessionStatus, preferences, projectPath, selectedAgentID, selectedSessionID, skills]);
+
+  /**
+   * Replays the failed prompt under its original message id.
+   *
+   * Reusing the id is what keeps the history honest: OpenCode treats a repeated id as the same
+   * user message rather than appending a duplicate, so five attempts leave one prompt in the
+   * transcript instead of five.
+   */
+  const replayPrompt = useCallback(async (): Promise<boolean> => {
+    const replay = replayablePrompt.current;
+    if (!replay || !projectPath || replay.sessionID !== selectedSessionID) return false;
+    if (submitting.current || activePrompt.current?.sessionID === selectedSessionID) return false;
+    submitting.current = true;
+    const generation = ++promptGeneration.current;
+    activeAssistantMessageIDs.current.clear();
+    activePromptHasActivity.current = false;
+    try {
+      setError("");
+      setRunStatus("submitted");
+      await openCodeApi.sendPrompt(replay.sessionID, replay.payload);
+      setRunStatus("streaming");
+      pollSessionStatus(replay.sessionID, generation);
+      return true;
+    } catch (retryError) {
+      setRunStatus("error");
+      setError(errorMessage(retryError));
+      return false;
+    } finally {
+      submitting.current = false;
+    }
+  }, [pollSessionStatus, projectPath, selectedSessionID]);
+
+  const autoRetry = useAutoRetry({
+    messages,
+    onRetry: replayPrompt,
+    runStatus,
+    sessionID: selectedSessionID,
+  });
 
   const handlePrompt = useCallback(async ({ text, files }: PromptInputMessage) => {
     if (!selectedSessionID || !projectPath || submitting.current) return false;
@@ -1053,7 +1099,15 @@ function App() {
     }}
     onSessionTitleSave={() => void saveSessionTitle()}
     onSetComposerText={setComposerText}
-    onStop={() => void handleStop()}
+    autoRetryNotice={autoRetry.secondsLeft > 0
+      ? t("run.autoRetry", { attempt: autoRetry.attempt, max: AUTO_RETRY_MAX_ATTEMPTS, seconds: autoRetry.secondsLeft })
+      : undefined}
+    onStop={() => {
+      // Stopping is the user's override on the automatic retry as well: cancel first so a pending
+      // attempt cannot fire thirty seconds after they asked the run to stop.
+      autoRetry.cancel();
+      void handleStop();
+    }}
     onThemeToggle={toggleTheme}
     onVariantChange={(value) => void handleVariantChange(value)}
     onWorkspaceOpenChange={setWorkspaceDialogOpen}

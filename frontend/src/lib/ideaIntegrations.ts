@@ -75,6 +75,8 @@ export interface SkillHubSearchRequest {
   category?: string;
   source?: string;
   requiresApiKey?: boolean;
+  /** "en" routes the query to clawhub.ai instead of skillhub.cn. */
+  locale?: string;
 }
 
 export interface ManagedPluginFile {
@@ -220,7 +222,10 @@ export const skillsApi = {
 
   remove: (location: string) => post<SkillActionResponse>("/skills/delete", { location }),
 
-  hubStatus: () => ideaRequest<SkillHubStatus>("/skills/hub/status"),
+  hubStatus: (locale: string) => ideaRequest<SkillHubStatus>(`/skills/hub/status?locale=${encodeURIComponent(locale)}`),
+
+  /** Topics the English catalogue currently carries; the Chinese one has fixed scene categories. */
+  hubTopics: () => ideaRequest<string[]>("/skills/hub/topics"),
 
 
   searchHub: (input: SkillHubSearchRequest) =>
