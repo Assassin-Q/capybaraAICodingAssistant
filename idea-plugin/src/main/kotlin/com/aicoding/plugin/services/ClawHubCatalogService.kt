@@ -40,6 +40,20 @@ private data class ClawHubItem(
 )
 
 @Serializable
+private data class ClawHubOwner(val handle: String? = null)
+
+@Serializable
+private data class ClawHubMatch(val ownerHandle: String? = null, val slug: String? = null)
+
+/** Detail response, plus the shape returned when a slug is published by more than one owner. */
+@Serializable
+private data class ClawHubDetail(
+    val owner: ClawHubOwner? = null,
+    val code: String? = null,
+    val matches: List<ClawHubMatch> = emptyList(),
+)
+
+@Serializable
 private data class ClawHubPage(
     val items: List<ClawHubItem> = emptyList(),
     val nextCursor: String? = null,
@@ -156,6 +170,43 @@ class ClawHubCatalogService {
             pageSize = pageSize,
         )
     }
+
+    /**
+     * The download URL for a skill, or null when the owner cannot be resolved.
+     *
+     * `ownerHandle` is required and the listing does not carry it, so the detail endpoint is asked
+     * first. A slug published by more than one owner answers with `AMBIGUOUS_SKILL_SLUG` and the
+     * candidates; the first is used and the caller reports which `@owner/slug` it actually took,
+     * because silently installing one of several same-named skills is worse than saying so.
+     */
+    fun downloadUrl(slug: String, version: String? = null): Pair<String, String>? {
+        val handle = resolveOwnerHandle(slug) ?: return null
+        val url = buildString {
+            append(SITE).append("/api/v1/download")
+            append("?slug=").append(URLEncoder.encode(slug, Charsets.UTF_8))
+            append("&ownerHandle=").append(URLEncoder.encode(handle, Charsets.UTF_8))
+            version?.takeIf { it.isNotBlank() }?.let {
+                append("&version=").append(URLEncoder.encode(it, Charsets.UTF_8))
+            }
+        }
+        return url to "@$handle/$slug"
+    }
+
+    private fun resolveOwnerHandle(slug: String): String? = runCatching {
+        val response = httpClient.send(
+            HttpRequest.newBuilder(URI.create("$CATALOG_ENDPOINT/${URLEncoder.encode(slug, Charsets.UTF_8)}"))
+                .header("Accept", "application/json")
+                .header("User-Agent", USER_AGENT)
+                .timeout(Duration.ofSeconds(20))
+                .GET()
+                .build(),
+            HttpResponse.BodyHandlers.ofString(Charsets.UTF_8),
+        )
+        if (response.statusCode() !in 200..299 && response.statusCode() != 409) return@runCatching null
+        val detail = json.decodeFromString<ClawHubDetail>(response.body())
+        detail.owner?.handle?.takeIf { it.isNotBlank() }
+            ?: detail.matches.firstOrNull()?.ownerHandle?.takeIf { it.isNotBlank() }
+    }.getOrNull()
 
     private fun snapshot(): List<SkillHubSkill> {
         val now = System.currentTimeMillis()

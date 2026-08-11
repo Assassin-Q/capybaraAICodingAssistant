@@ -33,8 +33,6 @@ export const zhSystem = {
   "message.copied": "已复制",
 
   "diff.collapseFiles": "收起",
-
-  "skillhub.openExternally": "clawhub.ai 没有提供文件下载接口，已在浏览器中打开该技能页面，请按页面说明手动安装。",
   "skill.shadowed": "被同名技能覆盖",
 
   "opencode.installTitle": "尚未安装 OpenCode",

@@ -50,6 +50,8 @@ data class SkillHubInstallRequest(
     val overwrite: Boolean = false,
     /** Community namespace handle, mirrors `skillhub install --namespace`. */
     val namespace: String? = null,
+    /** "en" installs from clawhub.ai instead of skillhub.cn. */
+    val locale: String = "zh",
 )
 
 /** Mirrors the filters exposed by `skillhub search`: query words, --search-limit and --org. */
@@ -475,8 +477,17 @@ class SkillManagementService(private val project: Project) {
             deleteTree(target)
         }
 
+        // clawhub.ai serves archives from `/api/v1/download` keyed by slug *and* owner handle, and
+        // the listing does not carry the handle, so the URL is resolved through that catalogue
+        // instead of being assembled from the Chinese one.
+        val english = request.locale.equals("en", ignoreCase = true)
+        val clawHubTarget = if (english) clawHub.downloadUrl(coordinate) else null
+        require(!english || clawHubTarget != null) { "无法在 ClawHub 上确定该技能的作者，暂时无法安装" }
+        val downloadUrl = clawHubTarget?.first ?: "$DOWNLOAD_ENDPOINT?slug=${encode(coordinate)}"
+        val installedRef = clawHubTarget?.second ?: coordinate
+
         val response = httpClient.send(
-            HttpRequest.newBuilder(URI.create("$DOWNLOAD_ENDPOINT?slug=${encode(coordinate)}"))
+            HttpRequest.newBuilder(URI.create(downloadUrl))
                 .header("User-Agent", USER_AGENT)
                 .timeout(Duration.ofSeconds(120))
                 .GET()
@@ -490,7 +501,9 @@ class SkillManagementService(private val project: Project) {
         refreshFiles()
         SkillActionResponse(
             success = true,
-            message = "已安装 $coordinate（$entries 个文件）",
+            // Reports the ref actually taken: a slug published by several owners resolves to one of
+            // them, and the user should see which.
+            message = "已安装 $installedRef（$entries 个文件）",
             imported = parseSkill(target.resolve("SKILL.md"), rootFor(target)),
         )
     }.getOrElse { SkillActionResponse(false, it.message ?: "SkillHub 技能安装失败") }

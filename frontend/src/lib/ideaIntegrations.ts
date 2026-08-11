@@ -235,6 +235,8 @@ export const skillsApi = {
     coordinate: string;
     scope: ManagedScope;
     overwrite?: boolean;
+    /** "en" installs from clawhub.ai. */
+    locale?: string;
   }) => post<SkillActionResponse>("/skills/hub/install", input),
 
   /** Detail, file tree, versions and the TRACE report in one round trip. */

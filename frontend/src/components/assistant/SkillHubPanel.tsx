@@ -96,7 +96,9 @@ const categoryLabels = (): Record<string, string> => ({
 
 /** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
 const sourceLabels = (): Record<string, string> => ({
-  clawhub: "SkillHub",
+  // Same key, two catalogues: skillhub.cn labels its own entries "clawhub", and clawhub.ai items
+  // are tagged with it too. The name shown follows whichever site is being browsed.
+  clawhub: getLocale() === "en" ? "ClawHub" : "SkillHub",
   community: t("s_367c1ec5d7"),
   enterprise: t("s_00c5fdb039"),
 });
@@ -251,21 +253,12 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
   };
 
   const install = async (skill: SkillHubSkill, scope: ManagedScope) => {
-    // clawhub.ai publishes listings, detail and per-version file manifests, but nothing that
-    // returns file content — every download-shaped path answers 404 and the manifest entries
-    // carry no URL. Installing straight into the workspace is therefore not possible, so the
-    // skill page is opened instead of failing with a message the user cannot act on.
-    if (skill.source === "clawhub") {
-      const url = skill.homepage;
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
-      setNotice(t("skillhub.openExternally"));
-      return;
-    }
     setBusy(skill.slug);
     setNotice(t("s_cea45d92d8", { p0: skill.slug }));
     try {
       const result = await skillsApi.installFromHub({
         coordinate: skill.publicSlug ?? skill.slug,
+        locale,
         overwrite: false,
         scope,
       });

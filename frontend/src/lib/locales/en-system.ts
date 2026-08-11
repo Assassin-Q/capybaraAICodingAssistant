@@ -28,8 +28,6 @@ export const enSystem = {
   "message.copied": "Copied",
 
   "diff.collapseFiles": "Collapse",
-
-  "skillhub.openExternally": "clawhub.ai exposes no file download endpoint, so the skill page has been opened in your browser. Follow the instructions there to install it.",
   "skill.shadowed": "Shadowed by a same-named skill",
 
   "opencode.installTitle": "OpenCode is not installed",
