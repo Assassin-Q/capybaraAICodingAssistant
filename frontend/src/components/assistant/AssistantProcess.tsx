@@ -12,7 +12,7 @@ import { Tool, ToolContent, ToolHeader, ToolOutput } from "@/components/ai-eleme
 import { Button } from "@/components/ui/button";
 import { MarkdownResponse } from "@/components/assistant/MarkdownResponse";
 import { formatToolValue, toolState } from "@/components/assistant/shared";
-import { ToolCallInput, ToolCallOutput } from "@/components/assistant/ToolCallDetails";
+import { ToolCallInput, ToolCallOutput, toolCallInputIsEmpty } from "@/components/assistant/ToolCallDetails";
 import { t } from "@/lib/i18n";
 import type {
   AssistantMessage,
@@ -237,6 +237,33 @@ function ToolEntry({
     : <ToolCallOutput name={part.name} output={outputValue} />;
   const errorText = part.state.status === "error" ? formatToolValue(part.state.error) : "";
   const todos = ["todo", "todowrite"].includes(part.name.toLowerCase()) ? todosFromTool(part) : [];
+  /**
+   * Whether opening the row would show anything.
+   *
+   * Some tools report neither input nor output — websearch among them — and the row still carried
+   * a chevron, so clicking it opened an empty strip and read as a broken control. A row with
+   * nothing behind it is rendered as plain text instead.
+   */
+  const hasDetail = todos.length > 0
+    || output !== undefined
+    || Boolean(errorText)
+    || Boolean(childID && onOpenSession)
+    || !toolCallInputIsEmpty(part.state.input);
+
+  if (!hasDetail) {
+    return (
+      <ToolHeader
+        className="cursor-default"
+        detail={toolInlineDetail(part.name, part.state.input)}
+        expandable={false}
+        state={toolState(part.state.status)}
+        title={toolTitle(part.name)}
+        toolName={part.name}
+        type="dynamic-tool"
+      />
+    );
+  }
+
   return (
     <Tool onOpenChange={onOpenChange} open={open}>
       <ToolHeader

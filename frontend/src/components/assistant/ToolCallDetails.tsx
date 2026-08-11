@@ -13,6 +13,20 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined =>
     ? value as Record<string, unknown>
     : undefined;
 
+/**
+ * Whether [ToolCallInput] would render nothing for this value.
+ *
+ * A tool row is presented as expandable by putting a chevron on it, and expanding an entry whose
+ * input and output are both empty opened a blank strip — indistinguishable from a control that
+ * does not work. Callers use this to decide whether the row should be interactive at all.
+ */
+export const toolCallInputIsEmpty = (value: unknown): boolean => {
+  const normalized = normalizedInput(value);
+  if (normalized === undefined || normalized === null || normalized === "") return true;
+  if (typeof normalized === "object") return Object.keys(normalized as object).length === 0;
+  return false;
+};
+
 const normalizedInput = (value: unknown): unknown => {
   if (typeof value !== "string") return value;
   try {

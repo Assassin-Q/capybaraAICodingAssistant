@@ -38,6 +38,8 @@ export type ToolHeaderProps = {
   detail?: string;
   title?: string;
   className?: string;
+  /** False when the row has no detail to reveal; it then renders as plain text. */
+  expandable?: boolean;
 } & (
   | { type: ToolUIPart["type"]; state: ToolUIPart["state"]; toolName?: never }
   | { type: DynamicToolUIPart["type"]; state: DynamicToolUIPart["state"]; toolName: string }
@@ -78,12 +80,15 @@ export const ToolHeader = ({
   type,
   state,
   toolName,
+  expandable = true,
   ...props
 }: ToolHeaderProps) => {
   const derivedName = type === "dynamic-tool" ? toolName : type.split("-").slice(1).join("-");
+  // A row with nothing behind it renders as plain text: no trigger, no chevron, no hover state.
+  const Wrapper = expandable ? CollapsibleTrigger : "div";
   return (
-    <CollapsibleTrigger
-      className={cn("inline-flex h-7 w-fit max-w-full items-center justify-start gap-1.5 rounded-md px-1.5 py-1 text-left leading-none outline-none hover:bg-muted/60 focus-visible:ring-0", className)}
+    <Wrapper
+      className={cn("inline-flex h-7 w-fit max-w-full items-center justify-start gap-1.5 rounded-md px-1.5 py-1 text-left leading-none outline-none focus-visible:ring-0", expandable && "hover:bg-muted/60", className)}
       {...props}
     >
       <div className="flex min-w-0 items-center gap-1.5 leading-none">
@@ -92,8 +97,8 @@ export const ToolHeader = ({
         {detail && <span className="max-w-[min(34rem,60vw)] truncate font-mono text-[10px] font-normal text-muted-foreground">{detail}</span>}
         {getStatusBadge(state)}
       </div>
-      <ChevronRightIcon className="size-3.5 shrink-0 self-center text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
-    </CollapsibleTrigger>
+      {expandable && <ChevronRightIcon className="size-3.5 shrink-0 self-center text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />}
+    </Wrapper>
   );
 };
 

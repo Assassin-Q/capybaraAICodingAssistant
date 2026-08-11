@@ -25,13 +25,20 @@ object ExecutableLookup {
     /** Directories installers use that a GUI-launched IDE will not have on its PATH. */
     private val UNIX_FALLBACK_DIRECTORIES = listOf(
         "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
         "/usr/local/bin",
         "/usr/bin",
         "/bin",
+        "/opt/local/bin",
         ".opencode/bin",
         ".bun/bin",
         ".local/bin",
+        ".local/share/opencode/bin",
         ".npm-global/bin",
+        ".nvm/versions/node/current/bin",
+        ".volta/bin",
+        ".yarn/bin",
+        ".cargo/bin",
         "node_modules/.bin",
     )
 
@@ -52,17 +59,30 @@ object ExecutableLookup {
 
     private fun whichUnix(command: String): List<String> {
         val found = linkedSetOf<String>()
-
-        // A login shell so the user's profile PATH applies. `command -v` is POSIX; `which` is not
-        // guaranteed to exist and behaves differently across shells.
         val shell = System.getenv("SHELL")?.takeIf { File(it).canExecute() } ?: "/bin/sh"
-        runCatching {
-            val process = ProcessBuilder(shell, "-lc", "command -v $command")
-                .redirectErrorStream(true)
-                .start()
-            val lines = process.inputStream.bufferedReader().readLines()
-            process.waitFor(8, TimeUnit.SECONDS)
-            lines.map(String::trim).filter { it.startsWith("/") }.forEach(found::add)
+
+        /**
+         * Three shell modes, because none of them alone is enough.
+         *
+         * `-lic` comes first: zsh — the macOS default — reads `.zprofile` and `.zlogin` for a login
+         * shell but only reads `.zshrc` when the shell is *interactive*, and `.zshrc` is where most
+         * people actually set PATH. A login-only shell therefore misses exactly the tools the user
+         * can run in Terminal. `-lc` follows for shells that do the opposite, and `-c` last for the
+         * case where a noisy rc file makes the other two fail.
+         */
+        listOf(listOf("-lic"), listOf("-lc"), listOf("-c")).forEach { flags ->
+            if (found.isNotEmpty()) return@forEach
+            runCatching {
+                val process = ProcessBuilder(listOf(shell) + flags + "command -v $command")
+                    .redirectErrorStream(true)
+                    .start()
+                val lines = process.inputStream.bufferedReader().readLines()
+                process.waitFor(8, TimeUnit.SECONDS)
+                // Interactive shells print prompts and banners; only absolute paths are of interest.
+                lines.map(String::trim)
+                    .filter { it.startsWith("/") && File(it).isFile }
+                    .forEach(found::add)
+            }
         }
 
         UNIX_FALLBACK_DIRECTORIES.forEach { directory ->
@@ -71,6 +91,9 @@ object ExecutableLookup {
             if (candidate.isFile && candidate.canExecute()) found.add(candidate.absolutePath)
         }
 
+        // Swallowing this was a mistake: when the lookup failed the log said nothing at all, so a
+        // Mac reporting "command not found" gave no way to tell which paths had been tried.
+        println("Capybara: lookup '$command' via $shell -> ${if (found.isEmpty()) "(none)" else found.joinToString()}")
         return found.toList()
     }
 
