@@ -27,7 +27,7 @@ export const en = {
   s_055fca5cda: "Review changes through data models, constraints, indexes, transactions, migration compatibility and query cost, prioritising correctness and reversibility.",
   s_05cefdc56b: "Delete {p0}",
   s_05d0a72e19: "Configured — it starts working once OpenCode reloads.",
-  s_062189d7b1: "Context compacted",
+  s_062189d7b1: "Context compaction complete",
   s_0732ae3f67: "A natural, cheerful Taiwanese voice: friendly, chatty and still clear.",
   s_0744fd62cd: "navigated to code",
   s_07d73ad332: "Fill in the states, feedback and error handling anyone would expect, and say clearly what you verified.",

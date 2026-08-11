@@ -78,7 +78,10 @@ class OpenCodeRequirementService(private val project: Project) {
      * first version-shaped token wins rather than the whole first line.
      */
     private fun readVersion(executable: String): String = runCatching {
-        val process = ProcessBuilder(executable, "--version").redirectErrorStream(true).start()
+        // Wrapped: a Windows .cmd cannot be executed directly, and on Unix the wrapper is a no-op.
+        val process = ProcessBuilder(ExecutableLookup.buildCommand(executable, listOf("--version")))
+            .redirectErrorStream(true)
+            .start()
         val output = process.inputStream.bufferedReader().use { it.readText() }
         if (!process.waitFor(VERSION_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             process.destroyForcibly()

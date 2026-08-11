@@ -86,9 +86,19 @@ class OpenCodeServerManager(private val projectPath: String?) {
             }
         }
 
+        // Two very different failures used to share one message. Telling someone "all ports are
+        // occupied" when opencode simply is not on the IDE's PATH sends them looking in entirely
+        // the wrong place — which is exactly what happened on macOS.
+        val executable = resolveExecutable()
+        val missing = !File(executable).isFile && ExecutableLookup.which(executable).isEmpty()
         endpoint = OpenCodeEndpoint(
             projectPath = projectPath,
-            error = "12001-12100 端口都已被占用，且未发现可用的 OpenCode 服务。",
+            error = if (missing) {
+                "没有找到 opencode 可执行文件。若你在终端里能运行 opencode，通常是 IDE 启动时没有继承终端的 PATH：" +
+                    "可把它的绝对路径填到环境变量 OPENCODE_BIN_PATH（终端执行 which opencode 即可查到）。"
+            } else {
+                "12001-12100 端口都已被占用，且未发现可用的 OpenCode 服务。"
+            },
         )
         return endpoint
     }
@@ -255,32 +265,31 @@ class OpenCodeServerManager(private val projectPath: String?) {
             .start()
     }
 
-    private fun buildCommand(executable: String, args: List<String>): List<String> = when {
-        executable.endsWith(".cmd", true) || executable.endsWith(".bat", true) -> {
-            val commandLine = (listOf(executable) + args).joinToString(" ") { quote(it) }
-            listOf("cmd.exe", "/d", "/s", "/c", commandLine)
-        }
+    private fun buildCommand(executable: String, args: List<String>): List<String> =
+        ExecutableLookup.buildCommand(executable, args)
 
-        executable.endsWith(".ps1", true) ->
-            listOf("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", executable) + args
-
-        else -> listOf(executable) + args
-    }
-
-    /** Internal so sibling services can drive the same CLI without duplicating the lookup. */
+    /**
+     * Internal so sibling services can drive the same CLI without duplicating the lookup.
+     *
+     * This used to be Windows-only from top to bottom: it shelled out to `where.exe`, searched for
+     * `opencode.exe` and `opencode.cmd`, and fell back to the literal string `"opencode.cmd"`. On
+     * macOS the lookup threw, nothing resolved, and the failure surfaced as "ports 12001-12100 are
+     * all occupied and no OpenCode service was found" — which described neither the cause nor
+     * anything the user could fix, on a machine where `opencode --version` worked fine.
+     */
     internal fun resolveExecutable(): String {
         val configured = System.getenv("OPENCODE_BIN_PATH")
         if (!configured.isNullOrBlank() && File(configured).exists()) {
             return configured
         }
 
-        val direct = where("opencode.exe")
-            .firstOrNull { File(it).isFile }
-        if (direct != null) {
-            return direct
+        if (!ExecutableLookup.isWindows) {
+            return ExecutableLookup.resolve("opencode") ?: "opencode"
         }
 
-        val command = where("opencode.cmd").firstOrNull { File(it).isFile }
+        ExecutableLookup.resolve("opencode.exe")?.let { return it }
+
+        val command = ExecutableLookup.resolve("opencode.cmd")
         if (command != null) {
             val bundled = File(command).parentFile
                 ?.resolve("node_modules/opencode-ai/bin/opencode.exe")
@@ -292,11 +301,6 @@ class OpenCodeServerManager(private val projectPath: String?) {
 
         return "opencode.cmd"
     }
-
-    private fun where(command: String): List<String> = runCatching {
-        val process = ProcessBuilder("where.exe", command).start()
-        process.inputStream.bufferedReader().readLines().also { process.waitFor(2, TimeUnit.SECONDS) }
-    }.getOrDefault(emptyList())
 
     private fun probe(port: Int): PortState {
         val health = request("${baseUrl(port)}/global/health") ?: return if (isFree(port)) {

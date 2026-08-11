@@ -362,6 +362,20 @@ export function AssistantShell(props: AssistantShellProps) {
   let latestUserMessageID: string | undefined;
   // Each turn gets its own boundary: one malformed message (a bad attachment, an unexpected
   // part shape) must not take the whole conversation down with it.
+  /**
+   * Where the current round begins.
+   *
+   * A round is one user request through to its answer, and compaction splits that into several
+   * assistant turns. Marking only the last turn as active therefore let every earlier turn of a
+   * still-running round render its "edited N files" and token summaries — closing statements for
+   * work that had not finished. Everything after the last user message belongs to the round in
+   * progress.
+   */
+  const lastUserTurnIndex = conversationTurns.reduce(
+    (found, message, index) => (message.type === "user" ? index : found),
+    -1
+  );
+
   const renderedTurns = conversationTurns.flatMap((message, index) => {
     if (message.type === "user") {
       latestUserMessageID = message.id;
@@ -382,7 +396,7 @@ export function AssistantShell(props: AssistantShellProps) {
           <AssistantMessage
             diffs={diffsByMessageID[diffMessageID]}
             isStreaming={messageIsStreaming}
-            runActive={isGenerating && index === conversationTurns.length - 1}
+            runActive={isGenerating && index > lastUserTurnIndex}
             message={message as AssistantMessageData}
             onOpenSession={onSelectSession}
           />

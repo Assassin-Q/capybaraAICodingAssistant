@@ -470,6 +470,45 @@ class IdeaExecutionService(private val project: Project) : Disposable {
 
           return {
             /**
+             * Reminds the model about task-list items it left open.
+             *
+             * A standing instruction in the system prompt was not enough: models routinely finish a
+             * turn without calling `todowrite` again, so the panel keeps showing a step that was
+             * actually done. This runs per request and only says anything when items are genuinely
+             * unfinished, naming them — a general rule is easy to skip past, a list of the exact
+             * items that are still open is not.
+             */
+            "experimental.chat.system.transform": async ({ sessionID }, output) => {
+              if (!sessionID || !output || !Array.isArray(output.system)) return
+              try {
+                const route = `session/${'$'}{encodeURIComponent(sessionID)}/todo` +
+                  `?directory=${'$'}{encodeURIComponent(directory)}`
+                const response = await fetch(new URL(route, serverUrl))
+                if (!response.ok) return
+                const todos = await response.json()
+                if (!Array.isArray(todos) || todos.length === 0) return
+                const open = todos.filter((todo) =>
+                  todo && todo.status !== "completed" && todo.status !== "cancelled")
+                if (open.length === 0) return
+                const lines = open
+                  .map((todo) => `- [${'$'}{todo.status}] ${'$'}{todo.content}`)
+                  .join("\n")
+                output.system.push(
+                  "<system-reminder>\n" +
+                    "These task-list items are still open:\n" +
+                    lines +
+                    "\n\nBefore you end this turn, call `todowrite` so every item reflects what you " +
+                    "actually did — completed, cancelled, or still pending. Do not leave an item " +
+                    "marked in_progress once you stop working on it. This reminder is generated " +
+                    "from the stored list; it is not a message from the user.\n" +
+                    "</system-reminder>",
+                )
+              } catch {
+                // A reminder is not worth failing a request over.
+              }
+            },
+
+            /**
              * The real enforcement point.
              *
              * `permission.ask` is documented by OpenCode 1.18.12 but never dispatched — the string
