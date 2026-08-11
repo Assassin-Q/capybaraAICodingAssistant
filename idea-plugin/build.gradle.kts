@@ -73,6 +73,20 @@ tasks {
     patchPluginXml {
         sinceBuild.set("232")
         untilBuild.set("")
+        // The marketplace shows this on the plugin page and in the IDE's update dialog. Kept in
+        // the build rather than plugin.xml so it travels with the version it describes.
+        changeNotes.set(
+            """
+            <h3>3.0.0</h3>
+            <ul>
+              <li>Full Chinese/English interface, following the IDE locale by default.</li>
+              <li>Approval modes are decided by the panel, so "full access" no longer prompts.</li>
+              <li>Verified against every IntelliJ release from 2023.2 to 2026.2.</li>
+              <li>Checks that OpenCode is installed and new enough, with install instructions.</li>
+              <li>Update detection, IDEA-backed file search, and a front-end log written beside idea.log.</li>
+            </ul>
+            """.trimIndent()
+        )
     }
 
     buildSearchableOptions {
