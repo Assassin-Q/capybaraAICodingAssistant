@@ -49,6 +49,8 @@ export const zhSystem = {
   "vision.noneAvailable": "当前没有支持图片输入的模型，请先在上方添加一个。",
   "vision.busy": "正在解析图片…",
 
+  "attachment.dropped": "（以下附件未发送，当前模型不支持该类型：{names}）",
+
   "command.chipLabel": "命令",
   "command.clear": "移除命令",
   "skill.enabled": "已启用",

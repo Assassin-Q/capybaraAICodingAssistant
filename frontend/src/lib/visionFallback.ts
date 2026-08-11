@@ -22,6 +22,37 @@ export const modelAcceptsImages = (model?: ModelInfo): boolean =>
 
 const isImage = (attachment: PromptAttachment): boolean => attachment.mime.startsWith("image/");
 
+/** Modalities a model must declare before an attachment of that kind is worth sending. */
+const MODALITY_BY_PREFIX: Array<[string, "image" | "audio" | "video"]> = [
+  ["image/", "image"],
+  ["audio/", "audio"],
+  ["video/", "video"],
+];
+
+/**
+ * Splits attachments into the ones this model can actually read and the ones it cannot.
+ *
+ * Sending a modality the model does not declare is never useful: the provider either rejects the
+ * whole request or drops the part and answers as though nothing was attached. Both waste the
+ * round trip, and the second is actively misleading. Dropping them here keeps the request clean
+ * while the panel still shows the user what they attached.
+ */
+export const partitionByModality = (
+  attachments: PromptAttachment[],
+  model?: ModelInfo,
+): { sendable: PromptAttachment[]; unsupported: PromptAttachment[] } => {
+  const sendable: PromptAttachment[] = [];
+  const unsupported: PromptAttachment[] = [];
+  attachments.forEach((attachment) => {
+    const modality = MODALITY_BY_PREFIX.find(([prefix]) => attachment.mime.startsWith(prefix))?.[1];
+    // Text and everything without a media prefix is left alone; only the declared media
+    // modalities are gated, because those are the ones a model can genuinely lack.
+    if (!modality || model?.capabilities?.input?.[modality] === true) sendable.push(attachment);
+    else unsupported.push(attachment);
+  });
+  return { sendable, unsupported };
+};
+
 export interface VisionFallbackInput {
   attachments: PromptAttachment[];
   projectPath: string;

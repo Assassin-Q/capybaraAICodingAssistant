@@ -55,6 +55,14 @@ const lastFailedAssistant = (messages: SessionMessage[]) =>
   );
 
 interface UseAutoRetryInput {
+  /**
+   * Whether this panel is the one that ran the failing turn.
+   *
+   * Without it, opening any older session that happens to end in a stream error scheduled a retry
+   * for history the user had merely navigated to — the notice appeared on its own, seconds after
+   * switching sessions, for a run that finished long ago.
+   */
+  enabled: boolean;
   messages: SessionMessage[];
   /** Replays the failed prompt. Resolves false when there is nothing to replay. */
   onRetry: () => Promise<boolean>;
@@ -77,7 +85,7 @@ export interface AutoRetryState {
  * the same control that interrupts a run, and once cancelled that failure is never retried again —
  * a retry the user explicitly stopped must not come back thirty seconds later.
  */
-export function useAutoRetry({ messages, onRetry, runStatus, sessionID }: UseAutoRetryInput) {
+export function useAutoRetry({ enabled, messages, onRetry, runStatus, sessionID }: UseAutoRetryInput) {
   const [state, setState] = useState<AutoRetryState>({ attempt: 0, secondsLeft: 0 });
   const timer = useRef<number>();
   const tick = useRef<number>();
@@ -107,6 +115,7 @@ export function useAutoRetry({ messages, onRetry, runStatus, sessionID }: UseAut
   }, [clearTimers, sessionID]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (runStatus !== "ready" && runStatus !== "error") return;
     if (retryingRef.current) return;
 
@@ -141,7 +150,7 @@ export function useAutoRetry({ messages, onRetry, runStatus, sessionID }: UseAut
     }, AUTO_RETRY_DELAY_MS);
 
     return clearTimers;
-  }, [clearTimers, messages, onRetry, runStatus, sessionID]);
+  }, [clearTimers, enabled, messages, onRetry, runStatus, sessionID]);
 
   useEffect(() => clearTimers, [clearTimers]);
 

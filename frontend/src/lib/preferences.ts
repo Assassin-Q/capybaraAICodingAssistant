@@ -48,6 +48,8 @@ const DEFAULT_PREFERENCES: WorkspacePreferences = {
   professionalRoles: createDefaultProfessionalRolePreferences(),
 };
 
+const LANGUAGE_KEY = "capybara-ai:language";
+
 const preferenceKey = (projectPath?: string): string =>
   `capybara-ai:workspace-preferences:${projectPath ?? "default"}`;
 
@@ -156,5 +158,23 @@ export const saveWorkspacePreferences = (
 ): WorkspacePreferences => {
   const normalized = normalize(preferences);
   window.localStorage.setItem(preferenceKey(projectPath), JSON.stringify(normalized));
+  // Mirrored outside the per-project record on purpose — see loadLanguagePreference.
+  window.localStorage.setItem(LANGUAGE_KEY, normalized.language);
   return loadWorkspacePreferences(projectPath);
+};
+
+/**
+ * The interface language, stored on its own rather than inside the per-project record.
+ *
+ * The panel has to choose a language before it knows which project it is attached to, so boot read
+ * the preferences under the "default" key while the settings page had written them under the
+ * project key. The choice was saved correctly and simply never read back: every restart fell to
+ * `auto` and, on a non-Chinese IDE, came up English no matter what the user had picked. A language
+ * is a property of the person, not of the workspace, so one global key is also the right shape.
+ */
+export const loadLanguagePreference = (): LocalePreference => {
+  const stored = window.localStorage.getItem(LANGUAGE_KEY);
+  if (stored === "zh" || stored === "en" || stored === "auto") return stored;
+  // Falls back to whatever an older build wrote into the default record.
+  return loadWorkspacePreferences().language;
 };

@@ -39,6 +39,7 @@ import type {
   ModelInfo,
   PermissionReply,
   PermissionRequest,
+  PromptAttachment,
   QuestionRequest,
   SessionInfo,
   SessionMessage,
@@ -52,7 +53,7 @@ import { getContextUsage } from "@/lib/tokenUsage";
 import { checkForUpdate, type UpdateStatus } from "@/lib/updateCheck";
 import { approvalModeAllows, type ApprovalMode } from "@/lib/approvalMode";
 import { buildProfessionalRoleInstructions } from "@/lib/professionalRoles";
-import { describeImagesForTextModel, modelAcceptsImages } from "@/lib/visionFallback";
+import { describeImagesForTextModel, modelAcceptsImages, partitionByModality } from "@/lib/visionFallback";
 import { t } from "@/lib/i18n";
 /**
  * The skills the composer offers come from disk, not from OpenCode's live registry.
@@ -139,6 +140,13 @@ function App() {
   const [pendingCommand, setPendingCommand] = useState<string>();
   /** True while a vision model is turning attached images into text. */
   const [visionBusy, setVisionBusy] = useState(false);
+  /** The session whose run this panel started; the retry only applies to that one. */
+  const [runOwnerSessionID, setRunOwnerSessionID] = useState<string>();
+  /**
+   * Attachments removed from a request because the model could not read them, kept per message so
+   * the bubble still shows what the user attached. The server copy has no record of them.
+   */
+  const [droppedAttachments, setDroppedAttachments] = useState<Record<string, PromptAttachment[]>>({});
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const [editingQueuedPrompt, setEditingQueuedPrompt] = useState<QueuedPrompt>();
   const [streamingAssistantID, setStreamingAssistantID] = useState<string>();
@@ -695,12 +703,29 @@ function App() {
           outgoingFiles = described.attachments;
           outgoingText = `${fullPrompt}${described.text}`;
         } catch (visionError) {
-          // The prompt still goes out with the images attached: refusing to send at all would be a
-          // worse outcome than letting the provider decide what to do with them.
           setError(errorMessage(visionError));
         } finally {
           setVisionBusy(false);
         }
+      }
+
+      /**
+       * Anything the model still cannot read is dropped from the request.
+       *
+       * A provider handed an undeclared modality either rejects the whole call or drops the part
+       * and answers as if nothing was attached — the second being worse, because the attachment is
+       * visible in the transcript and the answer quietly ignores it. The bubble keeps showing what
+       * the user attached (see `droppedAttachments`), so nothing disappears from their view; only
+       * the request is kept clean, with one line naming what was left out.
+       */
+      const partitioned = partitionByModality(outgoingFiles, selectedModel);
+      outgoingFiles = partitioned.sendable;
+      if (partitioned.unsupported.length > 0) {
+        const names = partitioned.unsupported
+          .map((file, index) => file.name ?? t("s_15ff0a654b", { p0: index + 1 }))
+          .join("、");
+        outgoingText = `${outgoingText}\n\n${t("attachment.dropped", { model: selectedModel?.name ?? "", names })}`;
+        setDroppedAttachments((current) => ({ ...current, [messageID]: partitioned.unsupported }));
       }
 
       const payload = {
@@ -717,6 +742,7 @@ function App() {
       // Rebuilding it from the rendered history would lose them: the transport attachments are
       // browser File objects that only exist on the way in.
       replayablePrompt.current = { payload, sessionID: selectedSessionID };
+      setRunOwnerSessionID(selectedSessionID);
       await openCodeApi.sendPrompt(selectedSessionID, payload);
       setRunStatus("streaming");
       pollSessionStatus(selectedSessionID, generation);
@@ -763,6 +789,7 @@ function App() {
   }, [pollSessionStatus, projectPath, selectedSessionID]);
 
   const autoRetry = useAutoRetry({
+    enabled: Boolean(runOwnerSessionID) && runOwnerSessionID === selectedSessionID,
     messages,
     onRetry: replayPrompt,
     runStatus,
@@ -1147,7 +1174,16 @@ function App() {
 
   const currentPermissions = permissions.filter((request) => request.sessionID === selectedSessionID);
   const currentQuestions = questions.filter((request) => request.sessionID === selectedSessionID);
-  const conversationTurns = useMemo(() => groupConversationTurns(messages), [messages]);
+  const conversationTurns = useMemo(() => {
+    const turns = groupConversationTurns(messages);
+    if (Object.keys(droppedAttachments).length === 0) return turns;
+    // Display only: the dropped files are added back to the bubble, never to what gets sent.
+    return turns.map((turn) => {
+      if (turn.type !== "user") return turn;
+      const extra = droppedAttachments[turn.id];
+      return extra ? { ...turn, files: [...(turn.files ?? []), ...extra] } : turn;
+    });
+  }, [droppedAttachments, messages]);
   const streamingAssistantState = useMemo(
     () => resolveStreamingAssistantState(messages, conversationTurns, streamingAssistantID),
     [conversationTurns, messages, streamingAssistantID]

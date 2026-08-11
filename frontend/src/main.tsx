@@ -4,14 +4,14 @@ import App from './App'
 import './index.css'
 import { installClientLogForwarder } from '@/lib/clientLog'
 import { getLocale, resolveLocale, setLocale, subscribeToLocale } from '@/lib/i18n'
-import { loadWorkspacePreferences } from '@/lib/preferences'
+import { loadLanguagePreference } from '@/lib/preferences'
 
 // Installed before the first render so a failure during mount is still recorded. The panel is
 // served by the plugin itself, so its own origin is the address to report back to.
 installClientLogForwarder(window.location.origin)
 
 // Applied before React mounts, otherwise the first paint is in the wrong language and then flips.
-setLocale(resolveLocale(loadWorkspacePreferences().language))
+setLocale(resolveLocale(loadLanguagePreference()))
 
 /**
  * Remounts the tree when the language changes.

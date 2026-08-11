@@ -44,6 +44,8 @@ export const enSystem = {
   "vision.noneAvailable": "No model with image input is configured yet — add one above first.",
   "vision.busy": "Analysing images…",
 
+  "attachment.dropped": "(These attachments were not sent because the current model does not accept them: {names})",
+
   "command.chipLabel": "Command",
   "command.clear": "Remove command",
   "skill.enabled": "Enabled",
