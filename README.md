@@ -10,7 +10,7 @@
 
 🚀 **Bring Your Own Model** × 🔧 **Deeply Customizable** × ⚡ **Fast IDE Workflow**
 
-[![GitHub Stars](https://img.shields.io/github/stars/Assassin-Q/capybaraAICodingAssistant?style=flat-square)](https://github.com/Assassin-Q/capybaraAICodingAssistant)
+[![GitHub Stars](https://img.shields.io/github/stars/Assassin-Q/capybaraAICodingAssistant?style=flat-square&logo=github&logoColor=white)](https://github.com/Assassin-Q/capybaraAICodingAssistant)
 [![Gitee Stars](https://gitee.com/qianguanshui/capybaraAICodingAssistant/badge/star.svg?theme=gvp)](https://gitee.com/qianguanshui/capybaraAICodingAssistant)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Release](https://img.shields.io/badge/Release-3.0.1-green?style=flat-square)](https://github.com/Assassin-Q/capybaraAICodingAssistant/releases)
