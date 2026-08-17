@@ -88,7 +88,7 @@ export function ConnectionSettings({
 
   return (
     <section className="mx-auto w-full max-w-4xl">
-      <nav aria-label={t("connection.sections")} className="mb-1 flex min-w-0 flex-wrap gap-1 rounded-md bg-muted/45 p-1">
+      <nav aria-label={t("connection.sections")} className="sticky top-0 z-20 mb-1 flex min-w-0 flex-wrap gap-1 rounded-md bg-background/95 p-1 shadow-sm backdrop-blur-sm">
         {sectionLinks.map(({ icon: Icon, id, label }) => (
           <a
             className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded px-2 text-[11px] text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

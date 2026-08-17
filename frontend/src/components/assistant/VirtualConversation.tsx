@@ -21,6 +21,7 @@ interface VirtualConversationProps {
 }
 
 const BOTTOM_THRESHOLD = 50;
+const COMPLETION_SCROLL_DELAY = 500;
 const COMPLETION_FOLLOW_DELAY = 3000;
 
 /**
@@ -108,22 +109,27 @@ export function VirtualConversation({
     return () => window.cancelAnimationFrame(frame);
   }, [pinToBottom, scrollToBottom, setAutoScrollEnabled]);
 
-  // Keep following long enough for the final token-usage row to mount, then release the observer.
+  // Give the token-usage row time to mount, settle once at the bottom, then release following.
   useEffect(() => {
     runActiveRef.current = runActive;
-    let timer = 0;
+    let completionScrollTimer = 0;
+    let releaseTimer = 0;
     if (runActive) {
       previousRunActive.current = true;
       return;
     }
     if (previousRunActive.current) {
       previousRunActive.current = false;
-      timer = window.setTimeout(() => setAutoScrollEnabled(false), COMPLETION_FOLLOW_DELAY);
+      completionScrollTimer = window.setTimeout(() => {
+        if (autoScrollRef.current) scrollToBottom();
+      }, COMPLETION_SCROLL_DELAY);
+      releaseTimer = window.setTimeout(() => setAutoScrollEnabled(false), COMPLETION_FOLLOW_DELAY);
     }
     return () => {
-      if (timer) window.clearTimeout(timer);
+      if (completionScrollTimer) window.clearTimeout(completionScrollTimer);
+      if (releaseTimer) window.clearTimeout(releaseTimer);
     };
-  }, [runActive, setAutoScrollEnabled]);
+  }, [runActive, scrollToBottom, setAutoScrollEnabled]);
 
   // Streamed Markdown, reasoning, tools and the token footer all grow in place.
   useEffect(() => {

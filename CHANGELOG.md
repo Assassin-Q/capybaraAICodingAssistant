@@ -17,6 +17,7 @@
 - Expanded model ID suggestions across every provider with case-sensitive fuzzy matching, a pre-indexed non-blocking search path, a scrollable full result list, focus-aware dismissal, and full hover titles for truncated model/provider names.
 - Filtered every conversation, vision, and memory model picker from the saved provider/model disable lists, even when an externally managed OpenCode process still has an older configuration cached.
 - Reorganized the connection settings into a clearer hierarchy and reduced the desktop settings sidebar to 160px so short navigation labels leave more room for configuration content.
+- Kept the connection-section navigator floating below the settings title while scrolling, and added a guarded final scroll 500 ms after completed-run token usage appears.
 
 ## 3.0.0 - 2026-08-17
 
