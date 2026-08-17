@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { BriefcaseBusiness, Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import {
   professionalRolePresets,
   type ProfessionalRolePreferences,
 } from "@/lib/professionalRoles";
+import { useAssistantOverlayDismiss } from "@/lib/assistantOverlays";
 
 interface ProfessionalRolePickerProps {
   onChange: (roleId: string) => void;
@@ -23,6 +25,8 @@ interface ProfessionalRolePickerProps {
 }
 
 export function ProfessionalRolePicker({ onChange, preferences }: ProfessionalRolePickerProps) {
+  const [open, setOpen] = useState(false);
+  useAssistantOverlayDismiss(() => setOpen(false));
   // Preferences saved before this feature existed have no `professionalRoles` key at all,
   // and reading `.enabled` off that undefined crashed the whole composer.
   if (!preferences?.enabled) return null;
@@ -31,7 +35,7 @@ export function ProfessionalRolePicker({ onChange, preferences }: ProfessionalRo
   const selected = findProfessionalRolePreset(preferences.selectedRoleId);
   const label = selected && roles[selected.id]?.enabled ? selected.name : t("s_13f490e30b");
   return (
-    <DropdownMenu modal={false}>
+    <DropdownMenu modal={false} onOpenChange={setOpen} open={open}>
       <DropdownMenuTrigger asChild>
         <Button aria-label={t("s_080edd40af", { p0: label })} className="h-7 max-w-36 gap-1.5 px-2 text-xs font-normal text-muted-foreground hover:text-foreground" title={t("s_080edd40af", { p0: label })} type="button" variant="ghost">
           <BriefcaseBusiness className="size-3.5" />

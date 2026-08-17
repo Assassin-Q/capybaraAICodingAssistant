@@ -28,6 +28,7 @@ export const zhSystem = {
   "memoryPlugin.nowledge-mem": "Nowledge Mem 的 OpenCode 集成。",
   "run.autoRetry": "连接中断，{seconds} 秒后自动重试（第 {attempt}/{max} 次）。",
   "run.cancelRetry": "取消重试",
+  "connection.sections": "连接设置目录",
 
   "todo.stoppedAt": "停在第 {current}/{total} 步",
   "run.todoTab": "任务清单",

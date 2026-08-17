@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, ChevronDown, MonitorCog, Moon, Save, Sun } from "lucide-react";
+import { Check, ChevronDown, MonitorCog, Moon, Palette, Save, Sun } from "lucide-react";
 
 import { SettingsHeader, SettingsMessage, useSettingsFeedback } from "@/components/assistant/settingsShared";
 import { Button } from "@/components/ui/button";
@@ -137,6 +137,7 @@ export function AppearanceSettings() {
           </Button>
         )}
         description={t("s_f6fbf8afe8")}
+        icon={<Palette className="mt-1 size-5 shrink-0 text-muted-foreground" />}
         loading={loading}
         onRefresh={() => void load()}
         title={t("s_09b58aa342")}

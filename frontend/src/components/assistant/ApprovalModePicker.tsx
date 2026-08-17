@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { approvalModeOptions, type ApprovalMode } from "@/lib/approvalMode";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
+import { useAssistantOverlayDismiss } from "@/lib/assistantOverlays";
 
 const modeIcon = (mode: ApprovalMode) => {
   if (mode === "full") return ShieldCheck;
@@ -47,6 +48,7 @@ export function ApprovalModePicker({
     setActiveMode(null);
     setOpen(false);
   };
+  useAssistantOverlayDismiss(close);
 
   return (
     <ModelSelector

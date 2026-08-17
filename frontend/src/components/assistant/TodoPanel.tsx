@@ -6,6 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { SessionFileDiff, TodoInfo } from "@/lib/opencode";
 import { t } from "@/lib/i18n";
+import { useAssistantOverlayDismiss } from "@/lib/assistantOverlays";
 
 /** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
 const priorityLabel = (): Record<string, string> => ({
@@ -60,6 +61,7 @@ export function TodoPanel({
   todos: TodoInfo[];
 }) {
   const [open, setOpen] = useState(false);
+  useAssistantOverlayDismiss(() => setOpen(false));
   const unfinished = todos.filter((todo) => !isFinished(todo));
   const hasTodos = active && unfinished.length > 0;
   const hasDiffs = active && diffs.length > 0;

@@ -92,8 +92,9 @@
 
         <group
             id="com.aicoding.plugin.AICodingMenu"
-            text="水豚 AI 助手"
+            text="Capybara AI Coding"
             description="将 IDEA 上下文发送给助手"
+            icon="/Capybara.svg"
             popup="true">
             <add-to-group group-id="EditorPopupMenu" anchor="first" />
             <add-to-group group-id="EditorTabPopupMenu" anchor="first" />
@@ -118,6 +119,17 @@
                 class="com.aicoding.plugin.actions.GenerateUnitTestsAction"
                 text="生成单元测试"
                 description="为选中的代码生成单元测试" />
+            <separator />
+            <action
+                id="com.aicoding.plugin.CopyAbsolutePathAction"
+                class="com.aicoding.plugin.actions.CopyAbsolutePathAction"
+                text="复制绝对路径"
+                description="复制文件或目录的绝对路径；编辑器选区会附带行号范围" />
+            <action
+                id="com.aicoding.plugin.CopyRelativePathAction"
+                class="com.aicoding.plugin.actions.CopyRelativePathAction"
+                text="复制相对路径"
+                description="复制项目相对路径；编辑器选区会附带行号范围" />
         </group>
     </actions>
 </idea-plugin>

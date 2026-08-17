@@ -19,6 +19,7 @@ import { modelKey } from "@/components/assistant/shared";
 import type { AgentInfo, ModelInfo } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
+import { useAssistantOverlayDismiss } from "@/lib/assistantOverlays";
 
 interface ModelPickerProps {
   className?: string;
@@ -49,6 +50,10 @@ export function ModelPicker({ className, models, onManage, onChange, value }: Mo
       .map(([id, providerModels]) => [id, providerModels.sort((left, right) => left.name.localeCompare(right.name))] as const)
       .sort(([left], [right]) => providerLabel(left).localeCompare(providerLabel(right)));
   }, [models]);
+  useAssistantOverlayDismiss(() => {
+    setOpen(false);
+    setHasInteracted(false);
+  });
 
   return (
     <ModelSelector onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setHasInteracted(false); }} open={open}>
@@ -107,6 +112,10 @@ export function VariantPicker({ className, hasDefault = false, labels = {}, onCh
   const [hasInteracted, setHasInteracted] = useState(false);
   const providerVariants = [...new Set(variants.filter((variant) => variant !== "default"))];
   const published = providerVariants.join(",");
+  useAssistantOverlayDismiss(() => {
+    setOpen(false);
+    setHasInteracted(false);
+  });
 
   /**
    * Settle on a real level rather than sitting on a "默认" the model does not have.

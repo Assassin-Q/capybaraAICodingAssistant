@@ -10,6 +10,7 @@ import { generateCommitSummary } from "@/lib/commitSummary";
 import type { ModelInfo } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
+import { useAssistantOverlayDismiss } from "@/lib/assistantOverlays";
 
 interface GitStatusButtonProps {
   model?: ModelInfo;
@@ -26,6 +27,7 @@ export function GitStatusButton({ model, nativeTrigger = false, openRequest = 0,
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
+  useAssistantOverlayDismiss(() => setOpen(false));
 
   /** Branch seen on the previous poll, so a mid-session switch can be flagged. */
   const [, setSessionBranch] = useState<string>();

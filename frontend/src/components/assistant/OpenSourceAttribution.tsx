@@ -28,12 +28,12 @@ function SourceLink({ href, label }: SourceLinkProps) {
 
 export function OpenSourceAttribution() {
   return (
-    <section aria-labelledby="open-source-attribution-title" className="border-t border-border pt-5">
-      <div className="flex items-start gap-3">
-        <GitBranch className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+    <section aria-labelledby="open-source-attribution-title">
+      <div className="flex items-start gap-2">
+        <GitBranch className="mt-1 size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
-          <h2 className="text-sm font-medium" id="open-source-attribution-title">{t("opensource.title")}</h2>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("opensource.description")}</p>
+          <h2 className="text-lg font-semibold" id="open-source-attribution-title">{t("opensource.title")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t("opensource.description")}</p>
         </div>
       </div>
 

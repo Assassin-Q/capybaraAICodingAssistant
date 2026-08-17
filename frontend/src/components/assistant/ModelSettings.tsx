@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, ChevronDown, CircleAlert, Cpu, Eye, EyeOff, Loader2, Plus, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ModelVariantEditor } from "@/components/assistant/ModelVariantEditor";
 import { normalizedVariantOverrides } from "@/components/assistant/modelVariantConfig";
 import type { ModelVariantMap } from "@/components/assistant/modelVariantConfig";
-import { modelIDSuggestions } from "@/components/assistant/modelIDSuggestions";
+import { buildModelIDSuggestionIndex, modelIDSuggestions } from "@/components/assistant/modelIDSuggestions";
 import { errorMessage } from "@/components/assistant/shared";
 import { applyConfigToOpenCode } from "@/lib/configApply";
 import { ideaApi } from "@/lib/idea";
@@ -288,6 +288,7 @@ export function ModelSettings({
   const [showKey, setShowKey] = useState(false);
   const [pendingDeleteModelID, setPendingDeleteModelID] = useState<string>();
   const [pendingDeleteProviderID, setPendingDeleteProviderID] = useState<string>();
+  const deferredModelID = useDeferredValue(modelDraft.id);
 
   const load = async (preferredID?: string) => {
     if (!projectPath) return;
@@ -372,9 +373,26 @@ export function ModelSettings({
     return merged;
   }, [catalogModels, models, selectedID]);
   const configuredModels = selectedConfig.models ?? {};
-  const disabledModelIDs = new Set(selectedConfig.blacklist ?? []);
-  const modelIDs = [...new Set([...Object.keys(providerModels), ...Object.keys(configuredModels), ...disabledModelIDs])]
-    .filter((id) => configuredModels[id]?.status !== "deprecated");
+  const disabledModelIDs = useMemo(
+    () => new Set(selectedConfig.blacklist ?? []),
+    [selectedConfig.blacklist]
+  );
+  const modelIDs = useMemo(
+    () => [...new Set([...Object.keys(providerModels), ...Object.keys(configuredModels), ...disabledModelIDs])]
+      .filter((id) => configuredModels[id]?.status !== "deprecated"),
+    [configuredModels, disabledModelIDs, providerModels]
+  );
+  const publishedModelsByID = useMemo(() => {
+    const byID = new Map<string, ModelInfo>();
+    models.forEach((model) => {
+      if (!byID.has(model.id)) byID.set(model.id, model);
+    });
+    return byID;
+  }, [models]);
+  const modelSuggestionIndex = useMemo(
+    () => buildModelIDSuggestionIndex(catalog, models),
+    [catalog, models]
+  );
 
   /**
    * Typing an ID that the V2 catalogue publishes fills in everything it says about the model —
@@ -387,7 +405,7 @@ export function ModelSettings({
    * elsewhere describes the same model.
    */
   const publishedModel = (modelID: string): ModelInfo | undefined =>
-    providerModels[modelID] ?? models.find((model) => model.id === modelID);
+    providerModels[modelID] ?? publishedModelsByID.get(modelID);
 
   const applyModelID = (nextID: string, known?: ModelInfo) => {
     setSuggestionsOpen(!known);
@@ -672,12 +690,11 @@ export function ModelSettings({
     }
   };
 
-  const idSuggestions = modelIDSuggestions({
-    catalog,
+  const idSuggestions = useMemo(() => modelIDSuggestions({
     editingProviderID: selectedID,
-    models,
-    query: modelDraft.id,
-  });
+    index: modelSuggestionIndex,
+    query: deferredModelID,
+  }), [deferredModelID, modelSuggestionIndex, selectedID]);
 
   const modelEditor = (
     <div className="grid gap-4 bg-muted/25 px-3 py-4">
@@ -690,10 +707,19 @@ export function ModelSettings({
               through /api/model, and its own id could never be corrected again. Renaming is
               already handled on save, which moves the entry rather than duplicating it.
             */}
-            <Input onChange={(event) => applyModelID(event.target.value)} placeholder={t("s_695f4de76f")} title={t("s_f273d83ecf")} value={modelDraft.id} />
-            {editingModelID === "new" && suggestionsOpen && idSuggestions.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md">
-                {idSuggestions.map(({ model, providerID }) => (
+            <Input
+              onBlur={() => setSuggestionsOpen(false)}
+              onChange={(event) => applyModelID(event.target.value)}
+              onFocus={() => setSuggestionsOpen(true)}
+              placeholder={t("s_695f4de76f")}
+              title={t("s_f273d83ecf")}
+              value={modelDraft.id}
+            />
+            {editingModelID === "new" && suggestionsOpen && deferredModelID === modelDraft.id && idSuggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto overscroll-contain rounded-md border border-border bg-popover shadow-md" onMouseDown={(event) => event.preventDefault()}>
+                {idSuggestions.map(({ model, providerID }) => {
+                  const sourceProvider = providerName(providerID, catalog);
+                  return (
                   <button
                     className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-accent"
                     key={`${providerID}/${model.id}`}
@@ -701,16 +727,15 @@ export function ModelSettings({
                     type="button"
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-[11px]">{model.id}</span>
-                      <span className="block truncate text-[10px] text-muted-foreground">{model.name}</span>
+                      <span className="block truncate font-mono text-[11px]" title={model.id}>{model.id}</span>
+                      <span className="block truncate text-[10px] text-muted-foreground" title={model.name}>{model.name}</span>
                     </span>
-                    {/* Which provider the spec comes from — not necessarily the one being
-                        edited, since a custom provider publishes no catalogue of its own. */}
-                    <Badge title={t("model.suggestionSource", { p0: providerName(providerID, catalog) })} variant="outline">
-                      {providerName(providerID, catalog)}
+                    <Badge className="max-w-[45%] shrink-0 truncate" title={sourceProvider} variant="outline">
+                      {sourceProvider}
                     </Badge>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -779,15 +804,15 @@ export function ModelSettings({
       <div className="flex min-w-0 items-center gap-2 pb-4">
         {isNewProvider && <Button aria-label={t("s_3a52815329")} className="size-7" onClick={() => setNewProviderStep("choose")} size="icon-sm" title={t("s_11d0241540")} type="button" variant="ghost"><ArrowLeft className="size-3.5" /></Button>}
         <Cpu className="size-4 shrink-0 text-muted-foreground" />
-        <h3 className="min-w-0 flex-1 truncate text-base font-semibold">{isNewProvider ? providerDraft.name || t("s_eecf139e11") : providerName(selectedID, catalog)}</h3>
+        <h3 className="min-w-0 flex-1 truncate text-base font-semibold" title={isNewProvider ? providerDraft.name || t("s_eecf139e11") : providerName(selectedID, catalog)}>{isNewProvider ? providerDraft.name || t("s_eecf139e11") : providerName(selectedID, catalog)}</h3>
         {!isNewProvider && <Badge variant="secondary">{providerDraft.disabled ? t("s_6c7dcbb73a") : t("s_25d2843150")}</Badge>}
       </div>
 
       {providerDraft.catalogProvider ? (
         <div className="grid gap-4">
           <div className="grid gap-3 rounded-md bg-muted/35 px-3 py-3 sm:grid-cols-2">
-            <div><p className="text-[11px] text-muted-foreground">{t("s_4ce9ed14e3")}</p><p className="mt-1 truncate font-mono text-xs">{providerDraft.id}</p></div>
-            <div><p className="text-[11px] text-muted-foreground">{t("s_12975e6c28")}</p><p className="mt-1 truncate font-mono text-xs">{providerDraft.npm || "OpenCode native"}</p></div>
+            <div><p className="text-[11px] text-muted-foreground">{t("s_4ce9ed14e3")}</p><p className="mt-1 truncate font-mono text-xs" title={providerDraft.id}>{providerDraft.id}</p></div>
+            <div><p className="text-[11px] text-muted-foreground">{t("s_12975e6c28")}</p><p className="mt-1 truncate font-mono text-xs" title={providerDraft.npm || "OpenCode native"}>{providerDraft.npm || "OpenCode native"}</p></div>
             {providerDraft.baseURL && <div className="sm:col-span-2"><p className="text-[11px] text-muted-foreground">{t("s_26b27709ce")}</p><p className="mt-1 break-all font-mono text-xs">{providerDraft.baseURL}</p></div>}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -843,7 +868,7 @@ export function ModelSettings({
               <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-accent/50">
                 <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => toggleModelEditor(id)} type="button">
                   <span className={cn("size-1.5 shrink-0 rounded-full", deprecated ? "bg-muted-foreground/60" : model.enabled ? "bg-emerald-500" : "bg-muted-foreground")} />
-                  <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{model.name}</span><span className="block truncate font-mono text-[11px] text-muted-foreground">{id}</span></span>
+                  <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium" title={model.name}>{model.name}</span><span className="block truncate font-mono text-[11px] text-muted-foreground" title={id}>{id}</span></span>
                   {deprecated && <Badge title={t("s_613b1a65d5")} variant="outline">{t("s_64170be710")}</Badge>}
                   {!deprecated && awaitingRestart && (
                     <Badge title={t("s_80560ed849")} variant="outline">
@@ -880,7 +905,7 @@ export function ModelSettings({
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-[12rem_minmax(0,1fr)]">
         <aside className="flex max-h-44 min-h-0 flex-col rounded-md bg-muted/30 p-1.5 md:max-h-none">
           <div className="flex h-9 shrink-0 items-center justify-between gap-1 px-2"><p className="truncate text-[11px] font-medium text-muted-foreground">{t("s_703c9eb0f0")}</p><Button aria-label={t("s_3f55a222ea")} className="size-7 shrink-0" onClick={beginNewProvider} size="icon-sm" title={t("s_3f55a222ea")} type="button" variant={isNewProvider ? "secondary" : "ghost"}><Plus className="size-3.5" /></Button></div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{providerIDs.map((id) => <Button className="mb-0.5 w-full justify-start gap-2 px-2" key={id} onClick={() => selectProvider(id)} size="sm" type="button" variant={id === selectedID && !isNewProvider ? "secondary" : "ghost"}><span className={cn("size-1.5 shrink-0 rounded-full", config.disabled_providers?.includes(id) ? "bg-muted-foreground" : "bg-emerald-500")} /><span className="truncate">{providerName(id, catalog)}</span></Button>)}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{providerIDs.map((id) => { const name = providerName(id, catalog); return <Button className="mb-0.5 w-full justify-start gap-2 px-2" key={id} onClick={() => selectProvider(id)} size="sm" title={name} type="button" variant={id === selectedID && !isNewProvider ? "secondary" : "ghost"}><span className={cn("size-1.5 shrink-0 rounded-full", config.disabled_providers?.includes(id) ? "bg-muted-foreground" : "bg-emerald-500")} /><span className="truncate">{name}</span></Button>; })}</div>
         </aside>
         <div className={cn("flex min-h-0 min-w-0 flex-col overscroll-contain pr-1", isNewProvider && newProviderStep === "choose" ? "overflow-hidden" : "overflow-y-auto")}>
           {isNewProvider && newProviderStep === "choose" ? (
@@ -891,7 +916,7 @@ export function ModelSettings({
                 <button className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left hover:bg-accent" onClick={chooseCustomProvider} type="button"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background"><Plus className="size-3.5" /></span><span className="min-w-0 flex-1"><span className="block text-sm font-medium">{t("s_eecf139e11")}</span><span className="block text-xs text-muted-foreground">{t("s_19d54ed4ec")}</span></span></button>
                 {availableCatalogProviders.map((provider) => {
                   const modelCount = Object.keys(provider.models).length;
-                  return <button className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left hover:bg-accent" key={provider.id} onClick={() => chooseCatalogProvider(provider.id)} type="button"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background font-mono text-[10px] uppercase">{provider.name.slice(0, 2)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{provider.name}</span><span className="block truncate font-mono text-[11px] text-muted-foreground">{provider.id}</span></span><span className="shrink-0 text-[10px] text-muted-foreground">{modelCount > 0 ? t("s_4b3772872c", { p0: modelCount }) : t("s_9a4d20b045")}</span></button>;
+                  return <button className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left hover:bg-accent" key={provider.id} onClick={() => chooseCatalogProvider(provider.id)} title={`${provider.name} (${provider.id})`} type="button"><span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background font-mono text-[10px] uppercase">{provider.name.slice(0, 2)}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium" title={provider.name}>{provider.name}</span><span className="block truncate font-mono text-[11px] text-muted-foreground" title={provider.id}>{provider.id}</span></span><span className="shrink-0 text-[10px] text-muted-foreground">{modelCount > 0 ? t("s_4b3772872c", { p0: modelCount }) : t("s_9a4d20b045")}</span></button>;
                 })}
                 {availableCatalogProviders.length === 0 && <p className="px-3 py-8 text-center text-sm text-muted-foreground">{t("s_fd8f5db498")}</p>}
               </div>

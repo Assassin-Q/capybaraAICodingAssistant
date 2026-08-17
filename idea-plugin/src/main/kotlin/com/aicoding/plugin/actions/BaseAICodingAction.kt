@@ -90,15 +90,25 @@ abstract class BaseAICodingAction : AnAction() {
         e.getData(CommonDataKeys.EDITOR)
 
     protected fun getLineRange(e: AnActionEvent): Pair<Int, Int>? {
-        val selection = getEditor(e)?.selectionModel ?: return null
+        val editor = getEditor(e) ?: return null
+        val selection = editor.selectionModel
         if (!selection.hasSelection()) {
             return null
         }
-        val start = selection.selectionStartPosition ?: return null
-        val end = selection.selectionEndPosition ?: return null
+        val document = editor.document
+        val startOffset = selection.selectionStart.coerceIn(0, document.textLength)
+        var endOffset = selection.selectionEnd.coerceIn(startOffset, document.textLength)
+        // IDEA selections are end-exclusive. When the caret is at the start of the next line,
+        // that line is not part of the selection and must not appear in the copied range.
+        if (endOffset > startOffset) {
+            val endLine = document.getLineNumber(endOffset)
+            if (endOffset == document.getLineStartOffset(endLine)) {
+                endOffset -= 1
+            }
+        }
         return Pair(
-            start.line + 1,
-            end.line + 1,
+            document.getLineNumber(startOffset) + 1,
+            document.getLineNumber(endOffset) + 1,
         )
     }
 

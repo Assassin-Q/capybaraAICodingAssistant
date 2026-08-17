@@ -9,6 +9,7 @@ import { t } from "@/lib/i18n";
 interface SettingsHeaderProps {
   actions?: ReactNode;
   description: string;
+  icon?: ReactNode;
   loading?: boolean;
   onRefresh?: () => void;
   title: string;
@@ -17,15 +18,19 @@ interface SettingsHeaderProps {
 export function SettingsHeader({
   actions,
   description,
+  icon,
   loading = false,
   onRefresh,
   title,
 }: SettingsHeaderProps) {
   return (
     <header className="flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      <div className="flex min-w-0 items-start gap-2">
+        {icon}
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {actions}

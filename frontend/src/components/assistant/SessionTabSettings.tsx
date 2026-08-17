@@ -1,3 +1,5 @@
+import { MessagesSquare } from "lucide-react";
+
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -12,11 +14,14 @@ export function SessionTabSettings({
   value: SessionTabPreferences;
 }) {
   return (
-    <section className="mt-6 border-t border-border pt-6">
+    <section>
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold">{t("tabs.settingsTitle")}</h3>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("tabs.settingsHint")}</p>
+        <div className="flex min-w-0 items-start gap-2">
+          <MessagesSquare className="mt-1 size-5 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold">{t("tabs.settingsTitle")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t("tabs.settingsHint")}</p>
+          </div>
         </div>
         <Switch
           aria-label={t("tabs.multiMode")}

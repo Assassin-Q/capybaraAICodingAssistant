@@ -71,6 +71,7 @@ import type { UpdateStatus } from "@/lib/idea";
 import type { IdeaTheme } from "@/hooks/useIdeaTheme";
 import type { PendingSessionTabOpen, SessionTab } from "@/hooks/useSessionTabs";
 import { t } from "@/lib/i18n";
+import { closeAssistantOverlays, useAssistantOverlayDismiss } from "@/lib/assistantOverlays";
 
 export interface AssistantShellProps {
   agents: AgentInfo[];
@@ -224,7 +225,19 @@ export function AssistantShell(props: AssistantShellProps) {
   const [composerNotice, setComposerNotice] = useState("");
   /** Undefined while the file picker is closed; a string is the term being searched. */
   const [fileSearch, setFileSearch] = useState<string>();
+  const [dismissedTriggerQuery, setDismissedTriggerQuery] = useState<string>();
   const { annotations: browserAnnotations, clear: clearBrowserAnnotations } = useBrowserAnnotations();
+
+  useAssistantOverlayDismiss(() => {
+    setFileSearch(undefined);
+    setDismissedTriggerQuery(props.composerText);
+  });
+
+  useEffect(() => {
+    if (dismissedTriggerQuery !== undefined && dismissedTriggerQuery !== props.composerText) {
+      setDismissedTriggerQuery(undefined);
+    }
+  }, [dismissedTriggerQuery, props.composerText]);
 
   /**
    * Picking a file goes through the plugin, not the browser, so it lands as the same context
@@ -496,7 +509,7 @@ export function AssistantShell(props: AssistantShellProps) {
           <Button aria-label={theme === "dark" ? t("s_2b4ef16e71") : t("s_b54f498c7c")} aria-pressed={theme === "dark"} className="size-8 shrink-0" onClick={onThemeToggle} size="icon" title={theme === "dark" ? t("s_2b4ef16e71") : t("s_b54f498c7c")} type="button" variant="ghost">
             {theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
           </Button>
-          <Button aria-label={t("s_abc65f3093")} className="size-8 shrink-0" onClick={() => onWorkspaceOpenChange(true)} size="icon" title={t("s_52e823f821")} type="button" variant="ghost"><Settings2 className="size-3.5" /></Button>
+          <Button aria-label={t("s_abc65f3093")} className="size-8 shrink-0" onClick={() => { closeAssistantOverlays(); onWorkspaceOpenChange(true); }} size="icon" title={t("s_52e823f821")} type="button" variant="ghost"><Settings2 className="size-3.5" /></Button>
           <Button aria-label={t("s_269a8a2642")} className="size-8 shrink-0" disabled={refreshing} onClick={onRefresh} size="icon" title={t("s_269a8a2642")} type="button" variant="ghost"><RefreshCw className={refreshing ? "size-3.5 animate-spin" : "size-3.5"} /></Button>
         </header>}
         {nativeTitleActions && (
@@ -557,17 +570,18 @@ export function AssistantShell(props: AssistantShellProps) {
                   />
                 </ConversationEmptyState>
               )}
-            followOutput={isGenerating}
             footer={footerNodes.length > 0 ? <>{footerNodes}</> : undefined}
             items={renderedTurns}
             pinToBottom={pinToBottom}
             raiseScrollButton={activeDiffs.length > 0 || todos.some((todo) => todo.status !== "completed" && todo.status !== "cancelled")}
+            runActive={isGenerating}
           />
         </BorderBeam>
 
         <div className="relative z-10 shrink-0 bg-background/95 px-3 pb-3 pt-0 shadow-[0_-10px_28px_-24px_hsl(var(--foreground)/0.55)] backdrop-blur-sm">
           <TodoPanel active={isGenerating} diffs={activeDiffs} todos={todos} />
-          {(TRIGGER_CHARACTERS.includes(composerText.slice(0, 1)) || fileSearch !== undefined) && (
+          {(TRIGGER_CHARACTERS.includes(composerText.slice(0, 1)) || fileSearch !== undefined)
+            && dismissedTriggerQuery !== composerText && (
             <SlashCommandMenu
               fileSearch={fileSearch}
               onFileSearchChange={setFileSearch}

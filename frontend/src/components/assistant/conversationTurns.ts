@@ -123,6 +123,16 @@ const isEnvironmentNotice = (message: SessionMessage): boolean =>
   message.type === "system"
   && ENVIRONMENT_NOTICES.some((pattern) => pattern.test((message.text ?? "").trim()));
 
+const isSameModelSwitch = (previous: ConversationTurn | undefined, message: SessionMessage): boolean => {
+  if (previous?.type !== "model-switched" || message.type !== "model-switched") return false;
+  if (previous.model && message.model) {
+    return previous.model.providerID === message.model.providerID
+      && previous.model.id === message.model.id;
+  }
+  const previousText = previous.text?.trim();
+  return Boolean(previousText) && previousText === message.text?.trim();
+};
+
 export const groupConversationTurns = (messages: SessionMessage[]): ConversationTurn[] => {
   const cached = groupedTurnsCache.get(messages);
   if (cached) return cached;
@@ -144,6 +154,13 @@ export const groupConversationTurns = (messages: SessionMessage[]): Conversation
   messages.forEach((message) => {
     if (isEnvironmentNotice(message)) return;
     if (message.type !== "assistant") {
+      // OpenCode records model and variant changes as two adjacent model-switched messages. The
+      // divider labels only the model, so keep the later record (which contains the final variant)
+      // instead of rendering two identical lines.
+      if (isSameModelSwitch(turns[turns.length - 1], message)) {
+        turns[turns.length - 1] = message;
+        return;
+      }
       turns.push(message);
       if (message.type === "user") {
         const assistant = assistantsByParent.get(message.id);

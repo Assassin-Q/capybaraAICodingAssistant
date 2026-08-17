@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.0.1 - 2026-08-17
+
+### Conversation and settings polish
+
+- Reworked streaming auto-scroll so a new prompt follows output, upward wheel/scrollbar/touch gestures stop following immediately, reaching the bottom resumes it only during an active run, and final token usage remains visible before follow mode releases.
+- Collapsed OpenCode's adjacent model and variant switch records into one model-switch divider.
+- Closed transient command, model, reasoning-level, approval, role, Git, and todo overlays before opening settings.
+- Added a compact sticky section navigator to Connection settings and aligned all primary section headings and icons.
+
+### IDEA and model configuration
+
+- Added editor/project-tree actions for copying absolute and project-relative paths; both include the real inclusive selection line range when editor text is selected.
+- Fixed selection line numbers to use document offsets, preserving blank lines and avoiding visual-line errors from code folding or soft wrapping.
+- Renamed the IDEA context-menu group to `Capybara AI Coding` and applied the bundled 16×16 Capybara icon in light and dark themes.
+- Expanded model ID suggestions across every provider with case-sensitive fuzzy matching, a pre-indexed non-blocking search path, a scrollable full result list, focus-aware dismissal, and full hover titles for truncated model/provider names.
+
 ## 3.0.0 - 2026-08-17
 
 ### Major rewrite

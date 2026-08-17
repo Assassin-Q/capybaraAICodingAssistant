@@ -12,7 +12,7 @@
 
 [![GitHub Stars](https://img.shields.io/github/stars/Assassin-Q/capybaraAICodingAssistant?style=flat-square)](https://github.com/Assassin-Q/capybaraAICodingAssistant)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v3.0.0-green?style=flat-square)](https://github.com/Assassin-Q/capybaraAICodingAssistant/releases)
+[![Release](https://img.shields.io/badge/Release-3.0.1-green?style=flat-square)](https://github.com/Assassin-Q/capybaraAICodingAssistant/releases)
 [![JetBrains Plugin](https://img.shields.io/badge/JetBrains-Marketplace-orange?style=flat-square)](https://plugins.jetbrains.com/plugin/31562-capybara-ai-coding-assistant)
 
 </div>

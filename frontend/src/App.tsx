@@ -64,6 +64,7 @@ import { restoreActiveRun } from "@/components/assistant/runRestoration";
 import { getContextUsage } from "@/lib/tokenUsage";
 import type { ApprovalMode } from "@/lib/approvalMode";
 import { resolveLocale, setLocale, t } from "@/lib/i18n";
+import { closeAssistantOverlays } from "@/lib/assistantOverlays";
 
 /** IDEA appends this flag to its JCEF URL; standalone web previews keep the React toolbar. */
 const NATIVE_TITLE_ACTIONS = new URLSearchParams(window.location.search).get("nativeTitleActions") === "1";
@@ -96,14 +97,12 @@ function App() {
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [gitOpenRequest, setGitOpenRequest] = useState(0);
   const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSectionID>("connection");
-  /**
-   * Attachments removed from a request because the model could not read them, kept per message so
-   * the bubble still shows what the user attached. The server copy has no record of them.
-   */
+  const handleWorkspaceOpenChange = useCallback((open: boolean) => {
+    if (open) closeAssistantOverlays();
+    if (open) setSessionDialogOpen(false);
+    setWorkspaceDialogOpen(open);
+  }, []);
   const [preferences, setPreferences] = useState<WorkspacePreferences>(() => loadWorkspacePreferences());
-  // Multi-session tabs belong to the IDEA tool-window chrome. A standalone browser keeps the
-  // existing single-session header and switches conversations from history instead of duplicating
-  // an IDE-style tab strip inside the web page.
   const sessionTabSettings = NATIVE_TITLE_ACTIONS
     ? preferences.sessionTabs
     : { ...preferences.sessionTabs, enabled: false };
@@ -774,7 +773,7 @@ function App() {
         setEditingSessionTitle(true);
       }
     }
-    else if (action === "settings") setWorkspaceDialogOpen(true);
+    else if (action === "settings") handleWorkspaceOpenChange(true);
     else if (action === "git") setGitOpenRequest((request) => request + 1);
     else if (action === "theme") toggleTheme();
     else if (action === "refresh") handleRefresh();
@@ -834,8 +833,8 @@ function App() {
 
   const openModelSettings = useCallback(() => {
     setWorkspaceSection("models");
-    setWorkspaceDialogOpen(true);
-  }, []);
+    handleWorkspaceOpenChange(true);
+  }, [handleWorkspaceOpenChange]);
 
   const sessionTabInteractions = useSessionTabInteractions({
     projectPath,
@@ -971,7 +970,7 @@ function App() {
     }}
     onThemeToggle={toggleTheme}
     onVariantChange={(value) => void handleVariantChange(value)}
-    onWorkspaceOpenChange={setWorkspaceDialogOpen}
+    onWorkspaceOpenChange={handleWorkspaceOpenChange}
     preferences={preferences}
     projectPath={projectPath}
     questionAnswers={questionAnswers}
