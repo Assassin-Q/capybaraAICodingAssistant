@@ -7,6 +7,7 @@ import { LanguageSettings } from "@/components/assistant/LanguageSettings";
 import { SessionTabSettings } from "@/components/assistant/SessionTabSettings";
 import type { LocalePreference } from "@/lib/i18n";
 import { OpenCodeRequirementNotice } from "@/components/assistant/OpenCodeRequirementNotice";
+import { OpenSourceAttribution } from "@/components/assistant/OpenSourceAttribution";
 import { UpdateNotice } from "@/components/assistant/UpdateNotice";
 import { ConfirmDialog } from "@/components/assistant/ConfirmDialog";
 import { SettingsMessage, useConfirm, useSettingsFeedback } from "@/components/assistant/settingsShared";
@@ -171,6 +172,8 @@ export function ConnectionSettings({ baseUrl, connected, language, nativeTitleAc
         <div className="mt-6 border-t border-border pt-6">
           <AppearanceSettings />
         </div>
+
+        <OpenSourceAttribution />
       </div>
 
       <ConfirmDialog

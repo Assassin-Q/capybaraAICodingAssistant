@@ -104,4 +104,10 @@ export const zhSystem = {
   "tabs.limitTitle": "会话标签已达到上限",
   "tabs.limitDescription": "请选择一个仅从顶部关闭的标签，再打开目标会话。关闭标签不会终止或删除会话，历史记录仍会保留。",
   "tabs.closeThisAndOpen": "关闭此标签并打开",
+
+  "opensource.title": "开源信息",
+  "opensource.description": "本插件以 MIT 许可证开源，欢迎查看源码、提交反馈或参与贡献。",
+  "opensource.project": "开源项目",
+  "opensource.author": "开源作者",
+  "opensource.license": "MIT License · GitHub 与 Gitee 同步维护",
 } as const;

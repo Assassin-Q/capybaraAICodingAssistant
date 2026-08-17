@@ -79,11 +79,13 @@ tasks {
             """
             <h3>3.0.0</h3>
             <ul>
-              <li>Full Chinese/English interface, following the IDE locale by default.</li>
-              <li>Approval modes are decided by the panel, so "full access" no longer prompts.</li>
-              <li>Verified against every IntelliJ release from 2023.2 to 2026.2.</li>
-              <li>Checks that OpenCode is installed and new enough, with install instructions.</li>
-              <li>Update detection, IDEA-backed file search, and a front-end log written beside idea.log.</li>
+              <li><b>全面重构：</b>以 OpenCode V2 API 和 AI Elements 对话交互重构插件界面，支持稳定的流式 Markdown、思考过程、工具调用、问答卡片、待办进度、上下文和 Token 用量。</li>
+              <li><b>原生 IDEA 体验：</b>新增工具窗原生会话标签、溢出导航、会话改名、仅关闭标签、代码/文件跳转、IDEA 原生 Diff，以及 AI 修改后文件树与编辑器刷新。</li>
+              <li><b>模型与配置：</b>更新供应商认证、模型、思考档位、自定义供应商、技能、插件、MCP 与记忆设置；设置和偏好可随 IDEA 工作区持久化。</li>
+              <li><b>安全审批：</b>输入框提供请求批准、替我审批、完全访问三种模式，分别控制文件访问、编辑、命令和联网操作。</li>
+              <li><b>IDE 桥接：</b>可选启用项目/编辑器上下文、诊断、符号、Run/Debug、控制台日志、Maven/Gradle 任务与水豚浏览器能力。</li>
+              <li><b>性能与可靠性：</b>修复重复发送、流式重绘闪动、思考占位残留、标签切换卡顿和长会话性能问题；敏感凭据只写入用户级 OpenCode 配置。</li>
+              <li><b>外观与本地化：</b>完整中英文界面、IDEA 主题实时跟随、手动明暗切换、响应式设置页与开源项目信息。</li>
             </ul>
             """.trimIndent()
         )
@@ -117,4 +119,3 @@ tasks {
         password.set(System.getenv("PRIVATE_KEY_PASSWORD"))
     }
 }
-

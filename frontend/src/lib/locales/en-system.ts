@@ -99,4 +99,10 @@ export const enSystem = {
   "tabs.limitTitle": "Conversation tab limit reached",
   "tabs.limitDescription": "Choose a tab to remove from the top bar, then open the requested conversation. This will not stop or delete it, and it remains in history.",
   "tabs.closeThisAndOpen": "Close this tab and open",
+
+  "opensource.title": "Open source",
+  "opensource.description": "This plugin is released under the MIT license. Browse the source, report issues or contribute improvements.",
+  "opensource.project": "Project",
+  "opensource.author": "Author",
+  "opensource.license": "MIT License · mirrored on GitHub and Gitee",
 } as const;

@@ -3,7 +3,55 @@
     <name>Capybara AI Coding Assistant</name>
     <vendor email="1270374419@qq.com" url="https://gitee.com/qianguanshui/capybaraAICodingAssistant">AI Coding Team</vendor>
     <description><![CDATA[
-        A compact IntelliJ IDEA coding assistant powered by a local OpenCode server.
+        <h2>Capybara AI Coding Assistant</h2>
+        <p>
+            An open-source AI coding assistant for IntelliJ IDEA, powered by the OpenCode V2 server.
+            It brings streaming conversations, IDE context, file operations, model configuration and
+            native IDEA workflows into one compact tool window.
+        </p>
+        <p>
+            基于 OpenCode V2 的开源 IntelliJ IDEA AI 编程助手。将流式对话、IDE 上下文、文件操作、模型配置和
+            IDEA 原生工作流集中到一个紧凑的工具窗口中。
+        </p>
+
+        <h3>Features</h3>
+        <ul>
+            <li><b>Streaming AI Chat</b> — real-time Markdown, reasoning, tool groups, questions, todos and context usage.</li>
+            <li><b>流式 AI 对话</b> — 实时 Markdown、思考过程、工具调用、问答卡片、任务清单和上下文用量展示。</li>
+            <li><b>OpenCode V2 Models</b> — configured providers, custom models, reasoning variants, multimodal models and usage details.</li>
+            <li><b>OpenCode V2 模型</b> — 供应商、自定义模型、思考档位、多模态能力和本轮 Token 用量管理。</li>
+            <li><b>IDEA Native Integration</b> — editor context, file and symbol navigation, native modal diffs, file refresh and save dialogs.</li>
+            <li><b>IDEA 原生集成</b> — 编辑器上下文、文件与符号跳转、原生 Diff、文件刷新和保存对话框。</li>
+            <li><b>Safe Approval Modes</b> — request approval, auto-approve or full access for file, command and network operations.</li>
+            <li><b>安全审批模式</b> — 对文件、命令和联网操作进行请求批准、替我审批或完全访问控制。</li>
+            <li><b>Skills, Plugins, MCP and Memory</b> — manage OpenCode capabilities from responsive settings pages.</li>
+            <li><b>Skills、插件、MCP 与记忆</b> — 在响应式设置页中管理 OpenCode 能力。</li>
+            <li><b>IDEA Session Tabs</b> — native conversation tabs with rename, overflow navigation and tab-only close.</li>
+            <li><b>IDEA 原生会话标签</b> — 支持改名、溢出导航和仅关闭标签，不会删除或终止会话。</li>
+        </ul>
+
+        <h3>Getting Started</h3>
+        <ol>
+            <li>Install OpenCode and start its local server.</li>
+            <li>Open the <b>Capybara AI Assistant</b> tool window from IntelliJ IDEA.</li>
+            <li>Configure a provider and model in <b>Settings → Models</b>, then start a conversation.</li>
+            <li>Use the IDEA context menu to explain selected code or attach files and folders to a prompt.</li>
+        </ol>
+        <p>
+            <b>Requirements:</b> IntelliJ IDEA 2023.2 or later and a locally available OpenCode V2 server.
+        </p>
+        <p>
+            <b>开源项目：</b>
+            <a href="https://gitee.com/qianguanshui/capybaraAICodingAssistant">Gitee</a>
+            · <a href="https://github.com/Assassin-Q/capybaraAICodingAssistant">GitHub</a>
+            · MIT License
+        </p>
+        <p>
+            <b>Keywords:</b>
+            Claude, Claude Code, Codex, OpenAI, OpenCode, Gemini, DeepSeek, Anthropic,
+            AI Coding, AI Coding Assistant, Code Generation, Code Review, Code Explanation,
+            Code Refactoring, IntelliJ IDEA, JetBrains, MCP, Skills, Agent, Local AI, Developer Tools
+        </p>
     ]]></description>
 
     <depends>com.intellij.modules.lang</depends>
