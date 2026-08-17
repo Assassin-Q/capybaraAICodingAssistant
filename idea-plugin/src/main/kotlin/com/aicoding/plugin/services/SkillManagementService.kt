@@ -453,10 +453,7 @@ class SkillManagementService(private val project: Project) {
         val root = targetRoot(request.scope)
         val target = root.resolve(directoryName).normalize()
         require(target.startsWith(root)) { "技能名称生成了无效目录" }
-        if (Files.exists(target)) {
-            require(request.overwrite) { "目标中已存在同名技能：$directoryName" }
-            deleteTree(target)
-        }
+        if (Files.exists(target)) require(request.overwrite) { "目标中已存在同名技能：$directoryName" }
 
         val response = httpClient.send(
             HttpRequest.newBuilder(URI.create("$DOWNLOAD_ENDPOINT?slug=${encode(coordinate)}"))
@@ -467,9 +464,20 @@ class SkillManagementService(private val project: Project) {
             HttpResponse.BodyHandlers.ofByteArray(),
         )
         require(response.statusCode() == 200) { "SkillHub 下载返回 HTTP ${response.statusCode()}" }
-        val entries = unzipInto(response.body(), target)
-        require(entries > 0) { "下载的技能包是空的" }
-        require(Files.exists(target.resolve("SKILL.md"))) { "下载的技能包中没有 SKILL.md" }
+        val archive = response.body()
+        require(archive.size <= MAX_ARCHIVE_BYTES) { "技能压缩包超过 ${MAX_ARCHIVE_BYTES / 1024 / 1024} MB 限制" }
+        val staging = Files.createTempDirectory(root, ".$directoryName.install-")
+        val entries = try {
+            val extracted = unzipInto(archive, staging)
+            require(extracted > 0) { "下载的技能包是空的" }
+            require(Files.exists(staging.resolve("SKILL.md"))) { "下载的技能包中没有 SKILL.md" }
+            if (Files.exists(target)) deleteTree(target)
+            Files.move(staging, target, StandardCopyOption.REPLACE_EXISTING)
+            extracted
+        } catch (error: Exception) {
+            runCatching { if (Files.exists(staging)) deleteTree(staging) }
+            throw error
+        }
         refreshFiles()
         SkillActionResponse(
             success = true,
@@ -480,26 +488,44 @@ class SkillManagementService(private val project: Project) {
 
     private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8)
 
-    /** Extracts a zip while rejecting entries that would escape the destination directory. */
+    /** Extracts a bounded zip while rejecting path traversal and decompression bombs. */
     private fun unzipInto(archive: ByteArray, target: Path): Int {
         Files.createDirectories(target)
-        var count = 0
+        var entryCount = 0
+        var fileCount = 0
+        var totalBytes = 0L
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         ZipInputStream(ByteArrayInputStream(archive)).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
+                entryCount += 1
+                require(entryCount <= MAX_ARCHIVE_ENTRIES) { "技能压缩包条目数量超过 $MAX_ARCHIVE_ENTRIES 个限制" }
                 val destination = target.resolve(entry.name).normalize()
                 require(destination.startsWith(target)) { "技能包中包含非法路径：${entry.name}" }
                 if (entry.isDirectory) {
                     Files.createDirectories(destination)
                 } else {
+                    fileCount += 1
                     Files.createDirectories(destination.parent)
-                    Files.newOutputStream(destination).use { output -> zip.copyTo(output) }
-                    count += 1
+                    var fileBytes = 0L
+                    Files.newOutputStream(destination).use { output ->
+                        while (true) {
+                            val read = zip.read(buffer)
+                            if (read < 0) break
+                            fileBytes += read
+                            totalBytes += read
+                            require(fileBytes <= MAX_ARCHIVE_FILE_BYTES) {
+                                "技能包中的 ${entry.name} 超过单文件大小限制"
+                            }
+                            require(totalBytes <= MAX_ARCHIVE_EXPANDED_BYTES) { "技能压缩包解压后超过总大小限制" }
+                            output.write(buffer, 0, read)
+                        }
+                    }
                 }
                 zip.closeEntry()
             }
         }
-        return count
+        return fileCount
     }
 
     private fun roots(): List<SkillRoot> = buildList {
@@ -614,5 +640,9 @@ class SkillManagementService(private val project: Project) {
         private const val SEARCH_ENDPOINT = "https://api.skillhub.cn/api/v1/search"
         private const val DOWNLOAD_ENDPOINT = "https://api.skillhub.cn/api/v1/download"
         private const val USER_AGENT = "capybara-idea-plugin"
+        private const val MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
+        private const val MAX_ARCHIVE_ENTRIES = 500
+        private const val MAX_ARCHIVE_FILE_BYTES = 10L * 1024 * 1024
+        private const val MAX_ARCHIVE_EXPANDED_BYTES = 50L * 1024 * 1024
     }
 }

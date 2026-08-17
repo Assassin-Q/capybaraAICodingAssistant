@@ -98,7 +98,7 @@ private class DotIcon(private val color: JBColor) : Icon {
  * The connection indicator; its icon reflects the cached service/update state.
  *
  * `update` is called on every toolbar refresh, so it may only read a cached value — the check
- * itself runs on its own schedule inside [PluginUpdateService]. `JBColor` gives each state a light
+ * itself is delayed and scheduled by the panel, then cached by [PluginUpdateService]. `JBColor` gives each state a light
  * and a dark variant, so the dot follows the IDE theme without a second set of icons.
  */
 private class StatusAction(private val project: Project) : AnAction() {
@@ -146,4 +146,3 @@ fun capybaraTitleActions(project: Project): List<AnAction> = listOf(
     ThemeAction(project),
     PanelAction(project, "refresh", "刷新", AllIcons.Actions.Refresh),
 )
-

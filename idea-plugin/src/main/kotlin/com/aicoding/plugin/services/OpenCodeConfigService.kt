@@ -96,32 +96,44 @@ class OpenCodeConfigService(private val project: Project) {
             message = "在 opencode.json / opencode.jsonc 中没有找到供应商 $providerID",
         )
 
-        val original = Files.readString(file)
-        val edited = removeProviderBlock(original, providerID)
-            ?: return ConfigEditResponse(false, "无法定位 $providerID 的配置块，请手动编辑 $file", file.toString())
-        val cleaned = removeFromDisabledProviders(edited, providerID)
+        AtomicFileIO.withLock(file) {
+            val original = Files.readString(file)
+            if (!containsProvider(original, providerID)) {
+                return@withLock ConfigEditResponse(false, "供应商 $providerID 已被其他操作删除", file.toString())
+            }
+            val edited = removeProviderBlock(original, providerID)
+                ?: return@withLock ConfigEditResponse(
+                    false,
+                    "无法定位 $providerID 的配置块，请手动编辑 $file",
+                    file.toString(),
+                )
+            val cleaned = removeFromDisabledProviders(edited, providerID)
+            val backup = file.resolveSibling("${file.fileName}.capybara.bak")
+            Files.copy(file, backup, StandardCopyOption.REPLACE_EXISTING)
+            AtomicFileIO.writeString(file, cleaned)
 
-        val backup = file.resolveSibling("${file.fileName}.capybara.bak")
-        Files.copy(file, backup, StandardCopyOption.REPLACE_EXISTING)
-        Files.writeString(file, cleaned)
+            // Verify the result still parses and no longer mentions the provider; restore if not.
+            val verified = runCatching {
+                val parsed = json.parseToJsonElement(stripComments(Files.readString(file))) as JsonObject
+                val providers = parsed["provider"] as? JsonObject
+                providers?.containsKey(providerID) != true
+            }.getOrDefault(false)
+            if (!verified) {
+                AtomicFileIO.writeString(file, Files.readString(backup))
+                return@withLock ConfigEditResponse(
+                    false,
+                    "删除后配置无法解析，已自动还原。请手动编辑 $file",
+                    file.toString(),
+                )
+            }
 
-        // Verify the result still parses and no longer mentions the provider; restore if not.
-        val verified = runCatching {
-            val parsed = json.parseToJsonElement(stripComments(Files.readString(file))) as JsonObject
-            val providers = parsed["provider"] as? JsonObject
-            providers?.containsKey(providerID) != true
-        }.getOrDefault(false)
-        if (!verified) {
-            Files.copy(backup, file, StandardCopyOption.REPLACE_EXISTING)
-            return ConfigEditResponse(false, "删除后配置无法解析，已自动还原。请手动编辑 $file", file.toString())
+            VirtualFileManager.getInstance().asyncRefresh(null)
+            ConfigEditResponse(
+                success = true,
+                message = "已从 ${file.fileName} 删除 $providerID，备份保存在 ${backup.fileName}。重启服务后生效。",
+                file = file.toString(),
+            )
         }
-
-        VirtualFileManager.getInstance().asyncRefresh(null)
-        ConfigEditResponse(
-            success = true,
-            message = "已从 ${file.fileName} 删除 $providerID，备份保存在 ${backup.fileName}。重启服务后生效。",
-            file = file.toString(),
-        )
     }.getOrElse {
         logger.info("Provider removal failed: ${it.message}")
         ConfigEditResponse(false, it.message ?: "删除供应商失败")
@@ -147,37 +159,46 @@ class OpenCodeConfigService(private val project: Project) {
         val file = projectCandidates().firstOrNull { Files.isRegularFile(it) }
             ?: return ConfigEditResponse(false, "项目里没有 opencode.json / opencode.jsonc，未改动任何配置")
 
-        val original = Files.readString(file)
-        runCatching { json.parseToJsonElement(stripComments(original)) as? JsonObject }.getOrNull()
-            ?: return ConfigEditResponse(false, "无法解析 $file，请检查语法", file.toString())
+        AtomicFileIO.withLock(file) {
+            val original = Files.readString(file)
+            runCatching { json.parseToJsonElement(stripComments(original)) as? JsonObject }.getOrNull()
+                ?: return@withLock ConfigEditResponse(false, "无法解析 $file，请检查语法", file.toString())
 
-        val updated = withPermissionBlock(original)
-        if (updated == original) {
-            return ConfigEditResponse(true, "配置已经是插件需要的审批设置。", file.toString())
+            val updated = withPermissionBlock(original)
+            if (updated == original) {
+                return@withLock ConfigEditResponse(true, "配置已经是插件需要的审批设置。", file.toString())
+            }
+
+            // Never clobber a sidecar from a crashed session — that one holds the user's real value.
+            val sidecar = sidecarOf(file)
+            if (!Files.isRegularFile(sidecar)) {
+                AtomicFileIO.writeString(
+                    sidecar,
+                    permissionSpan(original)?.let(original::substring) ?: ABSENT_MARKER,
+                )
+            }
+            AtomicFileIO.writeString(file, updated)
+
+            val verified = runCatching {
+                (json.parseToJsonElement(stripComments(Files.readString(file))) as JsonObject).containsKey("permission")
+            }.getOrDefault(false)
+            if (!verified) {
+                AtomicFileIO.writeString(file, original)
+                Files.deleteIfExists(sidecar)
+                return@withLock ConfigEditResponse(
+                    false,
+                    "写入后配置无法解析，已自动还原。请手动编辑 $file",
+                    file.toString(),
+                )
+            }
+
+            VirtualFileManager.getInstance().asyncRefresh(null)
+            ConfigEditResponse(
+                success = true,
+                message = "已接管 ${file.fileName} 的 permission 配置，关闭 IDEA 时自动还原原设置。",
+                file = file.toString(),
+            )
         }
-
-        // Never clobber a sidecar from a crashed session — that one holds the user's real value.
-        val sidecar = sidecarOf(file)
-        if (!Files.isRegularFile(sidecar)) {
-            Files.writeString(sidecar, permissionSpan(original)?.let(original::substring) ?: ABSENT_MARKER)
-        }
-        Files.writeString(file, updated)
-
-        val verified = runCatching {
-            (json.parseToJsonElement(stripComments(Files.readString(file))) as JsonObject).containsKey("permission")
-        }.getOrDefault(false)
-        if (!verified) {
-            Files.writeString(file, original)
-            Files.deleteIfExists(sidecar)
-            return ConfigEditResponse(false, "写入后配置无法解析，已自动还原。请手动编辑 $file", file.toString())
-        }
-
-        VirtualFileManager.getInstance().asyncRefresh(null)
-        ConfigEditResponse(
-            success = true,
-            message = "已接管 ${file.fileName} 的 permission 配置，关闭 IDEA 时自动还原原设置。",
-            file = file.toString(),
-        )
     }.getOrElse {
         logger.info("Permission override failed: ${it.message}")
         ConfigEditResponse(false, it.message ?: "写入审批配置失败")
@@ -193,18 +214,23 @@ class OpenCodeConfigService(private val project: Project) {
         val sidecar = sidecarOf(file)
         if (!Files.isRegularFile(sidecar)) return ConfigEditResponse(true, "没有备份，无需还原", file.toString())
 
-        val saved = Files.readString(sidecar)
-        val current = Files.readString(file)
-        val span = permissionSpan(current)
-        val restored = when {
-            span == null -> current
-            saved == ABSENT_MARKER -> current.removeRange(withTrailingComma(current, span))
-            else -> current.replaceRange(span, saved)
+        AtomicFileIO.withLock(file) {
+            if (!Files.isRegularFile(sidecar)) {
+                return@withLock ConfigEditResponse(true, "没有备份，无需还原", file.toString())
+            }
+            val saved = Files.readString(sidecar)
+            val current = Files.readString(file)
+            val span = permissionSpan(current)
+            val restored = when {
+                span == null -> current
+                saved == ABSENT_MARKER -> current.removeRange(withTrailingComma(current, span))
+                else -> current.replaceRange(span, saved)
+            }
+            AtomicFileIO.writeString(file, restored)
+            Files.deleteIfExists(sidecar)
+            VirtualFileManager.getInstance().asyncRefresh(null)
+            ConfigEditResponse(true, "已还原 ${file.fileName} 的 permission 设置", file.toString())
         }
-        Files.writeString(file, restored)
-        Files.deleteIfExists(sidecar)
-        VirtualFileManager.getInstance().asyncRefresh(null)
-        ConfigEditResponse(true, "已还原 ${file.fileName} 的 permission 设置", file.toString())
     }.getOrElse {
         logger.info("Permission restore failed: ${it.message}")
         ConfigEditResponse(false, it.message ?: "还原审批配置失败")
@@ -312,26 +338,24 @@ class OpenCodeConfigService(private val project: Project) {
             Files.isRegularFile(path) && containsProvider(Files.readString(path), providerID)
         } ?: providerCandidates().firstOrNull { Files.isRegularFile(it) }
             ?: createGlobalConfigFile()
-        val original = Files.readString(file)
-        val parsed = runCatching { json.parseToJsonElement(stripComments(original)) as? JsonObject }.getOrNull()
-            ?: return ConfigEditResponse(false, "无法解析 $file，请检查语法", file.toString())
-
-        val providers = (parsed["provider"] as? JsonObject)?.toMutableMap() ?: mutableMapOf()
         val entry = runCatching { json.parseToJsonElement(request.config) as? JsonObject }.getOrNull()
             ?: return ConfigEditResponse(false, "供应商配置不是合法的 JSON 对象", file.toString())
-        // V2 provider/model endpoints can know a custom provider while GET /config is rebuilding
-        // and returns an incomplete entry. Preserve fields omitted by that frontend snapshot (most
-        // importantly `models`) while replacing fields it explicitly sent. An explicit model
-        // deletion still works because that request includes the complete, reduced models object.
-        val previous = providers[providerID] as? JsonObject
-        providers[providerID] = mergeProviderConfig(previous, entry)
+        AtomicFileIO.withLock(file) {
+            val original = Files.readString(file)
+            val parsed = runCatching { json.parseToJsonElement(stripComments(original)) as? JsonObject }.getOrNull()
+                ?: return@withLock ConfigEditResponse(false, "无法解析 $file，请检查语法", file.toString())
 
-        writeTopLevelKey(
-            file = file,
-            original = original,
-            key = "provider",
-            rendered = json.encodeToString(JsonObject.serializer(), JsonObject(providers)),
-        ) { written -> (written["provider"] as? JsonObject)?.containsKey(providerID) == true }
+            val providers = (parsed["provider"] as? JsonObject)?.toMutableMap() ?: mutableMapOf()
+            // Preserve omitted fields while replacing fields explicitly sent by the settings page.
+            val previous = providers[providerID] as? JsonObject
+            providers[providerID] = mergeProviderConfig(previous, entry)
+            writeTopLevelKey(
+                file = file,
+                original = original,
+                key = "provider",
+                rendered = json.encodeToString(JsonObject.serializer(), JsonObject(providers)),
+            ) { written -> (written["provider"] as? JsonObject)?.containsKey(providerID) == true }
+        }
     }.getOrElse { error ->
         logger.info("Provider save failed: ${error.message}")
         ConfigEditResponse(false, error.message ?: "保存供应商失败")
@@ -355,17 +379,19 @@ class OpenCodeConfigService(private val project: Project) {
             Files.isRegularFile(path) && indexOfTopLevelKey(stripComments(Files.readString(path)), key) >= 0
         } ?: providerCandidates().firstOrNull { Files.isRegularFile(it) }
             ?: createGlobalConfigFile()
-        val original = Files.readString(file)
-        if (runCatching { json.parseToJsonElement(stripComments(original)) as? JsonObject }.getOrNull() == null) {
-            return ConfigEditResponse(false, "无法解析 $file，请检查语法", file.toString())
-        }
+        AtomicFileIO.withLock(file) {
+            val original = Files.readString(file)
+            if (runCatching { json.parseToJsonElement(stripComments(original)) as? JsonObject }.getOrNull() == null) {
+                return@withLock ConfigEditResponse(false, "无法解析 $file，请检查语法", file.toString())
+            }
 
-        writeTopLevelKey(
-            file = file,
-            original = original,
-            key = key,
-            rendered = json.encodeToString(JsonElement.serializer(), value),
-        ) { written -> written[key] == value }
+            writeTopLevelKey(
+                file = file,
+                original = original,
+                key = key,
+                rendered = json.encodeToString(JsonElement.serializer(), value),
+            ) { written -> written[key] == value }
+        }
     }.getOrElse { error ->
         logger.info("Config value save failed: ${error.message}")
         ConfigEditResponse(false, error.message ?: "保存配置失败")
@@ -396,12 +422,12 @@ class OpenCodeConfigService(private val project: Project) {
 
         val backup = file.resolveSibling("${file.fileName}.capybara.bak")
         Files.copy(file, backup, StandardCopyOption.REPLACE_EXISTING)
-        Files.writeString(file, updated)
+        AtomicFileIO.writeString(file, updated)
         val verified = runCatching {
             verify(json.parseToJsonElement(stripComments(Files.readString(file))) as JsonObject)
         }.getOrDefault(false)
         if (!verified) {
-            Files.copy(backup, file, StandardCopyOption.REPLACE_EXISTING)
+            AtomicFileIO.writeString(file, Files.readString(backup))
             return ConfigEditResponse(false, "写入后配置无法解析，已自动还原。请手动编辑 $file", file.toString())
         }
 
@@ -426,8 +452,11 @@ class OpenCodeConfigService(private val project: Project) {
 
     private fun createGlobalConfigFile(): Path {
         val file = providerCandidates().first()
-        Files.createDirectories(file.parent)
-        Files.writeString(file, "{\n  \"\$schema\": \"https://opencode.ai/config.json\"\n}\n")
+        AtomicFileIO.withLock(file) {
+            if (!Files.exists(file)) {
+                AtomicFileIO.writeString(file, "{\n  \"\$schema\": \"https://opencode.ai/config.json\"\n}\n")
+            }
+        }
         return file
     }
 

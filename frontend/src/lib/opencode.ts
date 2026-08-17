@@ -159,16 +159,40 @@ const responseError = async (response: Response): Promise<Error> => {
 const request = async <T>(
   path: string,
   init?: RequestInit,
-  params?: Record<string, QueryValue>
+  params?: Record<string, QueryValue>,
+  timeoutMs = 0,
 ): Promise<T> => {
-  const response = await fetch(buildUrl(path, params), {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
+  const controller = timeoutMs > 0 ? new AbortController() : undefined;
+  const externalSignal = init?.signal;
+  let timedOut = false;
+  const forwardAbort = () => controller?.abort(externalSignal?.reason);
+  if (controller && externalSignal) {
+    if (externalSignal.aborted) forwardAbort();
+    else externalSignal.addEventListener("abort", forwardAbort, { once: true });
+  }
+  const timeout = controller ? window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs) : undefined;
+
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path, params), {
+      ...init,
+      signal: controller?.signal ?? externalSignal,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...init?.headers,
+      },
+    });
+  } catch (error) {
+    if (timedOut) throw new Error(t("run.requestTimeout"));
+    throw error;
+  } finally {
+    if (timeout !== undefined) window.clearTimeout(timeout);
+    externalSignal?.removeEventListener("abort", forwardAbort);
+  }
   if (!response.ok) {
     throw await responseError(response);
   }
@@ -764,7 +788,7 @@ export const openCodeApi = {
         resume: true,
       }),
       method: "POST",
-    }, directoryParams(input.directory));
+    }, directoryParams(input.directory), 30_000);
     return messageID;
   },
 

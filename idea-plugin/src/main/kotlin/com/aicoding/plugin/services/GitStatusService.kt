@@ -16,7 +16,6 @@ import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import kotlinx.serialization.Serializable
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 @Serializable
 data class GitChangedFile(
@@ -243,21 +242,14 @@ class GitStatusService(private val project: Project) {
         trimOutput: Boolean = true,
     ): CommandResult {
         val directory = workingDirectory ?: return CommandResult(-1, "当前 IDEA 项目没有工作目录")
-        val process = ProcessBuilder(listOf("git") + arguments)
-            .directory(directory)
-            .redirectErrorStream(true)
-            .start()
-        val output = StringBuilder()
-        val reader = Thread {
-            process.inputStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
-                lines.forEach { output.appendLine(it) }
-            }
-        }.apply { isDaemon = true; start() }
-        val completed = process.waitFor(timeout, TimeUnit.MILLISECONDS)
-        if (!completed) process.destroyForcibly()
-        reader.join(2_000)
-        val text = output.toString()
-        return CommandResult(if (completed) process.exitValue() else -1, if (trimOutput) text.trim() else text)
+        val result = BoundedProcessRunner.run(
+            command = listOf("git") + arguments,
+            directory = directory,
+            timeoutMillis = timeout,
+            maxOutputBytes = 4 * 1024 * 1024,
+        )
+        val text = result.output.toString(Charsets.UTF_8)
+        return CommandResult(result.exitCode, if (trimOutput) text.trim() else text)
     }
 
     private data class CommandResult(val exitCode: Int, val output: String)

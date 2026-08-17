@@ -5,6 +5,7 @@ import com.aicoding.plugin.services.ApprovalHookErrorRequest
 import com.aicoding.plugin.services.ApprovalModeRequest
 import com.aicoding.plugin.services.ApprovalModeResponse
 import com.aicoding.plugin.services.ApprovalModeService
+import com.aicoding.plugin.services.AtomicFileIO
 import com.aicoding.plugin.services.BrowserControlRequest
 import com.aicoding.plugin.services.BrowserControlResponse
 import com.aicoding.plugin.services.BrowserControlService
@@ -80,6 +81,7 @@ import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.OutputStream
 import java.io.File
 import java.net.InetSocketAddress
@@ -87,6 +89,9 @@ import java.net.URLDecoder
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 @Serializable
 private data class ProjectPathResponse(val path: String?)
@@ -177,6 +182,8 @@ class HttpServerManager(
     private val openCodeConfigService = project.getService(OpenCodeConfigService::class.java)
     private val workspacePreferences = project.getService(WorkspacePreferencesService::class.java)
     private var branchWatcher: java.util.concurrent.ScheduledExecutorService? = null
+    private var refreshScheduler: java.util.concurrent.ScheduledExecutorService? = null
+    @Volatile private var pendingRefresh: ScheduledFuture<*>? = null
     private val sseClients = CopyOnWriteArrayList<OutputStream>()
     private var server: HttpServer? = null
     private var executor: ExecutorService? = null
@@ -255,18 +262,20 @@ class HttpServerManager(
         runCatching {
             val path = projectPath ?: return
             val file = registryFile()
-            file.parentFile?.mkdirs()
-            val current = runCatching {
-                (json.parseToJsonElement(file.readText()) as? kotlinx.serialization.json.JsonObject)
-                    ?.mapValues { it.value.toString().trim('"') }
-                    ?.toMutableMap()
-            }.getOrNull() ?: mutableMapOf()
-            if (register) current[path] = port.toString() else current.remove(path)
-            file.writeText(
-                current.entries.joinToString(",", "{", "}") { (key, value) ->
-                    "\"${key.replace("\\", "\\\\").replace("\"", "\\\"")}\":\"$value\""
-                }
-            )
+            AtomicFileIO.withLock(file.toPath()) {
+                val current = runCatching {
+                    (json.parseToJsonElement(file.readText()) as? kotlinx.serialization.json.JsonObject)
+                        ?.mapValues { it.value.jsonPrimitive.content }
+                        ?.toMutableMap()
+                }.getOrNull() ?: mutableMapOf()
+                if (register) current[path] = port.toString() else current.remove(path)
+                AtomicFileIO.writeString(
+                    file.toPath(),
+                    current.entries.joinToString(",", "{", "}") { (key, value) ->
+                        "\"${key.replace("\\", "\\\\").replace("\"", "\\\"")}\":\"$value\""
+                    },
+                )
+            }
         }
     }
 
@@ -279,6 +288,10 @@ class HttpServerManager(
         ideaDiffService.dispose()
         branchWatcher?.shutdownNow()
         branchWatcher = null
+        pendingRefresh?.cancel(false)
+        pendingRefresh = null
+        refreshScheduler?.shutdownNow()
+        refreshScheduler = null
         executionService.deactivateBridge()
         Disposer.dispose(executionService)
         sseClients.forEach { output ->
@@ -390,7 +403,14 @@ class HttpServerManager(
                     exchange.requestURI.path == "/api/memory/embedding/model" && exchange.requestMethod == "DELETE" ->
                         writeJson(exchange, 200, memoryEmbedding.deleteModel(queryParam(exchange, "id").orEmpty()))
                     exchange.requestURI.path == "/api/plugin-update" && exchange.requestMethod == "GET" ->
-                        writeJson(exchange, 200, PluginUpdateService.instance.statusForClient())
+                        writeJson(
+                            exchange,
+                            200,
+                            PluginUpdateService.instance.statusForClient(
+                                language = queryParam(exchange, "language").orEmpty(),
+                                force = queryParam(exchange, "force") == "true",
+                            ),
+                        )
                     exchange.requestURI.path == "/api/health" && exchange.requestMethod == "GET" ->
                         writeJson(exchange, 200, HealthResponse(true, port))
                     exchange.requestURI.path == "/api/server-info" && exchange.requestMethod == "GET" ->
@@ -408,7 +428,9 @@ class HttpServerManager(
                 }
             } catch (error: Exception) {
                 println("Frontend API request failed: ${error.message}")
-                writeResponse(exchange, 500, "Internal server error", "text/plain; charset=utf-8")
+                runCatching {
+                    writeResponse(exchange, 500, "Internal server error", "text/plain; charset=utf-8")
+                }
             }
         }
     }
@@ -449,7 +471,12 @@ class HttpServerManager(
                 return
             }
 
-            val requestPath = URLDecoder.decode(exchange.requestURI.path, Charsets.UTF_8)
+            val requestPath = try {
+                URLDecoder.decode(exchange.requestURI.path, Charsets.UTF_8)
+            } catch (_: IllegalArgumentException) {
+                writeResponse(exchange, 400, "Malformed URL encoding", "text/plain; charset=utf-8")
+                return
+            }
             val safePath = requestPath.takeUnless { it.contains("..") } ?: "/"
             val isSpaRoute = safePath == "/" ||
                 (!safePath.startsWith("/assets/") && !safePath.substringAfterLast('/').contains('.'))
@@ -527,12 +554,19 @@ class HttpServerManager(
     }
 
     private fun handleReload(exchange: HttpExchange) {
-        val refresh = Runnable {
-            VirtualFileManager.getInstance().syncRefresh()
-            ProjectView.getInstance(project).refresh()
+        val scheduler = refreshScheduler ?: synchronized(this) {
+            refreshScheduler ?: Executors.newSingleThreadScheduledExecutor { runnable ->
+                Thread(runnable, "Capybara VFS refresh").apply { isDaemon = true }
+            }.also { refreshScheduler = it }
         }
-        val application = ApplicationManager.getApplication()
-        if (application.isDispatchThread) refresh.run() else application.invokeAndWait(refresh)
+        pendingRefresh?.cancel(false)
+        pendingRefresh = scheduler.schedule({
+            VirtualFileManager.getInstance().asyncRefresh {
+                ApplicationManager.getApplication().invokeLater {
+                    if (!project.isDisposed) ProjectView.getInstance(project).refresh()
+                }
+            }
+        }, 150, TimeUnit.MILLISECONDS)
         writeJson(exchange, 200, ReloadResponse(true))
     }
 
@@ -621,6 +655,10 @@ class HttpServerManager(
 
     private fun handleDeleteMemory(exchange: HttpExchange) {
         val id = exchange.requestURI.path.substringAfterLast('/')
+        if (!id.matches(Regex("[A-Za-z0-9_-]+"))) {
+            writeResponse(exchange, 400, "Invalid memory ID", "text/plain; charset=utf-8")
+            return
+        }
         writeResponse(exchange, 200, memorySystem.deleteMemory(id), "application/json; charset=utf-8")
     }
 
@@ -700,6 +738,15 @@ class HttpServerManager(
                 // Reading a session's mode claims it for this project, which is how the bridge
                 // knows where to route its approvals and its IDEA system prompt.
                 writeJson(exchange, 200, ApprovalModeResponse(sessionID, approvalModeService.claim(sessionID)))
+            }
+            route == "" && method == "DELETE" -> {
+                val sessionID = queryParam(exchange, "sessionID").orEmpty()
+                approvalModeService.forget(sessionID)
+                broadcastSse(
+                    "approval.pending",
+                    responseJson.encodeToString(ApprovalPendingEvent(approvalModeService.pendingSessions())),
+                )
+                writeJson(exchange, 200, ApprovalPendingEvent(approvalModeService.pendingSessions()))
             }
             route == "" && method == "POST" -> {
                 val request = body<ApprovalModeRequest>(exchange)
@@ -880,7 +927,13 @@ class HttpServerManager(
     fun broadcastSse(eventType: String, data: String) {
         val task = Runnable { broadcastSseNow(eventType, data) }
         val broadcaster = sseExecutor
-        if (broadcaster == null) task.run() else broadcaster.execute(task)
+        if (broadcaster == null) task.run() else {
+            try {
+                broadcaster.execute(task)
+            } catch (_: RejectedExecutionException) {
+                // The panel is already disposing; there is no client left that needs this event.
+            }
+        }
     }
 
     private fun broadcastSseNow(eventType: String, data: String) {

@@ -121,7 +121,7 @@ export function useSessionDiffs({ messages, projectPath, runStatus, sessionID }:
       if (!cancelled && next) {
         setActiveDiffs((current) => sameDiffs(next, current) ? current : next);
       }
-      if (!cancelled) timer = window.setTimeout(poll, 700);
+      if (!cancelled) timer = window.setTimeout(poll, 1200);
     };
 
     void poll();

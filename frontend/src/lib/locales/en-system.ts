@@ -23,6 +23,7 @@ export const enSystem = {
   "memoryPlugin.nowledge-mem": "The OpenCode integration for Nowledge Mem.",
   "run.autoRetry": "Connection dropped. Retrying in {seconds}s (attempt {attempt} of {max}).",
   "run.cancelRetry": "Cancel retry",
+  "run.requestTimeout": "The request timed out. Check the OpenCode service and try again.",
   "connection.sections": "Connection settings sections",
 
   "todo.stoppedAt": "Stopped at step {current} of {total}",

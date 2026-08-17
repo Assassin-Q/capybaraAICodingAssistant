@@ -278,7 +278,15 @@ class MemoryEmbeddingService {
 
     fun deleteModel(modelId: String): MemoryEmbeddingResponse {
         if (downloading.get()) return MemoryEmbeddingResponse(false, status(), "embedding.error.downloadBusy")
-        val target = File(cacheDirectory(MemoryConfigFile.load()), modelId.trim())
+        val model = modelId.trim()
+        if (model.isEmpty() || CATALOG.none { it.id == model }) {
+            return MemoryEmbeddingResponse(false, status(), "embedding.error.notInstalled")
+        }
+        val cache = cacheDirectory(MemoryConfigFile.load()).canonicalFile
+        val target = File(cache, model).canonicalFile
+        if (target == cache || !target.toPath().startsWith(cache.toPath())) {
+            return MemoryEmbeddingResponse(false, status(), "embedding.error.notInstalled")
+        }
         if (!target.isDirectory) return MemoryEmbeddingResponse(false, status(), "embedding.error.notInstalled")
         val removed = runCatching { target.deleteRecursively() }.getOrDefault(false)
         return MemoryEmbeddingResponse(removed, status(), if (removed) "embedding.deleted" else "embedding.error.deleteFailed")

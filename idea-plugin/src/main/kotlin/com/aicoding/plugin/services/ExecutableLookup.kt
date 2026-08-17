@@ -1,7 +1,6 @@
 package com.aicoding.plugin.services
 
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 /**
  * Finds command-line tools on whichever platform the IDE is running on.
@@ -51,10 +50,9 @@ object ExecutableLookup {
     fun which(command: String): List<String> = if (isWindows) whereWindows(command) else whichUnix(command)
 
     private fun whereWindows(command: String): List<String> = runCatching {
-        val process = ProcessBuilder("where.exe", command).redirectErrorStream(true).start()
-        val lines = process.inputStream.bufferedReader().readLines()
-        process.waitFor(5, TimeUnit.SECONDS)
-        lines.map(String::trim).filter { it.isNotBlank() }
+        val result = BoundedProcessRunner.run(listOf("where.exe", command), timeoutMillis = 5_000, maxOutputBytes = 64 * 1024)
+        if (result.timedOut) emptyList()
+        else result.output.toString(Charsets.UTF_8).lineSequence().map(String::trim).filter { it.isNotBlank() }.toList()
     }.getOrDefault(emptyList())
 
     private fun whichUnix(command: String): List<String> {
@@ -73,13 +71,14 @@ object ExecutableLookup {
         listOf(listOf("-lic"), listOf("-lc"), listOf("-c")).forEach { flags ->
             if (found.isNotEmpty()) return@forEach
             runCatching {
-                val process = ProcessBuilder(listOf(shell) + flags + "command -v $command")
-                    .redirectErrorStream(true)
-                    .start()
-                val lines = process.inputStream.bufferedReader().readLines()
-                process.waitFor(8, TimeUnit.SECONDS)
+                val result = BoundedProcessRunner.run(
+                    listOf(shell) + flags + "command -v $command",
+                    timeoutMillis = 8_000,
+                    maxOutputBytes = 64 * 1024,
+                )
+                if (result.timedOut) return@runCatching
                 // Interactive shells print prompts and banners; only absolute paths are of interest.
-                lines.map(String::trim)
+                result.output.toString(Charsets.UTF_8).lineSequence().map(String::trim)
                     .filter { it.startsWith("/") && File(it).isFile }
                     .forEach(found::add)
             }

@@ -6,7 +6,6 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ex.ToolWindowEx
 import com.intellij.ui.content.ContentFactory
-import com.aicoding.plugin.services.PluginUpdateService
 import com.aicoding.plugin.ui.AICodingPanel
 import com.aicoding.plugin.ui.capybaraTitleActions
 import com.aicoding.plugin.ui.NativeSessionTabsController
@@ -44,8 +43,5 @@ class AICodingToolWindowFactory : ToolWindowFactory {
             )
             setTitleActions(capybaraTitleActions(project))
         }
-        // Warms the cache so the status dot is right the first time the toolbar draws, rather
-        // than starting grey and correcting itself a moment later.
-        PluginUpdateService.instance.status()
     }
 }

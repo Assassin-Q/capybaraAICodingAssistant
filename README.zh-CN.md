@@ -11,6 +11,7 @@
 🚀 **自由模型接入** × 🔧 **高度自定义** × ⚡ **极速开发体验**
 
 [![Gitee Stars](https://gitee.com/qianguanshui/capybaraAICodingAssistant/badge/star.svg?style=flat-square)](https://gitee.com/qianguanshui/capybaraAICodingAssistant)
+[![GitHub Stars](https://img.shields.io/github/stars/Assassin-Q/capybaraAICodingAssistant?style=flat-square)](https://github.com/Assassin-Q/capybaraAICodingAssistant)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Release](https://img.shields.io/badge/Release-3.0.1-green?style=flat-square)](https://gitee.com/qianguanshui/capybaraAICodingAssistant/releases)
 

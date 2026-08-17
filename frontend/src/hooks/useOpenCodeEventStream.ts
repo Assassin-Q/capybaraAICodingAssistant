@@ -77,7 +77,14 @@ export function useOpenCodeEventStream({
         if (event.id) {
           if (refs.seenEventIDs.current.has(event.id)) return;
           refs.seenEventIDs.current.add(event.id);
-          if (refs.seenEventIDs.current.size > 4000) refs.seenEventIDs.current.clear();
+          if (refs.seenEventIDs.current.size > 4000) {
+            const oldest = refs.seenEventIDs.current.values();
+            for (let index = 0; index < 1000; index += 1) {
+              const entry = oldest.next();
+              if (entry.done) break;
+              refs.seenEventIDs.current.delete(entry.value);
+            }
+          }
         }
         const type = normalizeEventType(event.type);
         const eventID = eventMessageID(event);

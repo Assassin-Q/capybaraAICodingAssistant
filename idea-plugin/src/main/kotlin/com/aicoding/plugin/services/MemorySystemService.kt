@@ -25,7 +25,6 @@ import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.URL
 import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
 
 @Serializable
 data class MemoryPluginInfo(
@@ -323,12 +322,12 @@ class MemorySystemService(
         items.size.toLong() to thisMonth.toLong()
     }.getOrDefault(0L to 0L)
 
+    @Synchronized
     fun scanEnvironments(sync: Boolean): MemoryActionResponse {
         return try {
             val manualEnvironments = loadEnvironments().filter { it.manual }
             val environments = mergeEnvironmentOverrides(buildEnvironmentIndex(), manualEnvironments)
-            environmentFile.parentFile?.mkdirs()
-            environmentFile.writeText(json.encodeToString(environments), Charsets.UTF_8)
+            AtomicFileIO.writeString(environmentFile.toPath(), json.encodeToString(environments))
             val content = environmentMemory(environments)
             val fingerprint = sha256(content)
             val current = loadState()
@@ -359,8 +358,7 @@ class MemorySystemService(
                     source = environment.source.trim().ifEmpty { "手动" },
                 )
             }.distinctBy { it.id }
-            environmentFile.parentFile?.mkdirs()
-            environmentFile.writeText(json.encodeToString(environments), Charsets.UTF_8)
+            AtomicFileIO.writeString(environmentFile.toPath(), json.encodeToString(environments))
             val content = environmentMemory(environments)
             val fingerprint = sha256(content)
             val current = loadState()
@@ -702,18 +700,16 @@ class MemorySystemService(
     }
 
     private fun where(command: String): List<String> = runCatching {
-        val child = ProcessBuilder("where.exe", command).redirectErrorStream(true).start()
-        child.inputStream.bufferedReader(Charsets.UTF_8).readLines()
-            .also { child.waitFor(3, TimeUnit.SECONDS) }
+        val result = BoundedProcessRunner.run(listOf("where.exe", command), timeoutMillis = 3_000, maxOutputBytes = 64 * 1024)
+        if (result.timedOut) emptyList() else result.output.toString(Charsets.UTF_8).lineSequence().toList()
             .map(String::trim)
             .filter { it.isNotEmpty() && File(it).exists() }
     }.getOrDefault(emptyList())
 
     private fun commandOutput(command: List<String>): String? = runCatching {
-        val child = ProcessBuilder(windowsCommand(command)).redirectErrorStream(true).start()
-        val output = child.inputStream.readBytes()
-        if (!child.waitFor(5, TimeUnit.SECONDS)) child.destroyForcibly()
-        decodeCommandOutput(output).lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.take(160)
+        val result = BoundedProcessRunner.run(windowsCommand(command), timeoutMillis = 5_000, maxOutputBytes = 256 * 1024)
+        if (result.timedOut) null
+        else decodeCommandOutput(result.output).lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.take(160)
     }.getOrNull()
 
     private fun decodeCommandOutput(output: ByteArray): String {
@@ -804,7 +800,10 @@ class MemorySystemService(
             val backup = File(configDirectory, "opencode-mem.jsonc.capybara.bak")
             if (!backup.exists()) memoryConfigFile.copyTo(backup)
         }
-        memoryConfigFile.writeText(json.encodeToString(JsonObject.serializer(), value), Charsets.UTF_8)
+        AtomicFileIO.writeString(
+            memoryConfigFile.toPath(),
+            json.encodeToString(JsonObject.serializer(), value),
+        )
     }
 
     private fun loadState(): MemoryLocalState = runCatching {
@@ -813,7 +812,7 @@ class MemorySystemService(
 
     private fun updateState(state: MemoryLocalState) {
         configDirectory.mkdirs()
-        stateFile.writeText(json.encodeToString(state), Charsets.UTF_8)
+        AtomicFileIO.writeString(stateFile.toPath(), json.encodeToString(state))
     }
 
     private fun loadEnvironments(): List<DevelopmentEnvironmentInfo> = runCatching {

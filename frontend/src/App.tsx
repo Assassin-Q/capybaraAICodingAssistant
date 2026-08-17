@@ -19,7 +19,7 @@ import type { ContextChip as ContextChipData } from "@/components/assistant/shar
 import { modelRefWithAvailableVariant, modelSupportsVariant } from "@/components/assistant/modelVariants";
 import { enabledMcpNames, selectableConfiguredModels } from "@/lib/configApply";
 import { sendDraftFirstPrompt } from "@/lib/draftFirstPrompt";
-import { ideaApi, type IdeContextEvent, type PanelAction, type UpdateStatus } from "@/lib/idea";
+import { ideaApi, type IdeContextEvent, type PanelAction } from "@/lib/idea";
 import {
   loadPersistedWorkspacePreferences,
   loadWorkspacePreferences,
@@ -31,6 +31,7 @@ import { AUTO_RETRY_MAX_ATTEMPTS } from "@/hooks/useAutoRetry";
 import { useBatchedOpenCodeEvents } from "@/hooks/useBatchedOpenCodeEvents";
 import { useInteractiveStatePolling } from "@/hooks/useInteractiveStatePolling";
 import { useIdeaTheme } from "@/hooks/useIdeaTheme";
+import { usePluginUpdateCheck } from "@/hooks/usePluginUpdateCheck";
 import { useSessionDiffs } from "@/hooks/useSessionDiffs";
 import { useModelVariantGuard } from "@/hooks/useModelVariantGuard";
 import { useOpenCodeEventStream } from "@/hooks/useOpenCodeEventStream";
@@ -71,6 +72,7 @@ const NATIVE_TITLE_ACTIONS = new URLSearchParams(window.location.search).get("na
 
 function App() {
   const { applyIdeaTheme, theme, toggleTheme } = useIdeaTheme();
+  const updateStatus = usePluginUpdateCheck();
   const [projectPath, setProjectPath] = useState<string>();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -87,8 +89,6 @@ function App() {
    * the run just looks stuck; the session list shows a 待批准 badge instead.
    */
   const [pendingApprovalSessionIDs, setPendingApprovalSessionIDs] = useState<string[]>([]);
-  /** Checked once per panel load; a newer release turns the header dot amber. */
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>();
   const [connected, setConnected] = useState<boolean | null>(null);
   const [booting, setBooting] = useState(true);
   const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
@@ -713,18 +713,6 @@ function App() {
     };
   }, [projectPath, runStatus, selectedSessionID, sessionRuntime.controller]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void ideaApi.getPluginUpdate()
-      .then((status) => {
-        if (!cancelled) setUpdateStatus(status);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const handleRefresh = useCallback(() => {
     if (projectPath) {
       void refreshWorkspace();
@@ -854,6 +842,7 @@ function App() {
     setError("");
     try {
       await openCodeApi.deleteSession(session.id, projectPath);
+      void ideaApi.forgetApprovalMode(session.id).catch(() => undefined);
        const nextSessions = sessions.filter((item) => item.id !== session.id);
        setSessions(nextSessions);
        const wasSelected = session.id === selectedSessionID;

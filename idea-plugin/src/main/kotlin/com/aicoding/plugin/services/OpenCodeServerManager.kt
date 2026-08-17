@@ -158,9 +158,9 @@ class OpenCodeServerManager(private val projectPath: String?) {
         } else {
             listOf("lsof", "-nP", "-iTCP:$port", "-sTCP:LISTEN", "-t")
         }
-        val process = ProcessBuilder(command).redirectErrorStream(true).start()
-        val output = process.inputStream.bufferedReader().readText()
-        process.waitFor(5, TimeUnit.SECONDS)
+        val result = BoundedProcessRunner.run(command, timeoutMillis = 5_000, maxOutputBytes = 256 * 1024)
+        if (result.timedOut) return@runCatching null
+        val output = result.output.toString(Charsets.UTF_8)
         if (windows) {
             output.lineSequence()
                 .filter { it.contains("LISTENING") && it.contains(":$port ") }
@@ -185,27 +185,16 @@ class OpenCodeServerManager(private val projectPath: String?) {
 
     fun runCli(args: List<String>, timeoutMillis: Long = 180_000L): OpenCodeCliResult {
         val executable = resolveExecutable()
-        val child = ProcessBuilder(buildCommand(executable, args))
-            .directory(projectPath?.let(::File))
-            .redirectErrorStream(true)
-            .start()
-        val output = StringBuilder()
-        val reader = Thread {
-            child.inputStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
-                lines.forEach { line -> output.appendLine(line) }
-            }
-        }.apply {
-            name = "capybara-opencode-cli"
-            isDaemon = true
-            start()
-        }
-        val completed = child.waitFor(timeoutMillis, TimeUnit.MILLISECONDS)
-        if (!completed) child.destroyForcibly()
-        reader.join(2_000L)
+        val result = BoundedProcessRunner.run(
+            command = buildCommand(executable, args),
+            directory = projectPath?.let(::File),
+            timeoutMillis = timeoutMillis,
+            maxOutputBytes = 4 * 1024 * 1024,
+        )
         return OpenCodeCliResult(
-            exitCode = if (completed) child.exitValue() else -1,
-            output = output.toString().trim(),
-            timedOut = !completed,
+            exitCode = result.exitCode,
+            output = result.output.toString(Charsets.UTF_8).trim(),
+            timedOut = result.timedOut,
         )
     }
 

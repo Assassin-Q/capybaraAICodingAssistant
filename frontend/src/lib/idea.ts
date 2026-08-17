@@ -423,7 +423,8 @@ export const ideaApi = {
     method: "POST",
   }),
 
-  getPluginUpdate: () => request<UpdateStatus>("/plugin-update"),
+  getPluginUpdate: (language: "zh" | "en", force = false) =>
+    request<UpdateStatus>(`/plugin-update?language=${language}&force=${force}`),
 
   /** Whether OpenCode is installed and new enough for the v2 session API this panel relies on. */
   openCodeRequirement: () => request<OpenCodeRequirement>("/ide/opencode-requirement"),
@@ -454,6 +455,11 @@ export const ideaApi = {
     request<{ sessionID: string; mode: string }>("/approval-mode", {
       body: JSON.stringify({ mode, sessionID }),
       method: "POST",
+    }),
+
+  forgetApprovalMode: (sessionID: string) =>
+    request<{ sessions: string[] }>(`/approval-mode?sessionID=${encodeURIComponent(sessionID)}`, {
+      method: "DELETE",
     }),
 
   /** Sessions currently blocked on an approval, across every session — not just the visible one. */

@@ -47,12 +47,18 @@ export const isRetryableRunError = (error?: string): boolean => {
   return RETRYABLE.some((pattern) => pattern.test(value));
 };
 
-/** Narrows to the assistant message that carries the failure; user messages have no error field. */
-const lastFailedAssistant = (messages: SessionMessage[]) =>
-  [...messages].reverse().find(
-    (message): message is Extract<SessionMessage, { type: "assistant" }> =>
-      message.type === "assistant" && Boolean(message.error)
+/**
+ * Only the terminal assistant result can trigger a retry.
+ *
+ * Searching the whole history for an error caused an older failed turn to replay the newest
+ * successful prompt. A newer assistant result is proof that the conversation has moved on.
+ */
+const lastFailedAssistant = (messages: SessionMessage[]) => {
+  const latest = [...messages].reverse().find(
+    (message): message is Extract<SessionMessage, { type: "assistant" }> => message.type === "assistant"
   );
+  return latest?.error ? latest : undefined;
+};
 
 interface UseAutoRetryInput {
   /**

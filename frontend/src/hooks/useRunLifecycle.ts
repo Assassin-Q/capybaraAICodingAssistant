@@ -168,9 +168,11 @@ export function useRunLifecycle({
       runtime.setRunStatus(selectedSessionID, "ready");
       if (runtime.refs.selectedSessionID.current === selectedSessionID) setError(errorMessage(interruptError));
     } finally {
+      runtime.setQueuePaused(selectedSessionID, false);
       stoppingRuns.current.delete(selectedSessionID);
+      onRunSettled?.(selectedSessionID);
     }
-  }, [clearStatusPolling, projectPath, refs, runtime, selectedSessionID, setError]);
+  }, [clearStatusPolling, onRunSettled, projectPath, refs, runtime, selectedSessionID, setError]);
 
   return { clearStatusPolling, finishRun, handleStop, pollSessionStatus };
 }

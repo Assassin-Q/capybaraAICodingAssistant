@@ -1,5 +1,30 @@
 # Capybara AI Coding Assistant V3 - Completion Audit
 
+## T19 - DeepSeek 审计修复、双源版本检查与 README 星标 `[x]`
+
+### Implementation record (2026-08-17)
+
+- `MemoryEmbeddingService.deleteModel` 仅允许删除内置目录中的已知模型，并通过 canonical path 校验阻止目录穿越。
+- `useAutoRetry` 只读取最新一条 assistant 结果，历史失败不会再重放后续已经成功的用户请求。
+- `opencode.request` 支持 `AbortController` 超时并让 `sendPrompt` 在 30 秒无响应后明确失败，不再永久挂起。
+- 新增 `BoundedProcessRunner`，环境探测、Git 状态和 OpenCode CLI 都会并发排空输出、限制输出大小，并在超时后终止子进程。
+- 新增 `AtomicFileIO`。OpenCode 配置的供应商/权限/普通键写入与多项目端口注册表均在 JVM 锁和跨进程文件锁内完成读改写，并通过同目录临时文件原子替换，避免并发覆盖或半截 JSON。
+- IDEA 文件刷新改为 150ms 合并的异步 VFS/Project View 刷新；API handler 的二次响应、非法 URL 编码和 SSE executor 关闭竞争也做了防护。
+- 停止当前运行后会解除队列暂停并继续 drain；SSE 去重集合只淘汰最旧事件，不再整表清空；会话 diff 轮询降为 1.2 秒并缓存相同快照结果。
+- 环境扫描与手工环境编辑使用同一同步边界并原子写入；SkillHub ZIP 增加压缩包、条目、单文件和总解压大小限制，并在 staging 目录校验成功后才替换现有技能。
+- 界面语言为中文时检查 Gitee Releases，英文时检查 GitHub Releases；面板加载 10 秒后首次检查，此后每 30 分钟检查一次，切换语言会切换发行源。
+- `README.md` 与 `README.zh-CN.md` 均同时展示 GitHub 和 Gitee 星标，两个镜像入口在任一语言文档中都可见。
+
+### Verification
+
+- `pnpm.cmd exec tsc --noEmit` passed.
+- `gradle ... compileKotlin` passed against IntelliJ IDEA 2023.2.4.
+- `pnpm.cmd build` passed.
+- `gradle ... buildPlugin` passed against `E:\\software\\IntelliJ IDEA 2023.2.4` using the in-process Kotlin compiler and one Gradle worker.
+- `git diff --check`, credential scan and source-file line-count checks passed.
+
+---
+
 ## T17 - OpenCode V2 model variants and native IDEA tab overflow [x]
 ### Implementation record (2026-08-14)
 

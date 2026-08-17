@@ -36,16 +36,29 @@ private data class GitResult(
     val stderr: String,
 )
 
+private data class CachedSnapshotDiff(
+    val key: String,
+    val createdAt: Long,
+    val value: List<OpenCodeSnapshotFileDiff>,
+)
+
 class OpenCodeSnapshotDiffService {
     private val hashPattern = Regex("^[0-9a-fA-F]{7,64}$")
     private val gitExecutable: String by lazy(::findGitExecutable)
     @Volatile private var cachedGitDirectory: File? = null
+    @Volatile private var cachedDiff: CachedSnapshotDiff? = null
 
     @Synchronized
     fun diff(request: OpenCodeSnapshotDiffRequest): List<OpenCodeSnapshotFileDiff> {
         require(hashPattern.matches(request.start)) { "Invalid OpenCode snapshot start hash" }
         require(hashPattern.matches(request.end)) { "Invalid OpenCode snapshot end hash" }
         if (request.start == request.end) return emptyList()
+        val cacheKey = buildString {
+            append(request.start).append(':').append(request.end).append(':')
+            request.files.map(::normalizePath).sorted().forEach { append(it).append('\u0000') }
+        }
+        cachedDiff?.takeIf { it.key == cacheKey && System.currentTimeMillis() - it.createdAt < CACHE_TTL_MS }
+            ?.let { return it.value }
 
         val gitDirectory = findSnapshotRepository(request.start, request.end)
         val requestedFiles = request.files.map(::normalizePath).filter(String::isNotBlank).toSet()
@@ -63,7 +76,7 @@ class OpenCodeSnapshotDiffService {
             statuses,
         ).filter { row -> requestedFiles.isEmpty() || normalizePath(row.file) in requestedFiles }
 
-        return rows.map { row ->
+        val result = rows.map { row ->
             val patch = if (row.binary) "" else runGit(
                 gitDirectory,
                 listOf(
@@ -86,6 +99,8 @@ class OpenCodeSnapshotDiffService {
                 status = row.status,
             )
         }
+        cachedDiff = CachedSnapshotDiff(cacheKey, System.currentTimeMillis(), result)
+        return result
     }
 
     private fun findSnapshotRepository(start: String, end: String): File {
@@ -213,7 +228,8 @@ class OpenCodeSnapshotDiffService {
         val stdoutFuture = CompletableFuture.supplyAsync { process.inputStream.readBytes() }
         val stderrFuture = CompletableFuture.supplyAsync { process.errorStream.readBytes() }
         if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
-            process.destroyForcibly()
+            process.destroy()
+            if (!process.waitFor(500, TimeUnit.MILLISECONDS)) process.destroyForcibly()
             error("Git command timed out")
         }
         val stdout = stdoutFuture.get(5, TimeUnit.SECONDS)
@@ -223,5 +239,9 @@ class OpenCodeSnapshotDiffService {
             stderr = String(stderr, StandardCharsets.UTF_8).trim(),
             stdout = String(stdout, StandardCharsets.UTF_8),
         )
+    }
+
+    private companion object {
+        const val CACHE_TTL_MS = 2_000L
     }
 }
