@@ -118,3 +118,7 @@ tasks {
         password.set(System.getenv("PRIVATE_KEY_PASSWORD"))
     }
 }
+
+tasks.named<org.jetbrains.intellij.tasks.DownloadZipSignerTask>("downloadZipSigner") {
+    version.set("0.1.43")
+}
