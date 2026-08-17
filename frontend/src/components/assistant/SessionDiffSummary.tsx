@@ -22,13 +22,15 @@ import { t } from "@/lib/i18n";
 
 const INITIAL_FILE_COUNT = 3;
 
-export function SessionDiffSummary({ diffs }: { diffs: SessionFileDiff[] }) {
+export function DiffFileList({
+  diffs,
+  initialFileCount = INITIAL_FILE_COUNT,
+}: {
+  diffs: SessionFileDiff[];
+  initialFileCount?: number;
+}) {
   const [showAll, setShowAll] = useState(false);
-  if (diffs.length === 0) return null;
-
-  const additions = diffs.reduce((total, diff) => total + diff.additions, 0);
-  const deletions = diffs.reduce((total, diff) => total + diff.deletions, 0);
-  const visibleDiffs = showAll ? diffs : diffs.slice(0, INITIAL_FILE_COUNT);
+  const visibleDiffs = showAll ? diffs : diffs.slice(0, initialFileCount);
   const hiddenCount = diffs.length - visibleDiffs.length;
   const openDiff = (diff: SessionFileDiff) => {
     if (!diff.file || !diff.patch) return;
@@ -38,6 +40,64 @@ export function SessionDiffSummary({ diffs }: { diffs: SessionFileDiff[] }) {
       title: t("s_df290a3a52", { p0: diff.file }),
     });
   };
+
+  return (
+    <CommitFiles className="space-y-0.5">
+      {visibleDiffs.map((diff, index) => {
+        const canOpen = Boolean(diff.file && diff.patch);
+        return (
+          <CommitFile
+            aria-label={canOpen ? t("s_f6bb61b30c", { p0: diff.file }) : undefined}
+            className={canOpen
+              ? "group/file cursor-pointer px-1.5 py-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              : "px-1.5 py-1.5"
+            }
+            key={`${diff.file ?? "file"}-${index}`}
+            onClick={() => openDiff(diff)}
+            onKeyDown={(event) => {
+              if (!canOpen || (event.key !== "Enter" && event.key !== " ")) return;
+              event.preventDefault();
+              openDiff(diff);
+            }}
+            role={canOpen ? "button" : undefined}
+            tabIndex={canOpen ? 0 : undefined}
+            title={canOpen ? t("s_282607a044") : undefined}
+          >
+            <CommitFileInfo>
+              <CommitFilePath className="font-sans text-xs text-muted-foreground" title={diff.file}>
+                {diff.file ?? t("s_9aba7b5e82")}
+              </CommitFilePath>
+            </CommitFileInfo>
+            <CommitFileChanges>
+              <CommitFileAdditions count={diff.additions} />
+              <CommitFileDeletions count={diff.deletions} />
+              {canOpen && (
+                <Columns3 className="ml-1 size-3.5 text-muted-foreground opacity-60 transition-opacity group-hover/file:opacity-100" />
+              )}
+            </CommitFileChanges>
+          </CommitFile>
+        );
+      })}
+      {diffs.length > initialFileCount && (
+        <Button
+          className="h-7 w-full justify-start gap-1.5 px-1.5 text-xs text-muted-foreground"
+          onClick={() => setShowAll((current) => !current)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          {showAll ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          {showAll ? t("diff.collapseFiles") : `${t("s_f64c528096")} ${hiddenCount} ${t("s_6218629ae2")}`}
+        </Button>
+      )}
+    </CommitFiles>
+  );
+}
+
+export function SessionDiffSummary({ diffs }: { diffs: SessionFileDiff[] }) {
+  if (diffs.length === 0) return null;
+  const additions = diffs.reduce((total, diff) => total + diff.additions, 0);
+  const deletions = diffs.reduce((total, diff) => total + diff.deletions, 0);
 
   return (
     <Commit className="mt-2 overflow-hidden rounded-md border border-border/35 bg-background/45 shadow-none" defaultOpen>
@@ -54,57 +114,7 @@ export function SessionDiffSummary({ diffs }: { diffs: SessionFileDiff[] }) {
         </CommitInfo>
       </div>
       <CommitContent className="border-border/30 px-1.5 py-1">
-        <CommitFiles className="space-y-0.5">
-          {visibleDiffs.map((diff, index) => {
-            const canOpen = Boolean(diff.file && diff.patch);
-            return (
-              <CommitFile
-                aria-label={canOpen ? t("s_f6bb61b30c", { p0: diff.file }) : undefined}
-                className={canOpen
-                  ? "group/file cursor-pointer px-1.5 py-1.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  : "px-1.5 py-1.5"
-                }
-                key={`${diff.file ?? "file"}-${index}`}
-                onClick={() => openDiff(diff)}
-                onKeyDown={(event) => {
-                  if (!canOpen || (event.key !== "Enter" && event.key !== " ")) return;
-                  event.preventDefault();
-                  openDiff(diff);
-                }}
-                role={canOpen ? "button" : undefined}
-                tabIndex={canOpen ? 0 : undefined}
-                title={canOpen ? t("s_282607a044") : undefined}
-              >
-                <CommitFileInfo>
-                  <CommitFilePath className="font-sans text-xs text-muted-foreground">
-                    {diff.file ?? t("s_9aba7b5e82")}
-                  </CommitFilePath>
-                </CommitFileInfo>
-                <CommitFileChanges>
-                  <CommitFileAdditions count={diff.additions} />
-                  <CommitFileDeletions count={diff.deletions} />
-                  {canOpen && (
-                    <Columns3 className="ml-1 size-3.5 text-muted-foreground opacity-60 transition-opacity group-hover/file:opacity-100" />
-                  )}
-                </CommitFileChanges>
-              </CommitFile>
-            );
-          })}
-          {/* Keyed on the total, not on how many are hidden: once expanded nothing is hidden, so
-              the old condition removed the control and left no way back to the short list. */}
-          {diffs.length > INITIAL_FILE_COUNT && (
-            <Button
-              className="h-7 w-full justify-start gap-1.5 px-1.5 text-xs text-muted-foreground"
-              onClick={() => setShowAll((current) => !current)}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              {showAll ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-              {showAll ? t("diff.collapseFiles") : `${t("s_f64c528096")} ${hiddenCount} ${t("s_6218629ae2")}`}
-            </Button>
-          )}
-        </CommitFiles>
+        <DiffFileList diffs={diffs} />
       </CommitContent>
     </Commit>
   );

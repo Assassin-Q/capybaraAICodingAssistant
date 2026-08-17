@@ -49,9 +49,17 @@ export type * from "@/lib/opencodeTypes";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:12001";
 
-let activeOpenCodeBaseUrl = (
-  import.meta.env.VITE_OPENCODE_BASE_URL || DEFAULT_BASE_URL
-).replace(/\/$/, "");
+const resolveBaseUrl = (baseUrl: string): string => {
+  try {
+    return new URL(baseUrl, window.location.origin).toString().replace(/\/$/, "");
+  } catch {
+    return DEFAULT_BASE_URL;
+  }
+};
+
+let activeOpenCodeBaseUrl = resolveBaseUrl(
+  import.meta.env.VITE_OPENCODE_BASE_URL || DEFAULT_BASE_URL,
+);
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -518,7 +526,7 @@ export const createOptimisticUserMessage = (
 });
 
 export const setOpenCodeBaseUrl = (baseUrl: string) => {
-  activeOpenCodeBaseUrl = baseUrl.replace(/\/$/, "");
+  activeOpenCodeBaseUrl = resolveBaseUrl(baseUrl);
 };
 
 export const getOpenCodeBaseUrl = () => activeOpenCodeBaseUrl;
@@ -541,9 +549,9 @@ export const openCodeApi = {
         return {
           ...legacy,
           ...model,
-          variants: Object.keys(model.variants ?? {}).length > 0
-            ? model.variants
-            : legacy?.variants,
+          // Runtime availability, including an explicitly empty variant set, belongs to V2
+          // `/api/model`; legacy levels may be stale and rejected by the session runner.
+          variants: model.variants,
         };
       })
       .filter((model) => model.enabled !== false && model.status !== "deprecated");
@@ -563,11 +571,21 @@ export const openCodeApi = {
   getConfig: (directory?: string) =>
     request<OpenCodeConfig>("/config", undefined, directoryParams(directory)),
 
-  updateConfig: (config: OpenCodeConfig, directory?: string) =>
-    request<OpenCodeConfig>("/config", {
+  /**
+   * Persist user-owned OpenCode settings in the global config directory.
+   *
+   * V2's instance-scoped `PATCH /config?directory=...` writes `config.json` into that workspace,
+   * which can leak provider credentials into a source repository. `/global/config` patches the
+   * user's `~/.config/opencode/opencode.json(c)` instead and invalidates running instances.
+   */
+  updateConfig: (config: OpenCodeConfig, _directory?: string) =>
+    request<OpenCodeConfig>("/global/config", {
       body: JSON.stringify(config),
       method: "PATCH",
-    }, directoryParams(directory)),
+    }),
+
+  disposeInstance: (directory?: string) =>
+    request<boolean>("/instance/dispose", { method: "POST" }, directoryParams(directory)),
 
   listSessions: async (directory?: string, search?: string): Promise<SessionInfo[]> => {
     const response = await request<unknown>("/api/session", undefined, {
@@ -655,11 +673,6 @@ export const openCodeApi = {
     };
   },
 
-  waitForSession: (sessionID: string, directory?: string) =>
-    request<void>(`/api/session/${encodeURIComponent(sessionID)}/wait`, {
-      method: "POST",
-    }, directoryParams(directory)),
-
   getSessionPermissionRules: async (sessionID: string, directory?: string): Promise<PermissionRule[]> => {
     const response = await request<unknown>(`/session/${encodeURIComponent(sessionID)}`, undefined, directoryParams(directory));
     return permissionRules(asRecord(unwrapData(response))?.permission);
@@ -706,24 +719,17 @@ export const openCodeApi = {
     }, directoryParams(directory)),
 
   /**
-   * Compacts the session — the same thing OpenCode's own `session.compact` binding does.
-   *
-   * `auto: false` marks it as user-requested rather than the automatic pass that fires when the
-   * context window fills up. The model is taken from the caller so the summary is not written by
-   * whatever default OpenCode would otherwise pick.
+   * The public V2 compact route is currently a documented 503 placeholder. OpenCode's own
+   * compatibility client uses this supported route until that mutation is implemented.
    */
-  compactSession: (
-    sessionID: string,
-    input: { directory?: string; modelID?: string; providerID?: string } = {}
-  ) =>
-    request<unknown>(`/session/${encodeURIComponent(sessionID)}/summarize`, {
+  compactSession: (sessionID: string, model: ModelRef, directory?: string) =>
+    request<boolean>(`/session/${encodeURIComponent(sessionID)}/summarize`, {
       body: JSON.stringify({
-        auto: false,
-        ...(input.providerID ? { providerID: input.providerID } : {}),
-        ...(input.modelID ? { modelID: input.modelID } : {}),
+        modelID: model.id,
+        providerID: model.providerID,
       }),
       method: "POST",
-    }, directoryParams(input.directory)),
+    }, directoryParams(directory)),
 
   /** Copies the session up to `messageID` into a new one, leaving the original untouched. */
   forkSession: async (sessionID: string, messageID: string, directory?: string): Promise<SessionInfo> => {
@@ -770,13 +776,14 @@ export const openCodeApi = {
     model: ModelRef,
     messageID: string,
     directory?: string
-  ) => openCodeApi.executeCommand(sessionID, "init", "", {
-    agent: undefined,
-    directory,
-    files: [],
-    messageID,
-    model,
-  }).then(() => undefined),
+  ) => request<boolean>(`/session/${encodeURIComponent(sessionID)}/init`, {
+    body: JSON.stringify({
+      messageID,
+      modelID: model.id,
+      providerID: model.providerID,
+    }),
+    method: "POST",
+  }, directoryParams(directory)),
 
   switchAgent: (sessionID: string, agent: string, directory?: string) =>
     request<void>(`/api/session/${encodeURIComponent(sessionID)}/agent`, {
@@ -790,22 +797,21 @@ export const openCodeApi = {
       method: "POST",
     }, directoryParams(directory)),
 
-  setProviderAuth: (providerID: string, key: string, directory?: string) =>
-    request<void>(`/api/integration/${encodeURIComponent(providerID)}/connect/key`, {
-      body: JSON.stringify({ key }),
-      method: "POST",
-    }, locationParams(directory)),
+  setProviderAuth: async (providerID: string, key: string, directory?: string) => {
+    await request<boolean>(`/auth/${encodeURIComponent(providerID)}`, {
+      body: JSON.stringify({ key, type: "api" }),
+      method: "PUT",
+    });
+    if (directory) {
+      await openCodeApi.disposeInstance(directory);
+    }
+  },
 
   removeProviderAuth: async (providerID: string, directory?: string) => {
-    const response = await request<unknown>(`/api/integration/${encodeURIComponent(providerID)}`, undefined, locationParams(directory));
-    const integration = asRecord(unwrapData<unknown>(response));
-    const credential = recordArray(integration?.connections).find((connection) =>
-      stringValue(connection.type) === "credential" && Boolean(stringValue(connection.id))
-    );
-    if (!credential) throw new Error(t("s_de519171f7"));
-    await request<void>(`/api/credential/${encodeURIComponent(stringValue(credential.id))}`, {
-      method: "DELETE",
-    }, locationParams(directory));
+    await request<boolean>(`/auth/${encodeURIComponent(providerID)}`, { method: "DELETE" });
+    if (directory) {
+      await openCodeApi.disposeInstance(directory);
+    }
   },
 
   listAgents: async (directory?: string): Promise<AgentInfo[]> => {

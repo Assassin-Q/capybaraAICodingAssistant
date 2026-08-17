@@ -6,84 +6,72 @@ import {
   groupConversationTurns,
   resolveStreamingAssistantState,
 } from "@/components/assistant/conversationTurns";
-import { contextToPromptInputFile, fileToEmbeddedTextAttachment, fileToPromptAttachment, isTextFile } from "@/components/assistant/promptPayload";
+import {
+  contextToPromptInputFile,
+  createAgentContext,
+  splitPromptContexts,
+  type PromptRequest,
+} from "@/components/assistant/promptPayload";
 import type { QueuedPrompt } from "@/components/assistant/PromptQueue";
 import { errorMessage, modelKey } from "@/components/assistant/shared";
-import type { ContextChip as ContextChipData, RunStatus } from "@/components/assistant/shared";
+import { reconcileSessionMessages } from "@/components/assistant/liveEvents";
+import type { ContextChip as ContextChipData } from "@/components/assistant/shared";
 import { modelRefWithAvailableVariant, modelSupportsVariant } from "@/components/assistant/modelVariants";
+import { enabledMcpNames } from "@/lib/configApply";
+import { sendDraftFirstPrompt } from "@/lib/draftFirstPrompt";
+import { ideaApi, type IdeContextEvent, type PanelAction, type UpdateStatus } from "@/lib/idea";
 import {
-  localSlashCommands,
-  mentionedSubagents,
-} from "@/components/assistant/appRuntime";
-import { ideaApi } from "@/lib/idea";
-import { loadWorkspacePreferences, saveWorkspacePreferences } from "@/lib/preferences";
-import { skillsApi } from "@/lib/ideaIntegrations";
-import { useRunLifecycle, type ActivePrompt } from "@/hooks/useRunLifecycle";
-import { AUTO_RETRY_MAX_ATTEMPTS, useAutoRetry } from "@/hooks/useAutoRetry";
+  loadPersistedWorkspacePreferences,
+  loadWorkspacePreferences,
+  saveWorkspacePreferences,
+} from "@/lib/preferences";
+import { loadDiskSkills } from "@/lib/ideaIntegrations";
+import { useRunLifecycle } from "@/hooks/useRunLifecycle";
+import { AUTO_RETRY_MAX_ATTEMPTS } from "@/hooks/useAutoRetry";
 import { useBatchedOpenCodeEvents } from "@/hooks/useBatchedOpenCodeEvents";
 import { useInteractiveStatePolling } from "@/hooks/useInteractiveStatePolling";
 import { useIdeaTheme } from "@/hooks/useIdeaTheme";
 import { useSessionDiffs } from "@/hooks/useSessionDiffs";
 import { useModelVariantGuard } from "@/hooks/useModelVariantGuard";
 import { useOpenCodeEventStream } from "@/hooks/useOpenCodeEventStream";
+import { useApprovalInteractions } from "@/hooks/useApprovalInteractions";
+import { usePromptSubmission } from "@/hooks/usePromptSubmission";
+import { useSessionCompaction } from "@/hooks/useSessionCompaction";
+import { useSessionTabs } from "@/hooks/useSessionTabs";
+import { useSessionTabInteractions } from "@/hooks/useSessionTabInteractions";
+import { useSessionComposerDrafts } from "@/hooks/useSessionComposerDrafts";
+import { useSessionDraftMaterialization } from "@/hooks/useSessionDraftMaterialization";
+import { useSessionPromptQueues } from "@/hooks/useSessionPromptQueues";
+import { useSessionRuntime } from "@/hooks/useSessionRuntime";
+import { useComposerAttachments } from "@/hooks/useComposerAttachments";
+import { useSessionAutoTitle } from "@/hooks/useSessionAutoTitle";
+import { useSessionSelectionSync } from "@/hooks/useSessionSelectionSync";
+import { useNativeSessionTabsBridge } from "@/hooks/useNativeSessionTabsBridge";
 import {
   createMessageID,
-  createOptimisticUserMessage,
   openCodeApi,
   setOpenCodeBaseUrl,
 } from "@/lib/opencode";
-import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import type {
   AgentInfo,
   CommandInfo,
   ModelInfo,
-  PermissionReply,
-  PermissionRequest,
-  PromptAttachment,
-  QuestionRequest,
   SessionInfo,
-  SessionMessage,
   SkillInfo,
-  TodoInfo,
 } from "@/lib/opencode";
 import type { WorkspacePreferences } from "@/lib/preferences";
-import { appendTextAttachments } from "@/lib/textAttachments";
 import { restoreActiveRun } from "@/components/assistant/runRestoration";
 import { getContextUsage } from "@/lib/tokenUsage";
-import { checkForUpdate, type UpdateStatus } from "@/lib/updateCheck";
-import { approvalModeAllows, type ApprovalMode } from "@/lib/approvalMode";
-import { buildProfessionalRoleInstructions } from "@/lib/professionalRoles";
-import { describeImagesForTextModel, modelAcceptsImages, partitionByModality } from "@/lib/visionFallback";
-import { t } from "@/lib/i18n";
-/**
- * The skills the composer offers come from disk, not from OpenCode's live registry.
- *
- * The registry only holds what OpenCode's own scan picked up, so whether a skill could be used at
- * all depended on that scan and on restarting the service. The settings page already lists every
- * SKILL.md it can find, and selecting one now attaches that file — what is listed is exactly what
- * can be used.
- */
-const loadDiskSkills = async (): Promise<SkillInfo[]> => {
-  const managed = await skillsApi.list().catch(() => []);
-  return managed
-    .filter((skill) => skill.enabled)
-    .map((skill) => ({
-      content: "",
-      description: skill.description,
-      location: skill.location,
-      name: skill.name,
-      slash: false,
-    }));
-};
+import type { ApprovalMode } from "@/lib/approvalMode";
+import { resolveLocale, setLocale, t } from "@/lib/i18n";
 
-interface QuestionAnswers { [requestID: string]: string[][]; }
+/** IDEA appends this flag to its JCEF URL; standalone web previews keep the React toolbar. */
+const NATIVE_TITLE_ACTIONS = new URLSearchParams(window.location.search).get("nativeTitleActions") === "1";
 
 function App() {
   const { applyIdeaTheme, theme, toggleTheme } = useIdeaTheme();
   const [projectPath, setProjectPath] = useState<string>();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
-  const [selectedSessionID, setSelectedSessionID] = useState("");
-  const [messages, setMessages] = useState<SessionMessage[]>([]);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [commands, setCommands] = useState<CommandInfo[]>([]);
@@ -93,39 +81,11 @@ function App() {
   const [selectedAgentID, setSelectedAgentID] = useState("");
   const [selectedVariant, setSelectedVariant] = useState<string>();
   const [approvalMode, setApprovalMode] = useState<ApprovalMode>("ask");
-  const [permissions, setPermissionsState] = useState<PermissionRequest[]>([]);
-  /**
-   * Keeps the previous array when the pending set is unchanged. Polling replaced it with a fresh
-   * array every second, and that new identity rebuilt the conversation footer — which is what made
-   * the approval card flicker while it was waiting for an answer.
-   */
-  /**
-   * Set below, once projectPath and the reply helper exist. Every path that surfaces a permission
-   * funnels through this setter, so filtering here is what guarantees no auto-allowed request can
-   * reach the UI by some route that forgot to check.
-   */
-  const autoAnswerRef = useRef<((requests: PermissionRequest[]) => PermissionRequest[]) | undefined>(undefined);
-  const setPermissions = useCallback((next: PermissionRequest[] | ((current: PermissionRequest[]) => PermissionRequest[])) => {
-    setPermissionsState((current) => {
-      const raw = typeof next === "function" ? next(current) : next;
-      const value = autoAnswerRef.current ? autoAnswerRef.current(raw) : raw;
-      const same = value.length === current.length
-        && value.every((item, index) => item.id === current[index]?.id);
-      return same ? current : value;
-    });
-  }, []);
-  const [questions, setQuestions] = useState<QuestionRequest[]>([]);
   /**
    * Sessions whose run is blocked on an approval. Switching away hides the card, so without this
    * the run just looks stuck; the session list shows a 待批准 badge instead.
    */
   const [pendingApprovalSessionIDs, setPendingApprovalSessionIDs] = useState<string[]>([]);
-  const [todos, setTodos] = useState<TodoInfo[]>([]);
-  const [questionAnswers, setQuestionAnswers] = useState<QuestionAnswers>({});
-  const [contexts, setContexts] = useState<ContextChipData[]>([]);
-  const [runStatus, setRunStatus] = useState<RunStatus>("ready");
-  /** Driven by session.status, so the automatic compaction pass shows up as well as a manual one. */
-  const [compacting, setCompacting] = useState(false);
   /** Checked once per panel load; a newer release turns the header dot amber. */
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>();
   const [connected, setConnected] = useState<boolean | null>(null);
@@ -134,49 +94,89 @@ function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
+  const [gitOpenRequest, setGitOpenRequest] = useState(0);
   const [workspaceSection, setWorkspaceSection] = useState<WorkspaceSectionID>("connection");
-  const [composerText, setComposerText] = useState("");
-  /** A command picked from the / menu, shown as a chip and applied when the message is sent. */
-  const [pendingCommand, setPendingCommand] = useState<string>();
-  /** True while a vision model is turning attached images into text. */
-  const [visionBusy, setVisionBusy] = useState(false);
-  /** The session whose run this panel started; the retry only applies to that one. */
-  const [runOwnerSessionID, setRunOwnerSessionID] = useState<string>();
   /**
    * Attachments removed from a request because the model could not read them, kept per message so
    * the bubble still shows what the user attached. The server copy has no record of them.
    */
-  const [droppedAttachments, setDroppedAttachments] = useState<Record<string, PromptAttachment[]>>({});
-  const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
-  const [editingQueuedPrompt, setEditingQueuedPrompt] = useState<QueuedPrompt>();
-  const [streamingAssistantID, setStreamingAssistantID] = useState<string>();
   const [preferences, setPreferences] = useState<WorkspacePreferences>(() => loadWorkspacePreferences());
+  // Multi-session tabs belong to the IDEA tool-window chrome. A standalone browser keeps the
+  // existing single-session header and switches conversations from history instead of duplicating
+  // an IDE-style tab strip inside the web page.
+  const sessionTabSettings = NATIVE_TITLE_ACTIONS
+    ? preferences.sessionTabs
+    : { ...preferences.sessionTabs, enabled: false };
+  const sessionTabs = useSessionTabs({ projectPath, sessions, settings: sessionTabSettings });
+  const composerDrafts = useSessionComposerDrafts(
+    sessionTabs.activeTabID,
+    sessionTabs.tabs.map((tab) => tab.id),
+  );
+  const composerText = composerDrafts.text;
+  const contexts = composerDrafts.contexts;
+  const pendingCommand = composerDrafts.command;
+  const setComposerText = composerDrafts.setText;
+  const setContexts = composerDrafts.setContexts;
+  const setPendingCommand = composerDrafts.setCommand;
+  const selectedSessionID = sessionTabs.activeTab?.sessionID ?? "";
+  const selectedSessionIDRef = useRef(selectedSessionID);
+  const sessionRuntime = useSessionRuntime(selectedSessionID, selectedSessionIDRef);
+  const { compacting, messages, runStatus, streamingAssistantID, todos } = sessionRuntime.current;
+  const promptQueues = useSessionPromptQueues(
+    selectedSessionID || sessionTabs.activeTabID,
+    sessionTabs.tabs.map((tab) => tab.sessionID ?? tab.id),
+  );
+  const queuedPrompts = promptQueues.items;
+  const editingQueuedPrompt = promptQueues.editing;
   const [editingSessionTitle, setEditingSessionTitle] = useState(false);
   const [sessionTitleDraft, setSessionTitleDraft] = useState("");
   const [deletingSessionID, setDeletingSessionID] = useState("");
   const [error, setError] = useState("");
   const refreshTimer = useRef<number>();
   const refreshInFlight = useRef(false);
-  const submitting = useRef(false);
-  const lastSubmittedPrompt = useRef<{ fingerprint: string; sentAt: number }>();
-  const activePrompt = useRef<ActivePrompt>();
   const seenEventIDs = useRef(new Set<string>());
   const suppressedStreamingSessionIDs = useRef(new Set<string>());
   const cancelledPromptIDs = useRef(new Set<string>());
-  const activeAssistantMessageIDs = useRef(new Set<string>());
-  const activePromptHasActivity = useRef(false);
-  const drainingQueue = useRef(false);
-  const queueDrainPaused = useRef(false);
-  const promptGeneration = useRef(0);
-  const selectedSessionIDRef = useRef(selectedSessionID);
-  /** The last prompt sent, so a transient failure can be replayed without the user retyping it. */
-  const replayablePrompt = useRef<{ payload: Parameters<typeof openCodeApi.sendPrompt>[1]; sessionID: string }>();
+  const panelActionHandler = useRef<(action: PanelAction) => void>(() => undefined);
+  const dispatchPanelAction = useCallback((action: PanelAction) => panelActionHandler.current(action), []);
   const refreshWorkspaceRef = useRef<(includeMessages?: boolean) => Promise<void>>();
+  const handledIdeaContextIDs = useRef(new Set<string>());
+  const setContextsRef = useRef(setContexts);
+  setContextsRef.current = setContexts;
+  const explainContextHandler = useRef<(context: ContextChipData) => Promise<boolean>>(
+    () => Promise.resolve(false)
+  );
+  /** Prevents the new empty session fetch from replacing its first optimistic user message. */
+  const skipNextSessionLoad = useRef("");
+  const drainQueueRef = useRef<(sessionID: string) => void>(() => undefined);
+  const handleRunSettled = useCallback((sessionID: string) => {
+    void drainQueueRef.current(sessionID);
+    // OpenCode names a new conversation after its first answer, so the title only exists once the
+    // run is over. Nothing else re-read the list, leaving the tab on its placeholder name.
+    void refreshWorkspaceRef.current?.(false);
+  }, []);
+
+  const {
+    handlePermissionReply,
+    handleQuestionChange,
+    handleQuestionReject,
+    handleQuestionReply,
+    permissions,
+    questionAnswers,
+    questions,
+    setPermissions,
+    setQuestions,
+    syncQuestionAnswers,
+  } = useApprovalInteractions({
+    approvalMode,
+    projectPath,
+    runStatus,
+    selectedSessionID,
+    setError,
+    setPendingApprovalSessionIDs,
+  });
 
   const eventStreamRefs = useMemo(() => ({
-    activeAssistantMessageIDs,
-    activePrompt,
-    activePromptHasActivity,
     cancelledPromptIDs,
     refreshTimer,
     seenEventIDs,
@@ -185,39 +185,43 @@ function App() {
   }), []);
 
   const lifecycleRefs = useMemo(() => ({
-    activeAssistantMessageIDs,
-    activePrompt,
-    activePromptHasActivity,
     cancelledPromptIDs,
-    promptGeneration,
-    queueDrainPaused,
-    selectedSessionIDRef,
     suppressedStreamingSessionIDs,
-  }), [
-    activeAssistantMessageIDs,
-    activePrompt,
-    activePromptHasActivity,
-    cancelledPromptIDs,
-    promptGeneration,
-    queueDrainPaused,
-    selectedSessionIDRef,
-    suppressedStreamingSessionIDs,
-  ]);
+  }), []);
 
   const { clearStatusPolling, finishRun, handleStop, pollSessionStatus } = useRunLifecycle({
+    onRunSettled: handleRunSettled,
     projectPath,
     refs: lifecycleRefs,
+    runtime: sessionRuntime.controller,
     selectedSessionID,
     setError,
-    setMessages,
-    setRunStatus,
-    setStreamingAssistantID,
   });
-  const { clearPendingOpenCodeEvents, enqueueOpenCodeEvent, flushOpenCodeEvents } = useBatchedOpenCodeEvents(setMessages);
+  const { clearPendingOpenCodeEvents, enqueueOpenCodeEvent, flushOpenCodeEvents } = useBatchedOpenCodeEvents(
+    sessionRuntime.controller.setMessages,
+  );
 
   useEffect(() => {
     selectedSessionIDRef.current = selectedSessionID;
   }, [selectedSessionID]);
+
+  const handleIdeaContext = useCallback((event: IdeContextEvent) => {
+    if (handledIdeaContextIDs.current.has(event.id)) return;
+    handledIdeaContextIDs.current.add(event.id);
+    if (handledIdeaContextIDs.current.size > 1000) handledIdeaContextIDs.current.clear();
+    const context = { ...event, addedAt: Date.now() };
+    const attach = () => setContextsRef.current((current) => [
+      ...current.filter((item) => item.id !== context.id),
+      context,
+    ]);
+    if (event.action !== "explain_code") {
+      attach();
+      return;
+    }
+    void explainContextHandler.current(context)
+      .then((accepted) => { if (!accepted) attach(); })
+      .catch(attach);
+  }, []);
 
   const currentSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionID),
@@ -238,29 +242,34 @@ function App() {
   );
   const isGenerating = runStatus === "submitted" || runStatus === "streaming";
   const ensureSelectedModelVariant = useModelVariantGuard({ model: selectedModel, projectPath, selectedSessionID, selectedVariant, setError, setSelectedVariant, setSessions });
-  const diffsByMessageID = useSessionDiffs({ messages, projectPath, runStatus, sessionID: selectedSessionID });
-
-  const syncQuestionAnswers = useCallback((requests: QuestionRequest[]) => {
-    setQuestionAnswers((current) => {
-      const next = { ...current };
-      requests.forEach((request) => {
-        next[request.id] ??= request.questions.map(() => []);
-      });
-      return next;
-    });
-  }, []);
+  const { activeDiffs, diffsByMessageID } = useSessionDiffs({
+    messages,
+    projectPath,
+    runStatus,
+    sessionID: selectedSessionID,
+  });
+  const compactSession = useSessionCompaction({
+    projectPath,
+    runtime: sessionRuntime.controller,
+    selectedModel: selectedModel
+      ? modelRefWithAvailableVariant(selectedModel, selectedVariant)
+      : currentSession?.model,
+    selectedSessionID,
+    setError,
+  });
 
   const loadMessages = useCallback(async (sessionID: string, directory?: string) => {
     const nextMessages = await openCodeApi.getMessages(sessionID, directory);
-    setMessages(nextMessages);
+    sessionRuntime.controller.setMessages(sessionID, (current) => reconcileSessionMessages(current, nextMessages));
+    sessionRuntime.controller.setMessagesLoaded(sessionID, true);
     return nextMessages;
-  }, []);
+  }, [sessionRuntime.controller]);
 
   const loadTodos = useCallback(async (sessionID: string, directory?: string) => {
     const nextTodos = await openCodeApi.getTodos(sessionID, directory);
-    setTodos(nextTodos);
+    sessionRuntime.controller.setTodos(sessionID, nextTodos);
     return nextTodos;
-  }, []);
+  }, [sessionRuntime.controller]);
 
   const loadPending = useCallback(async (sessionID: string) => {
     // Both registries are read because a request lands in exactly one of them and neither list
@@ -272,7 +281,10 @@ function App() {
     ]);
     const nextPermissions = [...scoped, ...global.filter((item) => item.sessionID === sessionID)]
       .filter((item, index, all) => all.findIndex((other) => other.id === item.id) === index);
-    setPermissions(nextPermissions);
+    setPermissions((current) => [
+      ...current.filter((request) => request.sessionID !== sessionID),
+      ...nextPermissions,
+    ]);
     setPendingApprovalSessionIDs((current) => {
       const others = current.filter((id) => id !== sessionID);
       return nextPermissions.length > 0 ? [...others, sessionID] : others;
@@ -280,17 +292,26 @@ function App() {
     if (nextPermissions.length === 0) {
       void ideaApi.setPendingApproval(sessionID, false).catch(() => undefined);
     }
-    setQuestions(nextQuestions);
+    setQuestions((current) => [
+      ...current.filter((request) => request.sessionID !== sessionID),
+      ...nextQuestions,
+    ]);
     syncQuestionAnswers(nextQuestions);
     return { permissions: nextPermissions, questions: nextQuestions };
-  }, [projectPath, syncQuestionAnswers]);
+  }, [projectPath, setPermissions, setQuestions, syncQuestionAnswers]);
 
   useInteractiveStatePolling({
-    enabled: isGenerating,
+    enabled: Boolean(projectPath),
     loadPending,
     loadTodos,
     projectPath,
-    sessionID: selectedSessionID,
+    runtime: sessionRuntime.controller,
+    sessionIDs: useMemo(
+      () => sessionTabs.tabs
+        .map((tab) => tab.sessionID)
+        .filter((id): id is string => Boolean(id)),
+      [sessionTabs.tabs],
+    ),
   });
 
   useEffect(() => {
@@ -305,33 +326,25 @@ function App() {
     refreshInFlight.current = true;
     setRefreshing(true);
     try {
-      const [nextModels, nextAgents, nextSessions, nextCommands, nextSkills, nextConfig] = await Promise.all([
+      const [nextModels, nextAgents, nextSessions, nextCommands, nextSkills, nextMcpNames] = await Promise.all([
         openCodeApi.listModels(projectPath),
         openCodeApi.listAgents(projectPath),
         openCodeApi.listSessions(projectPath),
         openCodeApi.listCommands(projectPath),
         loadDiskSkills(),
-        openCodeApi.getConfig(projectPath),
+        enabledMcpNames(),
       ]);
       const sessionID = selectedSessionID && nextSessions.some((session) => session.id === selectedSessionID)
         ? selectedSessionID
-        : nextSessions[0]?.id ?? "";
+        : "";
       setModels(nextModels);
       setAgents(nextAgents);
       setCommands(nextCommands);
-      setMcpNames(Object.entries(nextConfig.mcp ?? {})
-        .filter(([, config]) => config.enabled !== false)
-        .map(([name]) => name));
+      setMcpNames(nextMcpNames);
       setSkills(nextSkills);
       setSessions(nextSessions);
-      setSelectedSessionID(sessionID);
-      if (sessionID && includeMessages) {
-        await loadMessages(sessionID, projectPath);
-      } else if (!sessionID) {
-        setMessages([]);
-      }
+      if (sessionID && includeMessages) await loadMessages(sessionID, projectPath);
       if (sessionID) await loadPending(sessionID);
-      else { setPermissions([]); setQuestions([]); }
       setConnected(true);
     } catch (refreshError) {
       setError(errorMessage(refreshError));
@@ -355,34 +368,17 @@ function App() {
     }, 220);
   }, []);
 
-  const createSession = useCallback(async () => {
+  const createSession = useCallback(() => {
     if (!projectPath) return;
-    try {
-      setError("");
-      const model = selectedModel ? modelRefWithAvailableVariant(selectedModel, selectedVariant) : undefined;
-      const session = await openCodeApi.createSession(projectPath, model, selectedAgentID || undefined);
-      // Enforcement lives in the plugin, not in OpenCode: PATCH /session accepts `permission`,
-      // returns 200 and discards it (verified on 1.18.12). The bridge's `permission.ask` hook
-      // reads the mode back from /api/approval-mode instead.
-      await ideaApi.setApprovalMode(session.id, approvalMode);
-      setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
-      setSelectedSessionID(session.id);
-      setMessages([]);
-      setPermissions([]);
-      setQuestions([]);
-      setTodos([]);
-      setQuestionAnswers({});
-      setQueuedPrompts([]);
-      setEditingQueuedPrompt(undefined);
-      queueDrainPaused.current = false;
-      setRunStatus("ready");
-      setStreamingAssistantID(undefined);
-      suppressedStreamingSessionIDs.current.delete(session.id);
+    const result = sessionTabs.openDraft();
+    if (result.status !== "opened") {
       setSessionDialogOpen(false);
-    } catch (createError) {
-      setError(errorMessage(createError));
+      return;
     }
-  }, [approvalMode, projectPath, selectedAgentID, selectedModel, selectedVariant]);
+    setSessionDialogOpen(false);
+    setEditingSessionTitle(false);
+    setError("");
+  }, [projectPath, sessionTabs]);
 
   useEffect(() => {
     let cancelled = false;
@@ -411,14 +407,15 @@ function App() {
         if (!directory) throw new Error(t("s_82c867faaa"));
         if (runtime.error) throw new Error(runtime.error);
 
-        const [health, nextModels, nextAgents, initialSessions, nextCommands, nextSkills, nextConfig] = await Promise.all([
+        const [health, nextModels, nextAgents, initialSessions, nextCommands, nextSkills, nextMcpNames, nextPreferences] = await Promise.all([
           openCodeApi.health(),
           openCodeApi.listModels(directory),
           openCodeApi.listAgents(directory),
           openCodeApi.listSessions(directory),
           openCodeApi.listCommands(directory),
           loadDiskSkills(),
-          openCodeApi.getConfig(directory),
+          enabledMcpNames(),
+          loadPersistedWorkspacePreferences(directory),
         ]);
         if (cancelled) return;
 
@@ -426,15 +423,7 @@ function App() {
           .filter((model) => model.enabled !== false && model.status !== "deprecated")
           .sort((left, right) => left.name.localeCompare(right.name))[0];
         const defaultAgent = nextAgents.find((agent) => agent.mode === "primary" && !agent.hidden)?.id ?? "";
-        let nextSessions = initialSessions;
-        if (nextSessions.length === 0) {
-          const session = await openCodeApi.createSession(
-            directory,
-            firstModel ? { id: firstModel.id, providerID: firstModel.providerID } : undefined,
-            defaultAgent || undefined
-          );
-          nextSessions = [session];
-        }
+        const nextSessions = initialSessions;
         if (cancelled) return;
 
         const initialSession = nextSessions[0];
@@ -443,11 +432,11 @@ function App() {
         setModels(nextModels);
         setAgents(nextAgents);
         setCommands(nextCommands);
-        setMcpNames(Object.keys(nextConfig.mcp ?? {}));
+        setMcpNames(nextMcpNames);
         setSkills(nextSkills);
-        setPreferences(loadWorkspacePreferences(directory));
+        setPreferences(nextPreferences);
+        setLocale(resolveLocale(nextPreferences.language));
         setSessions(nextSessions);
-        setSelectedSessionID(initialSession?.id ?? "");
         setSelectedModelKey(initialSession?.model ? modelKey(initialSession.model) : firstModel ? modelKey(firstModel) : "");
         setSelectedVariant(initialSession?.model?.variant);
         setSelectedAgentID(initialSession?.agent ?? defaultAgent);
@@ -468,12 +457,20 @@ function App() {
 
   useEffect(() => {
     if (!selectedSessionID || !projectPath) return;
-    clearPendingOpenCodeEvents();
+    if (skipNextSessionLoad.current === selectedSessionID) {
+      skipNextSessionLoad.current = "";
+      return;
+    }
+    clearPendingOpenCodeEvents(selectedSessionID);
     let cancelled = false;
     const loadSelectedSession = async () => {
       try {
-        const [nextMessages, pending, nextTodos, status, nextApprovalMode] = await Promise.all([
-          openCodeApi.getMessages(selectedSessionID, projectPath),
+        const cachedRuntime = sessionRuntime.controller.get(selectedSessionID);
+        const cachedMessages = cachedRuntime.messagesLoaded ? cachedRuntime.messages : undefined;
+        const [nextMessages, , nextTodos, status, nextApprovalMode] = await Promise.all([
+          cachedMessages
+            ? Promise.resolve(undefined)
+            : openCodeApi.getMessages(selectedSessionID, projectPath),
           loadPending(selectedSessionID),
           openCodeApi.getTodos(selectedSessionID, projectPath),
           openCodeApi.getSessionStatus(selectedSessionID, projectPath),
@@ -485,39 +482,38 @@ function App() {
             .catch(() => "ask" as ApprovalMode),
         ]);
         if (cancelled) return;
-        if (activePrompt.current?.sessionID !== selectedSessionID) {
-          activePrompt.current = undefined;
-          activeAssistantMessageIDs.current.clear();
-          activePromptHasActivity.current = false;
-          clearStatusPolling();
+        const runtime = sessionRuntime.controller.get(selectedSessionID);
+        if (nextMessages) {
+          sessionRuntime.controller.setMessages(
+            selectedSessionID,
+            (current) => reconcileSessionMessages(current, nextMessages),
+          );
+          sessionRuntime.controller.setMessagesLoaded(selectedSessionID, true);
         }
-        setMessages(nextMessages);
-        setPermissions(pending.permissions);
-        setQuestions(pending.questions);
-        setTodos(nextTodos);
+        sessionRuntime.controller.setTodos(selectedSessionID, nextTodos);
         setApprovalMode(nextApprovalMode);
         const busy = status.type === "busy";
-        setRunStatus(busy ? "streaming" : "ready");
+        sessionRuntime.controller.setRunStatus(selectedSessionID, busy ? "streaming" : "ready");
         if (busy) {
-          const currentPrompt = activePrompt.current;
-          if (currentPrompt?.sessionID === selectedSessionID) {
+          const currentPrompt = runtime.activePrompt;
+          if (currentPrompt) {
             pollSessionStatus(selectedSessionID, currentPrompt.generation);
           } else {
-            const generation = ++promptGeneration.current;
-            const restored = restoreActiveRun(nextMessages, selectedSessionID, generation);
-            activePrompt.current = restored.prompt;
-            activeAssistantMessageIDs.current.clear();
-            restored.assistantIDs.forEach((messageID) => activeAssistantMessageIDs.current.add(messageID));
-            activePromptHasActivity.current = restored.hasActivity;
-            setStreamingAssistantID(restored.streamingAssistantID);
+            const generation = ++runtime.generation;
+            const restored = restoreActiveRun(nextMessages ?? cachedMessages ?? [], selectedSessionID, generation);
+            runtime.activePrompt = restored.prompt;
+            runtime.assistantMessageIDs.clear();
+            restored.assistantIDs.forEach((messageID) => runtime.assistantMessageIDs.add(messageID));
+            runtime.hasActivity = restored.hasActivity;
+            sessionRuntime.controller.setStreamingAssistantID(selectedSessionID, restored.streamingAssistantID);
             pollSessionStatus(selectedSessionID, generation);
           }
         } else {
-          if (activePrompt.current?.sessionID === selectedSessionID) activePrompt.current = undefined;
-          activeAssistantMessageIDs.current.clear();
-          activePromptHasActivity.current = false;
-          setStreamingAssistantID(undefined);
-          clearStatusPolling();
+          runtime.activePrompt = undefined;
+          runtime.assistantMessageIDs.clear();
+          runtime.hasActivity = false;
+          sessionRuntime.controller.setStreamingAssistantID(selectedSessionID, undefined);
+          clearStatusPolling(selectedSessionID);
         }
       } catch (loadError) {
         if (!cancelled) setError(errorMessage(loadError));
@@ -527,19 +523,31 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [clearPendingOpenCodeEvents, clearStatusPolling, loadPending, pollSessionStatus, projectPath, selectedSessionID]);
+  }, [clearPendingOpenCodeEvents, clearStatusPolling, loadPending, pollSessionStatus, projectPath, selectedSessionID, sessionRuntime.controller]);
 
-  useEffect(() => {
-    if (!currentSession) return;
-    if (currentSession.model) {
-      setSelectedModelKey(modelKey(currentSession.model));
-      setSelectedVariant(currentSession.model.variant);
-    }
-    if (currentSession.agent) setSelectedAgentID(currentSession.agent);
-  }, [currentSession]);
+  useSessionAutoTitle({ messages, projectPath, session: currentSession, setSessions });
+
+  useSessionSelectionSync({
+    isDraft: sessionTabs.activeTab?.kind === "draft",
+    messages,
+    session: currentSession,
+    setSelectedAgentID,
+    setSelectedModelKey,
+    setSelectedVariant,
+  });
+
+  useNativeSessionTabsBridge({
+    activeTabID: sessionTabs.activeTabID,
+    enabled: NATIVE_TITLE_ACTIONS,
+    multiTab: sessionTabSettings.enabled,
+    sessions,
+    tabs: sessionTabs.tabs,
+  });
 
   useOpenCodeEventStream({
     applyIdeaTheme,
+    onIdeaContext: handleIdeaContext,
+    onPanelAction: dispatchPanelAction,
     onPendingApprovals: setPendingApprovalSessionIDs,
     enqueueOpenCodeEvent,
     finishRun,
@@ -548,407 +556,137 @@ function App() {
     loadTodos,
     projectPath,
     refs: eventStreamRefs,
+    runtime: sessionRuntime.controller,
     scheduleRefresh,
-    setCompacting,
     setConnected,
     setContexts,
     setError,
     setQuestions,
-    setRunStatus,
-    setStreamingAssistantID,
-    setTodos,
     syncQuestionAnswers,
   });
 
-  const sendPromptNow = useCallback(async ({ text, files }: PromptInputMessage): Promise<boolean> => {
-    if (!selectedSessionID || !projectPath) return false;
-    if (submitting.current || activePrompt.current?.sessionID === selectedSessionID) return false;
-    const typedText = text.trim();
-    if (!typedText && files.length === 0) return false;
-
-    const fingerprint = `${selectedSessionID}\n${typedText}\n${files.map((file) => `${file.filename ?? file.file.name}:${file.mediaType ?? file.file.type}:${file.url ?? ""}`).join("\n")}`;
-    const existingPrompt = activePrompt.current;
-    if (existingPrompt?.sessionID === selectedSessionID && existingPrompt.fingerprint === fingerprint) {
-      return false;
-    }
-    const last = lastSubmittedPrompt.current;
-    if (last?.fingerprint === fingerprint && Date.now() - last.sentAt < 1200) {
-      return false;
-    }
-
-    submitting.current = true;
-    suppressedStreamingSessionIDs.current.delete(selectedSessionID);
-    const generation = ++promptGeneration.current;
-    activeAssistantMessageIDs.current.clear();
-    activePromptHasActivity.current = false;
-    setStreamingAssistantID(undefined);
-    try {
-      setError("");
-      setRunStatus("submitted");
-      const preparedFiles = await Promise.all(files.map(async (file) => {
-        const name = file.filename ?? file.file.name;
-        const textFile = isTextFile(file.file);
-        return {
-          attachment: await fileToPromptAttachment(file.file, name),
-          textAttachment: textFile ? await fileToEmbeddedTextAttachment(file.file, name) : undefined,
-        };
-      }));
-      const attachments = preparedFiles.map((file) => file.attachment);
-      const textAttachments = preparedFiles
-        .map((file) => file.textAttachment)
-        .filter((file) => file !== undefined);
-      const transportAttachments = preparedFiles
-        .filter((file) => !file.textAttachment)
-        .map((file) => file.attachment);
-      const fullPrompt = appendTextAttachments(text, textAttachments);
-      const enabledSkillNames = skills
-        .map((skill) => skill.name)
-        .filter((name) => !preferences.disabledSkillNames.includes(name));
-      const professionalInstructions = buildProfessionalRoleInstructions(
-        preferences.professionalRoles,
-        enabledSkillNames,
-        mcpNames
-      );
-      const roleInstructions = [
-        preferences.persona.enabled ? preferences.persona.instructions : "",
-        professionalInstructions ?? "",
-      ].filter(Boolean).join("\n\n");
-      const model = await ensureSelectedModelVariant();
-      const messageID = createMessageID();
-      cancelledPromptIDs.current.delete(messageID);
-      activePrompt.current = { fingerprint, generation, messageID, sessionID: selectedSessionID, startedAt: Date.now() };
-      lastSubmittedPrompt.current = { fingerprint, sentAt: Date.now() };
-      const commandText = typedText.startsWith("$") ? `/${typedText.slice(1)}` : typedText;
-      if (commandText.startsWith("/")) {
-        const commandMatch = /^\/([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/.exec(commandText);
-        const commandName = commandMatch?.[1] ?? "";
-        const argumentsText = commandMatch?.[2]?.trim() ?? "";
-        const serverCommand = commands.find((command) => command.name === commandName);
-        const isAllowedServerCommand = serverCommand?.source === "mcp"
-          || serverCommand?.source === "skill"
-          || commandName.startsWith("mcp");
-        const isKnownCommand = localSlashCommands.has(commandName) || isAllowedServerCommand;
-        if (!isKnownCommand) throw new Error(t("s_6d47b4acb1", { p0: commandName }));
-        if (typedText.startsWith("$") && preferences.disabledSkillNames.includes(commandName)) {
-          throw new Error(t("s_969b5ede07", { p0: commandName }));
-        }
-        setMessages((current) => [...current, createOptimisticUserMessage(messageID, commandText, attachments)]);
-        setContexts([]);
-        if (commandName === "init") {
-          if (!model) throw new Error(t("s_1d719e37e8"));
-          await openCodeApi.initSession(selectedSessionID, model, messageID, projectPath);
-        } else if (commandName === "mcp") {
-          const [mcpName, ...mcpPrompt] = argumentsText.split(/\s+/).filter(Boolean);
-          if (!mcpName || !mcpNames.includes(mcpName)) throw new Error(t("s_5a92734105"));
-          await openCodeApi.sendPrompt(selectedSessionID, {
-            agents: mentionedSubagents(text, agents).map((name) => ({ name })),
-            directory: projectPath,
-            files: transportAttachments,
-            messageID,
-            personaInstructions: roleInstructions || undefined,
-            text: t("s_8a9ea72c55", { p0: mcpName, p1: appendTextAttachments(mcpPrompt.join(" "), textAttachments) }),
-          });
-        } else {
-          const result = await openCodeApi.executeCommand(
-            selectedSessionID,
-            commandName,
-            appendTextAttachments(argumentsText, textAttachments),
-            {
-              agent: selectedAgentID || undefined,
-              directory: projectPath,
-              files: transportAttachments,
-              messageID,
-              model,
-            }
-          );
-          if (result.message) {
-            setMessages((current) => {
-              const next = current.filter((message) => message.id !== result.message?.id);
-              return [...next, result.message as SessionMessage].sort(
-                (left, right) => (left.time?.created ?? 0) - (right.time?.created ?? 0)
-              );
-            });
-          }
-        }
-        setComposerText("");
-        setRunStatus("streaming");
-        pollSessionStatus(selectedSessionID, generation);
-        return true;
-      }
-
-      setMessages((current) => [
-        ...current.filter((message) => message.id !== messageID),
-        createOptimisticUserMessage(messageID, text, attachments),
-      ]);
-      /**
-       * Images are converted to text when the conversation model cannot read them.
-       *
-       * A text-only model is either handed an attachment it rejects outright or, on some relays,
-       * one that is silently dropped — and the second is worse, because the screenshot still shows
-       * up in the transcript and the answer simply ignores it. A vision model describes them first
-       * and only the description travels on. With no vision model configured nothing changes: the
-       * images are sent as they were, and any failure stays visible rather than being papered over.
-       */
-      let outgoingFiles = transportAttachments;
-      let outgoingText = fullPrompt;
-      const visionModel = preferences.visionModel;
-      if (visionModel && !modelAcceptsImages(selectedModel) && transportAttachments.some((file) => file.mime.startsWith("image/"))) {
-        setVisionBusy(true);
-        try {
-          const described = await describeImagesForTextModel({
-            attachments: transportAttachments,
-            projectPath,
-            visionModel: { id: visionModel.modelID, providerID: visionModel.providerID },
-          });
-          outgoingFiles = described.attachments;
-          outgoingText = `${fullPrompt}${described.text}`;
-        } catch (visionError) {
-          setError(errorMessage(visionError));
-        } finally {
-          setVisionBusy(false);
-        }
-      }
-
-      /**
-       * Anything the model still cannot read is dropped from the request.
-       *
-       * A provider handed an undeclared modality either rejects the whole call or drops the part
-       * and answers as if nothing was attached — the second being worse, because the attachment is
-       * visible in the transcript and the answer quietly ignores it. The bubble keeps showing what
-       * the user attached (see `droppedAttachments`), so nothing disappears from their view; only
-       * the request is kept clean, with one line naming what was left out.
-       */
-      const partitioned = partitionByModality(outgoingFiles, selectedModel);
-      outgoingFiles = partitioned.sendable;
-      if (partitioned.unsupported.length > 0) {
-        const names = partitioned.unsupported
-          .map((file, index) => file.name ?? t("s_15ff0a654b", { p0: index + 1 }))
-          .join("、");
-        outgoingText = `${outgoingText}\n\n${t("attachment.dropped", { model: selectedModel?.name ?? "", names })}`;
-        setDroppedAttachments((current) => ({ ...current, [messageID]: partitioned.unsupported }));
-      }
-
-      const payload = {
-        agent: selectedAgentID || undefined,
-        agents: mentionedSubagents(text, agents).map((name) => ({ name })),
-        directory: projectPath,
-        files: outgoingFiles,
-        messageID,
-        model,
-        personaInstructions: roleInstructions || undefined,
-        text: outgoingText,
-      };
-      // Kept verbatim so an automatic retry replays exactly what was sent, attachments included.
-      // Rebuilding it from the rendered history would lose them: the transport attachments are
-      // browser File objects that only exist on the way in.
-      replayablePrompt.current = { payload, sessionID: selectedSessionID };
-      setRunOwnerSessionID(selectedSessionID);
-      await openCodeApi.sendPrompt(selectedSessionID, payload);
-      setRunStatus("streaming");
-      pollSessionStatus(selectedSessionID, generation);
-      return true;
-    } catch (sendError) {
-      if (activePrompt.current?.generation === generation) activePrompt.current = undefined;
-      setRunStatus("error");
-      setError(errorMessage(sendError));
-      throw sendError;
-    } finally {
-      submitting.current = false;
-    }
-  }, [agents, commands, ensureSelectedModelVariant, mcpNames, pollSessionStatus, preferences, projectPath, selectedAgentID, selectedModel, selectedSessionID, skills]);
-
-  /**
-   * Replays the failed prompt under its original message id.
-   *
-   * Reusing the id is what keeps the history honest: OpenCode treats a repeated id as the same
-   * user message rather than appending a duplicate, so five attempts leave one prompt in the
-   * transcript instead of five.
-   */
-  const replayPrompt = useCallback(async (): Promise<boolean> => {
-    const replay = replayablePrompt.current;
-    if (!replay || !projectPath || replay.sessionID !== selectedSessionID) return false;
-    if (submitting.current || activePrompt.current?.sessionID === selectedSessionID) return false;
-    submitting.current = true;
-    const generation = ++promptGeneration.current;
-    activeAssistantMessageIDs.current.clear();
-    activePromptHasActivity.current = false;
-    try {
-      setError("");
-      setRunStatus("submitted");
-      await openCodeApi.sendPrompt(replay.sessionID, replay.payload);
-      setRunStatus("streaming");
-      pollSessionStatus(replay.sessionID, generation);
-      return true;
-    } catch (retryError) {
-      setRunStatus("error");
-      setError(errorMessage(retryError));
-      return false;
-    } finally {
-      submitting.current = false;
-    }
-  }, [pollSessionStatus, projectPath, selectedSessionID]);
-
-  const autoRetry = useAutoRetry({
-    enabled: Boolean(runOwnerSessionID) && runOwnerSessionID === selectedSessionID,
+  const {
+    autoRetry,
+    droppedAttachments,
+    sendPromptNow,
+    visionBusy,
+  } = usePromptSubmission({
+    agents,
+    commands,
+    ensureSelectedModelVariant,
+    mcpNames,
     messages,
-    onRetry: replayPrompt,
+    pollSessionStatus,
+    preferences,
+    projectPath,
+    refs: lifecycleRefs,
+    runtime: sessionRuntime.controller,
     runStatus,
-    sessionID: selectedSessionID,
+    selectedAgentID,
+    selectedModel,
+    selectedSessionID,
+    setError,
+    skills,
   });
 
-  /**
-   * Adds a skill as a context chip.
-   *
-   * Not routed through the IDEA file attach: that validates the path against the project content
-   * roots, and skills legitimately live outside them — in ~/.claude/skills and ~/.agents/skills —
-   * so every global skill came back as "not inside the current project". The chip carries the
-   * skill's name for display and its absolute path for the model.
-   */
-  const attachSkillContext = useCallback((name: string, location: string) => {
-    setContexts((current) => {
-      if (current.some((context) => context.kind === "skill" && context.fileName === name)) return current;
-      return [...current, {
-        action: "add_to_chat" as const,
-        addedAt: Date.now(),
-        content: location,
-        fileName: name,
-        id: `skill:${name}`,
-        kind: "skill" as const,
-        timestamp: Date.now(),
-      }];
-    });
-  }, []);
+  const materializeDraft = useSessionDraftMaterialization({
+    approvalMode,
+    projectPath,
+    selectedAgentID,
+    selectedModel,
+    selectedSessionID,
+    selectedVariant,
+    sessionTabs,
+    setError,
+    setSessions,
+    selectedSessionIDRef,
+    skipNextSessionLoad,
+    suppressedStreamingSessionIDs,
+  });
 
-  const handlePrompt = useCallback(async ({ text, files }: PromptInputMessage) => {
-    if (!selectedSessionID || !projectPath || submitting.current) return false;
+  const { attachAgentContext, attachMcpContext, attachSkillContext } = useComposerAttachments(setContexts);
+
+  const handlePrompt = useCallback(async ({ text, files }: PromptRequest) => {
+    if (!projectPath) return false;
     const typedText = text.trim();
     if (!typedText && !pendingCommand && contexts.length === 0 && files.length === 0) return false;
-    /**
-     * The pinned command is applied here rather than living in the composer text.
-     *
-     * Everything downstream still receives the familiar `/name arguments` form, so the command
-     * execution path is untouched — only where the name is kept between picking it and sending
-     * has changed.
-     */
     const withCommand = pendingCommand ? `/${pendingCommand} ${typedText}`.trim() : typedText;
     const commandText = withCommand.startsWith("$") ? `/${withCommand.slice(1)}` : withCommand;
     setPendingCommand(undefined);
-    const contextFiles = contexts.map(contextToPromptInputFile);
-    const request: PromptInputMessage = {
+    const { files: contextFiles, mcpNames: requestedMcpNames, subagentIDs } = splitPromptContexts(contexts);
+    const request: PromptRequest = {
       files: [...(files.length > 0 ? files : editingQueuedPrompt?.files ?? []), ...contextFiles],
+      mcpNames: [...new Set([...(editingQueuedPrompt?.mcpNames ?? []), ...requestedMcpNames])],
+      subagentIDs: [...new Set([...(editingQueuedPrompt?.subagentIDs ?? []), ...subagentIDs])],
       text: commandText,
     };
-    setEditingQueuedPrompt(undefined);
-    queueDrainPaused.current = false;
+    promptQueues.setEditing(undefined);
+    if (selectedSessionID) sessionRuntime.controller.setQueuePaused(selectedSessionID, false);
     setContexts([]);
-    if (isGenerating || activePrompt.current?.sessionID === selectedSessionID) {
-      setQueuedPrompts((current) => [...current, { ...request, id: `queue_${createMessageID()}` }]);
+    if (selectedSessionID && (isGenerating || sessionRuntime.controller.get(selectedSessionID).activePrompt)) {
+      const queueID = selectedSessionID;
+      promptQueues.setItemsFor(queueID, (current) => [...current, {
+        ...request,
+        execution: { agentID: selectedAgentID, model: selectedModel, variant: selectedVariant },
+        id: `queue_${createMessageID()}`,
+      }]);
       return true;
     }
-    return sendPromptNow(request);
-  }, [contexts, editingQueuedPrompt, isGenerating, pendingCommand, projectPath, selectedSessionID, sendPromptNow]);
+    if (selectedSessionID) return sendPromptNow(request, selectedSessionID);
+    return sendDraftFirstPrompt({
+      materialize: materializeDraft,
+      send: (sessionID) => sendPromptNow(request, sessionID),
+      setMessages: sessionRuntime.controller.setMessages,
+      text: request.text,
+    });
+  }, [contexts, editingQueuedPrompt, isGenerating, materializeDraft, pendingCommand, projectPath, promptQueues, selectedSessionID, sendPromptNow, sessionRuntime.controller, setContexts, setPendingCommand]);
+
+  explainContextHandler.current = (context) => handlePrompt({
+    files: [contextToPromptInputFile(context, 0)],
+    text: t("s_625cb72e0e"),
+  });
+
+  const drainSessionQueue = useCallback(async (sessionID: string) => {
+    if (!projectPath || !sessionID || promptQueues.isDraining(sessionID)) return;
+    const runtime = sessionRuntime.controller.get(sessionID);
+    if (runtime.activePrompt || runtime.queuePaused || runtime.runStatus === "submitted" || runtime.runStatus === "streaming") return;
+    const next = promptQueues.getItems(sessionID)[0];
+    if (!next) return;
+    promptQueues.setDraining(sessionID, true);
+    promptQueues.setItemsFor(sessionID, (current) => current.filter((item) => item.id !== next.id));
+    try {
+      await sendPromptNow(next, sessionID);
+    } catch {
+      // The failed item is removed from the queue and the visible session owns the error state.
+    } finally {
+      promptQueues.setDraining(sessionID, false);
+    }
+  }, [projectPath, promptQueues, sendPromptNow, sessionRuntime.controller]);
+
+  drainQueueRef.current = drainSessionQueue;
 
   useEffect(() => {
-    if (!projectPath || !selectedSessionID || isGenerating || activePrompt.current || queueDrainPaused.current) return;
-    const next = queuedPrompts[0];
-    if (!next || drainingQueue.current) return;
-    drainingQueue.current = true;
-    setQueuedPrompts((current) => current.filter((item) => item.id !== next.id));
-    void sendPromptNow(next).catch(() => undefined).finally(() => {
-      drainingQueue.current = false;
-    });
-  }, [isGenerating, projectPath, queuedPrompts, selectedSessionID, sendPromptNow]);
+    if (!selectedSessionID) return;
+    void drainSessionQueue(selectedSessionID);
+  }, [drainSessionQueue, selectedSessionID]);
 
   const handleQueueEdit = useCallback((item: QueuedPrompt) => {
-    setQueuedPrompts((current) => current.filter((queued) => queued.id !== item.id));
-    setEditingQueuedPrompt(item);
+    promptQueues.setItems((current) => current.filter((queued) => queued.id !== item.id));
+    promptQueues.setEditing(item);
+    setContexts((current) => [
+      ...current.filter((context) => context.kind !== "agent"),
+      ...(item.subagentIDs ?? []).map(createAgentContext),
+    ]);
     setComposerText(item.text);
-  }, []);
+  }, [promptQueues, setComposerText, setContexts]);
 
   const handleQueueDelete = useCallback((id: string) => {
-    setQueuedPrompts((current) => current.filter((item) => item.id !== id));
-  }, []);
+    promptQueues.setItems((current) => current.filter((item) => item.id !== id));
+  }, [promptQueues]);
 
   const handleQueueClear = useCallback(() => {
-    setQueuedPrompts([]);
-  }, []);
-
-  /**
-   * Answers the requests the current mode already covers, so no card is shown for them.
-   *
-   * The panel is the only component that reliably knows the mode: it is the thing the user set it
-   * on. Routing the decision through the OpenCode plugin instead meant the answer depended on the
-   * bridge being loaded, on the hook being dispatched, and on the reply reaching the right route —
-   * three things that can each fail silently, and did. Deciding here removes all three from the
-   * common path; the bridge stays as the fallback for requests raised while no panel is open.
-   *
-   * Ref, not state: this runs inside a setState updater, where a stale closure over `approvalMode`
-   * would answer with whatever the mode was when the effect was created.
-   */
-  const approvalModeRef = useRef(approvalMode);
-  approvalModeRef.current = approvalMode;
-  const autoAnsweredRef = useRef(new Set<string>());
-  /**
-   * Permission kinds the user waved through for the run in progress.
-   *
-   * "Always" used to be sent to OpenCode, which stored a rule in its own database keyed by
-   * project — permanent, ranked above the approval mode, and invisible until we built a page to
-   * list it. Worse, websearch and edit declare a `*` pattern, so one click silently granted the
-   * whole category forever. Holding the decision here instead keeps it to the run the user was
-   * actually looking at and leaves OpenCode configuration untouched.
-   */
-  const runAllowancesRef = useRef(new Set<string>());
-  /**
-   * Keyed on the action alone, deliberately.
-   *
-   * A task that hands work to a subagent runs it in a separate session, so including the session
-   * id meant the grant stopped applying the moment the work moved one level down — which is the
-   * opposite of what "allow for this task" promises. Cross-session leakage is prevented by
-   * clearing on session switch instead.
-   */
-  const allowanceKey = (action: string) => action.trim().toLowerCase();
-
-  const autoAnswerPermissions = useCallback((requests: PermissionRequest[]): PermissionRequest[] => {
-    if (!projectPath) return requests;
-    return requests.filter((request) => {
-      const allowedForRun = runAllowancesRef.current.has(allowanceKey(request.action));
-      if (!allowedForRun && !approvalModeAllows(approvalModeRef.current, request.action)) return true;
-      // Replies are fire-and-forget, so the id is remembered: polling re-delivers a request until
-      // OpenCode drops it, and a second reply to the same id is an error rather than a no-op.
-      if (autoAnsweredRef.current.has(request.id)) return false;
-      autoAnsweredRef.current.add(request.id);
-      void openCodeApi
-        .replyPermission(request.sessionID, request.id, "once", projectPath)
-        .catch((error: unknown) => {
-          // The bridge plugin answers the same request when it gets there first, so losing that
-          // race is the expected outcome, not a failure — the run is unblocked either way. Only a
-          // genuine failure goes to the user, and it hands the request back for a manual answer.
-          if (/not found/i.test(errorMessage(error))) return;
-          autoAnsweredRef.current.delete(request.id);
-          setError(errorMessage(error));
-        });
-      return false;
-    });
-  }, [projectPath]);
-
-  /**
-   * The allowance covers one whole task: from the request the user made to the answer they get
-   * back, including every tool call and subagent step in between.
-   *
-   * It used to be cleared whenever the run reported "ready", which sounds equivalent but is not.
-   * "Ready" is inferred from the session going idle, and a pending permission prompt makes the
-   * session idle — it is waiting on the user, not working. So granting "allow for this task" put
-   * the run into exactly the state that revoked it, and the next tool call asked again.
-   *
-   * Submitting the next prompt is the one unambiguous signal that the previous task is over, so
-   * that is what ends the grant.
-   */
-  useEffect(() => {
-    if (runStatus === "submitted") runAllowancesRef.current.clear();
-  }, [runStatus]);
-  useEffect(() => {
-    runAllowancesRef.current.clear();
-  }, [selectedSessionID]);
+    promptQueues.setItems([]);
+  }, [promptQueues]);
 
   /**
    * Re-reads the task list once a round is over.
@@ -966,7 +704,7 @@ function App() {
       void openCodeApi
         .getTodos(selectedSessionID, projectPath)
         .then((next) => {
-          if (!cancelled) setTodos(next);
+          if (!cancelled) sessionRuntime.controller.setTodos(selectedSessionID, next);
         })
         .catch(() => undefined);
     }, 400);
@@ -974,76 +712,18 @@ function App() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [projectPath, runStatus, selectedSessionID]);
+  }, [projectPath, runStatus, selectedSessionID, sessionRuntime.controller]);
 
   useEffect(() => {
-    void checkForUpdate().then(setUpdateStatus).catch(() => undefined);
-  }, []);
-
-  autoAnswerRef.current = autoAnswerPermissions;
-
-  const handlePermissionReply = useCallback(async (request: PermissionRequest, reply: PermissionReply) => {
-    if (!projectPath) return;
-    // "Always" never leaves the panel. It is remembered here for the rest of this run and sent to
-    // OpenCode as a plain "once", so nothing is written to its database and the approval mode
-    // stays the authority once the run is over.
-    const effective: PermissionReply = reply === "always" ? "once" : reply;
-    if (reply === "always") runAllowancesRef.current.add(allowanceKey(request.action));
-    try {
-      await openCodeApi.replyPermission(request.sessionID, request.id, effective, projectPath);
-    } catch (replyError) {
-      // "Not found" means the request is already resolved — the run was stopped, the mode was
-      // raised to one that auto-allows, or the bridge answered first. The card is stale rather
-      // than broken, so it is dismissed silently; an error banner here blamed the user's click
-      // for something that had already gone the way they wanted.
-      if (!/not found/i.test(errorMessage(replyError))) {
-        setError(errorMessage(replyError));
-        return;
-      }
-    }
-    setPermissions((current) => {
-      const next = current.filter((item) => item.id !== request.id);
-      // Clear the session badge as soon as its last request is answered.
-      if (next.length === 0) {
-        setPendingApprovalSessionIDs((ids) => ids.filter((id) => id !== request.sessionID));
-        void ideaApi.setPendingApproval(request.sessionID, false).catch(() => undefined);
-      }
-      return next;
-    });
-  }, [projectPath]);
-
-  const handleQuestionReply = useCallback(async (request: QuestionRequest) => {
-    if (!projectPath) return;
-    try {
-      await openCodeApi.replyQuestion(
-        request.sessionID,
-        request.id,
-        questionAnswers[request.id] ?? request.questions.map(() => []),
-        projectPath
-      );
-      setQuestions((current) => current.filter((item) => item.id !== request.id));
-    } catch (replyError) {
-      setError(errorMessage(replyError));
-    }
-  }, [projectPath, questionAnswers]);
-
-  const handleQuestionReject = useCallback(async (request: QuestionRequest) => {
-    if (!projectPath) return;
-    try {
-      await openCodeApi.rejectQuestion(request.sessionID, request.id, projectPath);
-      setQuestions((current) => current.filter((item) => item.id !== request.id));
-    } catch (rejectError) {
-      setError(errorMessage(rejectError));
-    }
-  }, [projectPath]);
-
-  const handleQuestionChange = useCallback((request: QuestionRequest, questionIndex: number, values: string[]) => {
-    setQuestionAnswers((current) => {
-      const answers = current[request.id] ?? request.questions.map(() => []);
-      const nextAnswers = answers.map((answer) => [...answer]);
-      nextAnswers[questionIndex] = [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-      return { ...current, [request.id]: nextAnswers };
-    });
+    let cancelled = false;
+    void ideaApi.getPluginUpdate()
+      .then((status) => {
+        if (!cancelled) setUpdateStatus(status);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleRefresh = useCallback(() => {
@@ -1056,6 +736,49 @@ function App() {
     setBooting(true);
     setBootstrapAttempt((current) => current + 1);
   }, [projectPath, refreshWorkspace]);
+
+  panelActionHandler.current = (action) => {
+    if (action === "new-session") createSession();
+    else if (action === "history") setSessionDialogOpen(true);
+    else if (action.startsWith("select-session-tab:")) {
+      sessionTabInteractions.selectTab(action.slice("select-session-tab:".length));
+    }
+    else if (action.startsWith("close-session-tab:")) {
+      sessionTabInteractions.closeTab(action.slice("close-session-tab:".length));
+    }
+    else if (action === "close-all-session-tabs") {
+      sessionTabs.closeTabs(sessionTabs.tabs.map((tab) => tab.id));
+    }
+    else if (action.startsWith("close-other-session-tabs:")) {
+      const keep = action.slice("close-other-session-tabs:".length);
+      sessionTabs.closeTabs(sessionTabs.tabs.filter((tab) => tab.id !== keep).map((tab) => tab.id));
+    }
+    else if (action.startsWith("close-left-session-tabs:")) {
+      const pivot = sessionTabs.tabs.findIndex((tab) => tab.id === action.slice("close-left-session-tabs:".length));
+      if (pivot > 0) sessionTabs.closeTabs(sessionTabs.tabs.slice(0, pivot).map((tab) => tab.id));
+    }
+    else if (action.startsWith("close-right-session-tabs:")) {
+      const pivot = sessionTabs.tabs.findIndex((tab) => tab.id === action.slice("close-right-session-tabs:".length));
+      if (pivot >= 0) sessionTabs.closeTabs(sessionTabs.tabs.slice(pivot + 1).map((tab) => tab.id));
+    }
+    else if (action.startsWith("rename-session-tab:")) {
+      const tabID = action.slice("rename-session-tab:".length);
+      sessionTabInteractions.selectTab(tabID);
+      const tab = sessionTabs.tabs.find((item) => item.id === tabID);
+      if (tab) {
+        setSessionTitleDraft(
+          tab.sessionID
+            ? sessions.find((session) => session.id === tab.sessionID)?.title ?? tab.title ?? t("tabs.newConversation")
+            : tab.title ?? t("tabs.newConversation"),
+        );
+        setEditingSessionTitle(true);
+      }
+    }
+    else if (action === "settings") setWorkspaceDialogOpen(true);
+    else if (action === "git") setGitOpenRequest((request) => request + 1);
+    else if (action === "theme") toggleTheme();
+    else if (action === "refresh") handleRefresh();
+  };
 
   const handleApprovalModeChange = useCallback(async (mode: ApprovalMode) => {
     const previous = approvalMode;
@@ -1070,7 +793,7 @@ function App() {
   }, [approvalMode, projectPath, selectedSessionID]);
 
   const handleModelChange = useCallback(async (value: string) => {
-    if (!selectedSessionID || value === resolvedModelKey) return;
+    if (value === resolvedModelKey) return;
     const nextModel = selectableModels.find((model) => modelKey(model) === value);
     if (!nextModel) return;
     const previousKey = selectedModelKey;
@@ -1078,6 +801,7 @@ function App() {
     const nextRef = { id: nextModel.id, providerID: nextModel.providerID };
     setSelectedModelKey(value);
     setSelectedVariant(undefined);
+    if (!selectedSessionID) return;
     try {
       await openCodeApi.switchModel(selectedSessionID, nextRef, projectPath);
       setSessions((current) => current.map((session) => session.id === selectedSessionID
@@ -1091,11 +815,12 @@ function App() {
   }, [projectPath, resolvedModelKey, selectableModels, selectedModelKey, selectedSessionID, selectedVariant]);
 
   const handleVariantChange = useCallback(async (variant: string | undefined) => {
-    if (!selectedSessionID || !selectedModel || variant === selectedVariant) return;
+    if (!selectedModel || variant === selectedVariant) return;
     if (!modelSupportsVariant(selectedModel, variant)) return setError(t("s_fbae765f6e", { p0: variant }));
     const previous = selectedVariant;
     const nextRef = modelRefWithAvailableVariant(selectedModel, variant);
     setSelectedVariant(variant);
+    if (!selectedSessionID) return;
     try {
       await openCodeApi.switchModel(selectedSessionID, nextRef, projectPath);
       setSessions((current) => current.map((session) => session.id === selectedSessionID
@@ -1112,19 +837,15 @@ function App() {
     setWorkspaceDialogOpen(true);
   }, []);
 
-  const saveSessionTitle = useCallback(async () => {
-    if (!selectedSessionID || !projectPath || !sessionTitleDraft.trim()) {
-      setEditingSessionTitle(false);
-      return;
-    }
-    try {
-      const updated = await openCodeApi.renameSession(selectedSessionID, sessionTitleDraft.trim(), projectPath);
-      setSessions((current) => current.map((session) => session.id === updated.id ? updated : session));
-      setEditingSessionTitle(false);
-    } catch (renameError) {
-      setError(errorMessage(renameError));
-    }
-  }, [projectPath, selectedSessionID, sessionTitleDraft]);
+  const sessionTabInteractions = useSessionTabInteractions({
+    projectPath,
+    selectedSessionIDRef,
+    sessionTabs,
+    setEditingSessionTitle,
+    setError,
+    setSessionDialogOpen,
+    setSessions,
+  });
 
   const deleteSession = useCallback(async (session: SessionInfo) => {
     if (!projectPath || deletingSessionID) {
@@ -1134,35 +855,22 @@ function App() {
     setError("");
     try {
       await openCodeApi.deleteSession(session.id, projectPath);
-      let nextSessions = sessions.filter((item) => item.id !== session.id);
-      let nextSession = nextSessions[0];
-      if (!nextSession) {
-        const model = selectedModel
-          ? modelRefWithAvailableVariant(selectedModel, selectedVariant)
-          : undefined;
-        nextSession = await openCodeApi.createSession(projectPath, model, selectedAgentID || undefined);
-        nextSessions = [nextSession];
-      }
-      setSessions(nextSessions);
-      if (session.id === selectedSessionID) {
-        setSelectedSessionID(nextSession.id);
-        setMessages([]);
-        setPermissions([]);
-        setQuestions([]);
-        setTodos([]);
-        setQuestionAnswers({});
-        setQueuedPrompts([]);
-        setEditingQueuedPrompt(undefined);
-        queueDrainPaused.current = false;
-        setRunStatus("ready");
-        setStreamingAssistantID(undefined);
-      }
+       const nextSessions = sessions.filter((item) => item.id !== session.id);
+       setSessions(nextSessions);
+       const wasSelected = session.id === selectedSessionID;
+       const nextTab = sessionTabs.removeSession(session.id);
+       if (wasSelected) {
+         selectedSessionIDRef.current = nextTab.sessionID ?? "";
+         setPermissions((current) => current.filter((request) => request.sessionID !== session.id));
+         setQuestions((current) => current.filter((request) => request.sessionID !== session.id));
+       }
+       sessionRuntime.controller.clear(session.id);
     } catch (deleteError) {
       setError(errorMessage(deleteError));
     } finally {
       setDeletingSessionID("");
     }
-  }, [deletingSessionID, projectPath, selectedAgentID, selectedModel, selectedSessionID, selectedVariant, sessions]);
+  }, [deletingSessionID, projectPath, selectedSessionID, sessionRuntime.controller, sessionTabs, sessions, setPermissions, setQuestions]);
 
   const handleProfessionalRoleChange = useCallback((roleId: string) => {
     const next = saveWorkspacePreferences(projectPath, {
@@ -1189,6 +897,7 @@ function App() {
     [conversationTurns, messages, streamingAssistantID]
   );
   return <ErrorBoundary label={t("s_f887d06f37")}><AssistantShell
+    activeDiffs={activeDiffs}
     agents={agents}
     booting={booting}
     commands={commands}
@@ -1208,13 +917,16 @@ function App() {
     diffsByMessageID={diffsByMessageID}
     editingSessionTitle={editingSessionTitle}
     error={error}
+    gitOpenRequest={gitOpenRequest}
     hasStreamingAssistantContent={streamingAssistantState.hasVisibleContent}
     isGenerating={isGenerating}
+    nativeTitleActions={NATIVE_TITLE_ACTIONS}
     approvalMode={approvalMode}
     onClearError={() => setError("")}
+    onCompact={() => { void compactSession(); }}
     onConfigurationChanged={() => void refreshWorkspace(false)}
     onContextsChange={setContexts}
-    onCreateSession={() => void createSession()}
+    onCreateSession={createSession}
     onDeleteSession={(session) => void deleteSession(session)}
     onModelChange={(value) => void handleModelChange(value)}
     onApprovalModeChange={(mode) => void handleApprovalModeChange(mode)}
@@ -1231,27 +943,17 @@ function App() {
     onQueueDelete={handleQueueDelete}
     onQueueEdit={handleQueueEdit}
     onRefresh={handleRefresh}
-    onSelectSession={(sessionID) => {
-      clearPendingOpenCodeEvents();
-      setSelectedSessionID(sessionID);
-      setQueuedPrompts([]);
-      setEditingQueuedPrompt(undefined);
-      queueDrainPaused.current = false;
-      setStreamingAssistantID(undefined);
-      setRunStatus("ready");
-      setSessionDialogOpen(false);
-      setError("");
-    }}
+    onSelectSession={sessionTabInteractions.openSession}
+    onCloseSessionTabAndOpenPending={sessionTabInteractions.closeTabAndOpenPending}
+    onCancelPendingSessionTab={sessionTabs.cancelPendingOpen}
     onSessionDialogOpenChange={setSessionDialogOpen}
     onSessionTitleCancel={() => setEditingSessionTitle(false)}
     onSessionTitleChange={setSessionTitleDraft}
-    onSessionTitleEdit={() => {
-      setSessionTitleDraft(currentSession?.title ?? t("s_db44360cd0"));
-      setEditingSessionTitle(true);
-    }}
-    onSessionTitleSave={() => void saveSessionTitle()}
+    onSessionTitleSave={() => void sessionTabInteractions.saveTitle(sessionTitleDraft)}
     onSetComposerText={setComposerText}
     onAttachSkill={attachSkillContext}
+    onAttachAgent={attachAgentContext}
+    onAttachMcp={attachMcpContext}
     onCancelAutoRetry={autoRetry.secondsLeft > 0 ? autoRetry.cancel : undefined}
     onClearCommand={() => setPendingCommand(undefined)}
     onSelectCommand={setPendingCommand}
@@ -1280,6 +982,9 @@ function App() {
     selectableModels={selectableModels}
     selectedModel={selectedModel}
     selectedSessionID={selectedSessionID}
+    activeSessionTabID={sessionTabs.activeTabID}
+    sessionTabs={sessionTabs.tabs}
+    pendingSessionTabOpen={sessionTabs.pendingOpen}
     selectedVariant={selectedVariant}
     sessionDialogOpen={sessionDialogOpen}
     sessionTitleDraft={sessionTitleDraft}

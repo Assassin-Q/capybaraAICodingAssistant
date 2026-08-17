@@ -19,6 +19,11 @@ interface DiffTarget {
   start?: string;
 }
 
+export interface SessionDiffState {
+  activeDiffs: SessionFileDiff[];
+  diffsByMessageID: Record<string, SessionFileDiff[]>;
+}
+
 const buildDiffTargets = (messages: SessionMessage[]): DiffTarget[] => {
   const ordered = [...messages].sort(
     (left, right) => (left.time?.created ?? 0) - (right.time?.created ?? 0)
@@ -52,12 +57,47 @@ const buildDiffTargets = (messages: SessionMessage[]): DiffTarget[] => {
   return [...targets.values()];
 };
 
-export function useSessionDiffs({ messages, projectPath, runStatus, sessionID }: UseSessionDiffsInput) {
+const sameDiffs = (left: SessionFileDiff[], right: SessionFileDiff[]): boolean =>
+  left.length === right.length && left.every((item, index) => {
+    const other = right[index];
+    return item.file === other.file
+      && item.patch === other.patch
+      && item.additions === other.additions
+      && item.deletions === other.deletions
+      && item.status === other.status;
+  });
+
+/** Prefer the IDEA snapshot comparison, falling back to OpenCode while a snapshot is incomplete. */
+const fetchTargetDiff = async (
+  sessionID: string,
+  projectPath: string,
+  target: DiffTarget,
+): Promise<SessionFileDiff[]> => {
+  if (target.start && target.end && target.start !== target.end) {
+    try {
+      return await ideaApi.getSnapshotDiff({
+        end: target.end,
+        files: target.files,
+        start: target.start,
+      });
+    } catch {
+      // OpenCode's live diff is available before Git snapshots have an end marker.
+    }
+  }
+  return openCodeApi.getDiff(sessionID, target.messageID, projectPath);
+};
+
+export function useSessionDiffs({ messages, projectPath, runStatus, sessionID }: UseSessionDiffsInput): SessionDiffState {
+  const [activeDiffs, setActiveDiffs] = useState<SessionFileDiff[]>([]);
   const [diffsByMessageID, setDiffsByMessageID] = useState<Record<string, SessionFileDiff[]>>({});
   const diffTargets = useMemo(() => buildDiffTargets(messages), [messages]);
   const diffTargetsKey = useMemo(() => JSON.stringify(diffTargets), [diffTargets]);
+  const activeTarget = diffTargets[diffTargets.length - 1];
+  const activeTargetKey = activeTarget ? JSON.stringify(activeTarget) : "";
+  const activeRun = runStatus === "submitted" || runStatus === "streaming";
 
   useEffect(() => {
+    setActiveDiffs([]);
     setDiffsByMessageID({});
     void ideaApi.clearInlineDiffs().catch(() => undefined);
   }, [sessionID]);
@@ -68,37 +108,51 @@ export function useSessionDiffs({ messages, projectPath, runStatus, sessionID }:
   }, [runStatus, sessionID]);
 
   useEffect(() => {
+    if (!activeRun || !sessionID || !projectPath || !activeTarget) {
+      setActiveDiffs((current) => current.length === 0 ? current : []);
+      return;
+    }
+    const target = activeTarget;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const poll = async () => {
+      const next = await fetchTargetDiff(sessionID, projectPath, target).catch(() => undefined);
+      if (!cancelled && next) {
+        setActiveDiffs((current) => sameDiffs(next, current) ? current : next);
+      }
+      if (!cancelled) timer = window.setTimeout(poll, 700);
+    };
+
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+    // The target key restarts polling only when the current round gets a new snapshot/file list.
+  }, [activeRun, activeTargetKey, projectPath, sessionID]);
+
+  useEffect(() => {
     if (!sessionID || !projectPath || runStatus !== "ready" || diffTargets.length === 0) return;
     let cancelled = false;
     void (async () => {
       const entries: Array<readonly [string, SessionFileDiff[]]> = [];
       for (const target of diffTargets) {
-        let diffs: SessionFileDiff[] = [];
-        if (target.start && target.end && target.start !== target.end) {
-          try {
-            diffs = await ideaApi.getSnapshotDiff({
-              end: target.end,
-              files: target.files,
-              start: target.start,
-            });
-          } catch {
-            diffs = await openCodeApi.getDiff(sessionID, target.messageID, projectPath).catch(() => []);
-          }
-        } else if (!target.start || !target.end) {
-          diffs = await openCodeApi.getDiff(sessionID, target.messageID, projectPath).catch(() => []);
-        }
+        const diffs = await fetchTargetDiff(sessionID, projectPath, target).catch(() => []);
         entries.push([target.messageID, diffs]);
       }
       return entries;
     })().then((entries) => {
       if (cancelled) return;
-      const next: Record<string, SessionFileDiff[]> = Object.fromEntries(entries);
-      setDiffsByMessageID(next);
+      setDiffsByMessageID((current) => {
+        const next: Record<string, SessionFileDiff[]> = Object.fromEntries(entries);
+        return JSON.stringify(current) === JSON.stringify(next) ? current : next;
+      });
     });
     return () => {
       cancelled = true;
     };
   }, [diffTargets, diffTargetsKey, projectPath, runStatus, sessionID]);
 
-  return diffsByMessageID;
+  return { activeDiffs, diffsByMessageID };
 }

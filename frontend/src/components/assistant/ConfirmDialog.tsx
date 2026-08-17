@@ -36,12 +36,17 @@ export function ConfirmDialog({ busy = false, onOpenChange, request }: ConfirmDi
           {request?.description && <DialogDescription>{request.description}</DialogDescription>}
         </DialogHeader>
         <DialogFooter>
+          {/*
+            Quiet, like every other secondary action in the panel. As an outline button it carried
+            a border and a shadow of its own, which on the dialog's own white surface read as the
+            heavier of the two — the opposite of the weighting a confirm dialog wants.
+          */}
           <Button
             disabled={busy}
             onClick={() => onOpenChange(false)}
             size="sm"
             type="button"
-            variant="outline"
+            variant="ghost"
           >
             {t("s_4d0b4688c7")}
           </Button>

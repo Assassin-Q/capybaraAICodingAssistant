@@ -48,6 +48,10 @@ const usePromptInput = (): PromptInputContextValue => {
 };
 
 export interface PromptInputProps extends Omit<FormHTMLAttributes<HTMLFormElement>, "onSubmit"> {
+  /** Isolates unsent attachments between conversation tabs. */
+  draftKey?: string;
+  /** Lets the attachment store discard files belonging to closed tabs. */
+  openDraftKeys?: string[];
   onSubmit: (message: PromptInputMessage, event: FormEvent<HTMLFormElement>) => boolean | void | Promise<boolean | void>;
   onTextChange?: (text: string) => void;
   text?: string;
@@ -88,13 +92,17 @@ const attachmentDetail = (file: PromptInputFile): string => {
   return `${extension} · ${formatFileSize(file.file.size)}`;
 };
 
-export function PromptInput({ className, children, onDragOver, onDrop, onPaste, onSubmit, onTextChange, text: controlledText, ...props }: PromptInputProps) {
+export function PromptInput({ className, children, draftKey = "default", onDragOver, onDrop, onPaste, onSubmit, onTextChange, openDraftKeys, text: controlledText, ...props }: PromptInputProps) {
   const [uncontrolledText, setUncontrolledText] = useState("");
-  const [files, setFiles] = useState<PromptInputFile[]>([]);
+  const [filesByDraft, setFilesByDraft] = useState<Record<string, PromptInputFile[]>>({});
+  const files = filesByDraft[draftKey] ?? [];
   const inputRef = useRef<HTMLInputElement>(null);
   const objectUrls = useRef(new Set<string>());
   const submitting = useRef(false);
   const text = controlledText ?? uncontrolledText;
+  /** Read inside async submit handling, where `text` would be the value captured at submit time. */
+  const textRef = useRef(text);
+  textRef.current = text;
 
   const setText = useCallback((nextText: string) => {
     if (controlledText === undefined) setUncontrolledText(nextText);
@@ -102,10 +110,11 @@ export function PromptInput({ className, children, onDragOver, onDrop, onPaste, 
   }, [controlledText, onTextChange]);
 
   const removeFile = useCallback((id: string) => {
-    setFiles((current) => {
-      return current.filter((file) => file.id !== id);
-    });
-  }, []);
+    setFilesByDraft((current) => ({
+      ...current,
+      [draftKey]: (current[draftKey] ?? []).filter((file) => file.id !== id),
+    }));
+  }, [draftKey]);
 
   const addFiles = useCallback((nextFiles: FileList | File[]) => {
     const additions = Array.from(nextFiles).map((file, index) => {
@@ -120,21 +129,53 @@ export function PromptInput({ className, children, onDragOver, onDrop, onPaste, 
         url,
       };
     });
-    setFiles((current) => {
-      const combined = [...current, ...additions];
+    setFilesByDraft((current) => {
+      const combined = [...(current[draftKey] ?? []), ...additions];
       combined.slice(8).forEach((file) => {
         URL.revokeObjectURL(file.url);
         objectUrls.current.delete(file.url);
       });
-      return combined.slice(0, 8);
+      return { ...current, [draftKey]: combined.slice(0, 8) };
+    });
+  }, [draftKey]);
+
+  /**
+   * Takes the attachments out of the composer without revoking their object URLs, so they can be
+   * put back if the send turns out to be rejected. Revoking is [releaseFiles]' job, once the
+   * prompt is safely on its way.
+   */
+  const detachFiles = useCallback(() => {
+    setFilesByDraft((current) => {
+      const next = { ...current };
+      delete next[draftKey];
+      return next;
+    });
+  }, [draftKey]);
+
+  const restoreFiles = useCallback((entries: PromptInputFile[]) => {
+    setFilesByDraft((current) => ({ ...current, [draftKey]: entries }));
+  }, [draftKey]);
+
+  const releaseFiles = useCallback((entries: PromptInputFile[]) => {
+    entries.forEach((file) => {
+      URL.revokeObjectURL(file.url);
+      objectUrls.current.delete(file.url);
     });
   }, []);
 
-  const clearFiles = useCallback(() => {
-    objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
-    objectUrls.current.clear();
-    setFiles([]);
-  }, []);
+  useEffect(() => {
+    if (!openDraftKeys) return;
+    const valid = new Set(openDraftKeys);
+    setFilesByDraft((current) => {
+      const removed = Object.entries(current).filter(([key]) => !valid.has(key));
+      if (removed.length === 0) return current;
+      removed.forEach(([, entries]) => entries.forEach((file) => {
+        URL.revokeObjectURL(file.url);
+        objectUrls.current.delete(file.url);
+      }));
+      return Object.fromEntries(Object.entries(current).filter(([key]) => valid.has(key)));
+    });
+  }, [openDraftKeys]);
 
   useEffect(() => () => {
     objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
@@ -148,13 +189,28 @@ export function PromptInput({ className, children, onDragOver, onDrop, onPaste, 
     }
     const message = { text, files };
     submitting.current = true;
+    /**
+     * The composer empties the moment the prompt is handed over, not when the send finishes.
+     *
+     * It used to wait for the whole chain, which now includes the vision fallback describing an
+     * attached image — several seconds during which the bubble was already in the conversation
+     * while the same text and attachment still sat in the box, as if nothing had been sent.
+     */
+    setText("");
+    detachFiles();
+    const restoreDraft = () => {
+      // Only if the user has not started composing something else in the meantime; their new
+      // text outranks a draft we are putting back.
+      if (!textRef.current.trim()) setText(message.text);
+      if (message.files.length > 0) restoreFiles(message.files);
+    };
     try {
       const accepted = await onSubmit(message, event);
-      if (accepted === false) return;
-      setText("");
-      clearFiles();
+      if (accepted === false) restoreDraft();
+      else releaseFiles(message.files);
     } catch {
-      // The caller presents the failure; retain the draft so it can be corrected and resent.
+      // The caller presents the failure; the draft comes back so it can be corrected and resent.
+      restoreDraft();
     } finally {
       submitting.current = false;
     }

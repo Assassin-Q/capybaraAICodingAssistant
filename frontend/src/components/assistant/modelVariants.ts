@@ -28,8 +28,20 @@ export const modelVariantIDs = (model?: ModelInfo): string[] =>
 export const modelHasDefaultVariant = (model?: ModelInfo): boolean =>
   Boolean(model?.variants && Object.prototype.hasOwnProperty.call(model.variants, "default"));
 
+/**
+ * Whether the selection is safe to keep.
+ *
+ * An absent `variants` means the catalogue did not say, which is not the same as saying there are
+ * none: `/api/model` is fetched alongside the legacy provider list and a momentary failure there
+ * leaves models carrying no variant information at all. Treating that as "unsupported" made the
+ * guard silently drop a thinking level the user had picked. An explicitly empty set still means
+ * the model has none, so that case is still rejected.
+ */
 export const modelSupportsVariant = (model: ModelInfo | undefined, variant?: string): boolean =>
-  !variant || variant === "default" || modelVariantIDs(model).includes(variant);
+  !variant
+  || variant === "default"
+  || model?.variants === undefined
+  || modelVariantIDs(model).includes(variant);
 
 export const modelRefWithAvailableVariant = (
   model: ModelInfo,
@@ -37,5 +49,7 @@ export const modelRefWithAvailableVariant = (
 ): ModelRef => ({
   id: model.id,
   providerID: model.providerID,
-  ...(modelSupportsVariant(model, variant) && variant && variant !== "default" ? { variant } : {}),
+  ...(modelSupportsVariant(model, variant) && variant && variant !== "default"
+    ? { variant }
+    : {}),
 });

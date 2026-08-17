@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Bot, ChevronLeft, CircleAlert, History, MessageSquarePlus, Moon, Pencil, RefreshCw, Settings2, Sun, TerminalSquare, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bot, ChevronLeft, CircleAlert, History, MessageSquarePlus, Moon, RefreshCw, Settings2, Sun, TerminalSquare, X } from "lucide-react";
 import { BorderBeam } from "border-beam";
 
 import { ConversationEmptyState } from "@/components/ai-elements/conversation";
@@ -13,6 +13,8 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AssistantMessage, AssistantThinking } from "@/components/assistant/AssistantMessage";
 import { ContextChip } from "@/components/assistant/ContextChip";
@@ -33,20 +35,22 @@ import {
   useBrowserAnnotations,
 } from "@/components/assistant/BrowserAnnotations";
 import { ProfessionalRolePicker } from "@/components/assistant/ProfessionalRolePicker";
+import { QuickStartCards } from "@/components/assistant/QuickStartCards";
 import { modelHasDefaultVariant, modelVariantIDs } from "@/components/assistant/modelVariants";
 import { PermissionInline } from "@/components/assistant/PermissionInline";
 import { PromptQueue, type QueuedPrompt } from "@/components/assistant/PromptQueue";
 import { QuestionInline } from "@/components/assistant/QuestionInline";
 import { SessionDialog } from "@/components/assistant/SessionDialog";
+import { sessionTabTitle } from "@/components/assistant/SessionTabs";
 import { SlashCommandMenu } from "@/components/assistant/SlashCommandMenu";
 import { TodoPanel } from "@/components/assistant/TodoPanel";
 import { UserMessage } from "@/components/assistant/UserMessage";
 import { VirtualConversation } from "@/components/assistant/VirtualConversation";
-import { errorMessage, sessionName } from "@/components/assistant/shared";
+import { errorMessage } from "@/components/assistant/shared";
 import type { ContextChip as ContextChipData, RunStatus } from "@/components/assistant/shared";
 import { WorkspaceDialog, type SectionID as WorkspaceSectionID } from "@/components/assistant/WorkspaceDialog";
 import { ideaFileSearchApi } from "@/lib/ideaIntegrations";
-import { getOpenCodeBaseUrl, openCodeApi } from "@/lib/opencode";
+import { getOpenCodeBaseUrl } from "@/lib/opencode";
 import type {
   AgentInfo,
   AssistantMessage as AssistantMessageData,
@@ -59,12 +63,13 @@ import type {
   SessionFileDiff,
   SkillInfo,
 } from "@/lib/opencode";
-import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
+import type { PromptRequest } from "@/components/assistant/promptPayload";
 import type { WorkspacePreferences } from "@/lib/preferences";
 import type { ContextUsageInfo } from "@/lib/tokenUsage";
 import type { ApprovalMode } from "@/lib/approvalMode";
-import type { UpdateStatus } from "@/lib/updateCheck";
+import type { UpdateStatus } from "@/lib/idea";
 import type { IdeaTheme } from "@/hooks/useIdeaTheme";
+import type { PendingSessionTabOpen, SessionTab } from "@/hooks/useSessionTabs";
 import { t } from "@/lib/i18n";
 
 export interface AssistantShellProps {
@@ -78,6 +83,10 @@ export interface AssistantShellProps {
   autoRetryNotice?: string;
   /** Cancels the pending retry. Present only while one is scheduled. */
   onCancelAutoRetry?: () => void;
+  /** Adds an OpenCode subagent as structured prompt context. */
+  onAttachAgent: (agentID: string) => void;
+  /** Pins an MCP server above the composer. */
+  onAttachMcp: (name: string) => void;
   /** Adds a skill reference chip; skills sit outside the project so they cannot be attached as files. */
   onAttachSkill: (name: string, location: string) => void;
   /** The command pinned above the composer, applied when the message is sent. */
@@ -92,12 +101,15 @@ export interface AssistantShellProps {
   todos: import("@/lib/opencode").TodoInfo[];
   currentSession?: SessionInfo;
   deletingSessionID: string;
+  activeDiffs: SessionFileDiff[];
   diffsByMessageID: Record<string, SessionFileDiff[]>;
   editingSessionTitle: boolean;
   error: string;
+  gitOpenRequest: number;
   isGenerating: boolean;
   hasStreamingAssistantContent: boolean;
   mcpNames: string[];
+  nativeTitleActions: boolean;
   approvalMode: ApprovalMode;
   /** True while OpenCode is compacting this session, whether we asked for it or it decided to. */
   compacting: boolean;
@@ -113,6 +125,9 @@ export interface AssistantShellProps {
   selectableModels: ModelInfo[];
   selectedModel?: ModelInfo;
   selectedSessionID: string;
+  activeSessionTabID: string;
+  sessionTabs: SessionTab[];
+  pendingSessionTabOpen?: PendingSessionTabOpen;
   selectedVariant?: string;
   sessionDialogOpen: boolean;
   sessionTitleDraft: string;
@@ -124,6 +139,7 @@ export interface AssistantShellProps {
   workspaceDialogOpen: boolean;
   workspaceSection: WorkspaceSectionID;
   onClearError: () => void;
+  onCompact: () => void;
   onConfigurationChanged: () => void;
   onContextsChange: (contexts: ContextChipData[]) => void;
   onCreateSession: () => void;
@@ -134,7 +150,7 @@ export interface AssistantShellProps {
   onPermissionReply: (request: PermissionRequest, reply: PermissionReply) => void;
   onPreferencesChanged: (preferences: WorkspacePreferences) => void;
   onProfessionalRoleChange: (roleId: string) => void;
-  onPrompt: (message: PromptInputMessage) => Promise<boolean>;
+  onPrompt: (message: PromptRequest) => Promise<boolean>;
   onQuestionChange: (request: QuestionRequest, index: number, values: string[]) => void;
   onQuestionReject: (request: QuestionRequest) => void;
   onQuestionReply: (request: QuestionRequest) => void;
@@ -143,9 +159,10 @@ export interface AssistantShellProps {
   onQueueEdit: (item: QueuedPrompt) => void;
   onRefresh: () => void;
   onSelectSession: (sessionID: string) => void;
+  onCloseSessionTabAndOpenPending: (tabID: string) => void;
+  onCancelPendingSessionTab: () => void;
   onSessionDialogOpenChange: (open: boolean) => void;
   onSessionTitleChange: (value: string) => void;
-  onSessionTitleEdit: () => void;
   onSessionTitleSave: () => void;
   onSessionTitleCancel: () => void;
   onSetComposerText: (value: string) => void;
@@ -205,6 +222,8 @@ export function AssistantShell(props: AssistantShellProps) {
   const [composerHovered, setComposerHovered] = useState(false);
   /** One-line feedback for composer actions that do not produce a message of their own. */
   const [composerNotice, setComposerNotice] = useState("");
+  /** Undefined while the file picker is closed; a string is the term being searched. */
+  const [fileSearch, setFileSearch] = useState<string>();
   const { annotations: browserAnnotations, clear: clearBrowserAnnotations } = useBrowserAnnotations();
 
   /**
@@ -218,27 +237,10 @@ export function AssistantShell(props: AssistantShellProps) {
   };
 
   /**
-   * Progress belongs in the transcript, not in a toast beside the composer.
-   *
-   * Compaction rewrites the conversation, so a divider at the point it happens is the only place
-   * that stays meaningful after the fact — the notice bar vanished and left no trace of why the
-   * history changed. The flag clears when OpenCode emits its own compaction message, which is the
-   * event that turns the live divider into the permanent one.
-   */
-  const compactSession = () => {
-    if (!selectedSessionID) return;
-    void openCodeApi.compactSession(selectedSessionID, {
-      directory: projectPath,
-      modelID: selectedModel?.id,
-      providerID: selectedModel?.providerID,
-    }).catch((error: unknown) => setComposerNotice(errorMessage(error)));
-  };
-
-  /**
    * Browser annotations ride along with the next prompt and are cleared once it is accepted —
    * a chip that only displayed a count would tell the model nothing.
    */
-  const submitPrompt = async (message: PromptInputMessage): Promise<boolean> => {
+  const submitPrompt = async (message: PromptRequest): Promise<boolean> => {
     const annotationText = annotationsAsPrompt(browserAnnotations);
     if (!annotationText) return onPrompt(message);
     // DeepSeek V4 Flash and other text-only models answer an image attachment with
@@ -270,6 +272,7 @@ export function AssistantShell(props: AssistantShellProps) {
           url: URL.createObjectURL(file),
         })),
       ],
+      subagentIDs: message.subagentIDs,
       text: [message.text, annotationText].filter(Boolean).join("\n\n"),
     });
     if (accepted) clearBrowserAnnotations();
@@ -297,6 +300,8 @@ export function AssistantShell(props: AssistantShellProps) {
     updateStatus,
     autoRetryNotice,
     onCancelAutoRetry,
+    onAttachAgent,
+    onAttachMcp,
     onAttachSkill,
     pendingCommand,
     onSelectCommand,
@@ -309,12 +314,15 @@ export function AssistantShell(props: AssistantShellProps) {
     todos,
     currentSession,
     deletingSessionID,
+    activeDiffs,
     diffsByMessageID,
     editingSessionTitle,
     error,
+    gitOpenRequest,
     hasStreamingAssistantContent,
     isGenerating,
     mcpNames,
+    nativeTitleActions,
     approvalMode,
     preferences,
     projectPath,
@@ -326,6 +334,9 @@ export function AssistantShell(props: AssistantShellProps) {
     selectableModels,
     selectedModel,
     selectedSessionID,
+    activeSessionTabID,
+    sessionTabs,
+    pendingSessionTabOpen,
     selectedVariant,
     sessionDialogOpen,
     sessionTitleDraft,
@@ -337,6 +348,7 @@ export function AssistantShell(props: AssistantShellProps) {
     workspaceDialogOpen,
     workspaceSection,
     onClearError,
+    onCompact,
     onConfigurationChanged,
     onContextsChange,
     onCreateSession,
@@ -356,9 +368,10 @@ export function AssistantShell(props: AssistantShellProps) {
     onQueueEdit,
     onRefresh,
     onSelectSession,
+    onCloseSessionTabAndOpenPending,
+    onCancelPendingSessionTab,
     onSessionDialogOpenChange,
     onSessionTitleChange,
-    onSessionTitleEdit,
     onSessionTitleSave,
     onSessionTitleCancel,
     onSetComposerText,
@@ -369,9 +382,6 @@ export function AssistantShell(props: AssistantShellProps) {
   } = props;
   const composerBeamStrength = isGenerating ? 1 : composerHovered ? 0.75 : 0.5;
 
-  let latestUserMessageID: string | undefined;
-  // Each turn gets its own boundary: one malformed message (a bad attachment, an unexpected
-  // part shape) must not take the whole conversation down with it.
   /**
    * Where the current round begins.
    *
@@ -386,42 +396,47 @@ export function AssistantShell(props: AssistantShellProps) {
     -1
   );
 
-  const renderedTurns = conversationTurns.flatMap((message, index) => {
-    if (message.type === "user") {
-      latestUserMessageID = message.id;
+  const renderedTurns = useMemo(() => {
+    let latestUserMessageID: string | undefined;
+    // Each turn gets its own boundary: one malformed message (a bad attachment, an unexpected
+    // part shape) must not take the whole conversation down with it.
+    return conversationTurns.flatMap((message, index) => {
+      if (message.type === "user") {
+        latestUserMessageID = message.id;
+        return [
+          <ErrorBoundary key={message.id} label={t("s_146671b0a1")}>
+            <UserMessage message={message} />
+          </ErrorBoundary>,
+        ];
+      }
+      if (message.type === "assistant") {
+        const diffMessageID = message.parentID ?? latestUserMessageID ?? message.id;
+        const messageIsStreaming = isGenerating && (
+          message.sourceIDs.includes(streamingAssistantID ?? "")
+          || Boolean(streamingAssistantParentID && message.parentID === streamingAssistantParentID)
+        );
+        return [
+          <ErrorBoundary key={message.id} label={t("s_e37a7fa521")}>
+            <AssistantMessage
+              diffs={diffsByMessageID[diffMessageID]}
+              isStreaming={messageIsStreaming}
+              runActive={isGenerating && index > lastUserTurnIndex}
+              message={message as AssistantMessageData}
+              onOpenSession={onSelectSession}
+            />
+          </ErrorBoundary>,
+        ];
+      }
+      const label = sessionEventLabels()[message.type];
+      const detail = sessionEventDetail(message);
       return [
-        <ErrorBoundary key={message.id} label={t("s_146671b0a1")}>
-          <UserMessage message={message} />
-        </ErrorBoundary>,
+        <ConversationDivider
+          key={message.id}
+          label={detail ? `${label} · ${detail.slice(0, 80)}` : label}
+        />,
       ];
-    }
-    if (message.type === "assistant") {
-      const diffMessageID = message.parentID ?? latestUserMessageID ?? message.id;
-      const messageIsStreaming = isGenerating && (
-        message.sourceIDs.includes(streamingAssistantID ?? "")
-        || Boolean(streamingAssistantParentID && message.parentID === streamingAssistantParentID)
-      );
-      return [
-        <ErrorBoundary key={message.id} label={t("s_e37a7fa521")}>
-          <AssistantMessage
-            diffs={diffsByMessageID[diffMessageID]}
-            isStreaming={messageIsStreaming}
-            runActive={isGenerating && index > lastUserTurnIndex}
-            message={message as AssistantMessageData}
-            onOpenSession={onSelectSession}
-          />
-        </ErrorBoundary>,
-      ];
-    }
-    const label = sessionEventLabels()[message.type];
-    const detail = sessionEventDetail(message);
-    return [
-      <ConversationDivider
-        key={message.id}
-        label={detail ? `${label} · ${detail.slice(0, 80)}` : label}
-      />,
-    ];
-  });
+    });
+  }, [conversationTurns, diffsByMessageID, isGenerating, lastUserTurnIndex, onSelectSession, streamingAssistantID, streamingAssistantParentID]);
 
   const lastTurn = conversationTurns[conversationTurns.length - 1];
   /**
@@ -451,7 +466,7 @@ export function AssistantShell(props: AssistantShellProps) {
     // Between two assistant messages OpenCode reports "generating" with nothing streaming yet.
     // Showing the placeholder on that gap left a spinner parked under a finished turn, so it only
     // appears while the newest turn genuinely has no content of its own.
-    isGenerating && !tailIsBusy ? <AssistantThinking key="thinking" /> : null,
+    isGenerating && !compacting && !tailIsBusy ? <AssistantThinking key="thinking" /> : null,
     currentPermissions[0]
       ? <PermissionInline key={currentPermissions[0].id} onReply={(reply) => onPermissionReply(currentPermissions[0], reply)} request={currentPermissions[0]} />
       : null,
@@ -470,31 +485,11 @@ export function AssistantShell(props: AssistantShellProps) {
   return (
     <TooltipProvider>
       <div className="assistant-shell flex h-full min-h-[480px] min-w-[640px] w-full flex-col bg-background text-foreground">
-        <header className="flex min-h-11 shrink-0 items-center gap-1 border-b border-border/60 px-2">
+        {!nativeTitleActions && <header className="flex min-h-11 shrink-0 items-center gap-1 border-b border-border/60 px-2">
           <Button aria-label={t("s_378d943e1d")} className="size-8 shrink-0" onClick={() => onSessionDialogOpenChange(true)} size="icon" title={t("s_b7e8848103")} type="button" variant="ghost">
             <History className="size-3.5" />
           </Button>
-          <div className="min-w-0 flex-1">
-            {editingSessionTitle ? (
-              <input
-                aria-label={t("s_864aff361d")}
-                autoFocus
-                className="h-7 w-full min-w-0 rounded-md bg-muted px-2 text-xs outline-none ring-1 ring-ring/40"
-                onBlur={onSessionTitleSave}
-                onChange={(event) => onSessionTitleChange(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") onSessionTitleSave();
-                  if (event.key === "Escape") onSessionTitleCancel();
-                }}
-                value={sessionTitleDraft}
-              />
-            ) : (
-              <button className="group inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-1 text-left hover:bg-accent" onClick={onSessionTitleEdit} title={t("s_757cc06ee1")} type="button">
-                <span className="truncate text-xs font-medium">{currentSession ? sessionName(currentSession) : "OpenCode"}</span>
-                <Pencil className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-              </button>
-            )}
-          </div>
+          <div className="min-w-0 flex-1" />
           <StatusDot connected={connected} update={updateStatus} />
           <GitStatusButton model={selectedModel} projectPath={projectPath} variant={selectedVariant} />
           <Button aria-label={t("s_3da224c43d")} className="size-8 shrink-0" onClick={onCreateSession} size="icon" title={t("s_3da224c43d")} type="button" variant="ghost"><MessageSquarePlus className="size-3.5" /></Button>
@@ -503,7 +498,16 @@ export function AssistantShell(props: AssistantShellProps) {
           </Button>
           <Button aria-label={t("s_abc65f3093")} className="size-8 shrink-0" onClick={() => onWorkspaceOpenChange(true)} size="icon" title={t("s_52e823f821")} type="button" variant="ghost"><Settings2 className="size-3.5" /></Button>
           <Button aria-label={t("s_269a8a2642")} className="size-8 shrink-0" disabled={refreshing} onClick={onRefresh} size="icon" title={t("s_269a8a2642")} type="button" variant="ghost"><RefreshCw className={refreshing ? "size-3.5 animate-spin" : "size-3.5"} /></Button>
-        </header>
+        </header>}
+        {nativeTitleActions && (
+          <GitStatusButton
+            model={selectedModel}
+            nativeTrigger
+            openRequest={gitOpenRequest}
+            projectPath={projectPath}
+            variant={selectedVariant}
+          />
+        )}
 
         {error && <div className="flex shrink-0 items-start gap-2 border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"><CircleAlert className="mt-0.5 size-3.5 shrink-0" /><span className="min-w-0 flex-1 break-words">{error}</span><Button aria-label={t("s_7cc3cc83d6")} className="size-5 shrink-0" onClick={onClearError} size="icon" type="button" variant="ghost"><X className="size-3" /></Button></div>}
 
@@ -538,27 +542,46 @@ export function AssistantShell(props: AssistantShellProps) {
             className="h-full w-full"
             empty={booting
               ? <ConversationEmptyState description={t("s_918003d07c")} icon={<RefreshCw className="size-5 animate-spin" />} title={t("s_02625a8ef2")} />
-              : <ConversationEmptyState description={t("s_2849a22e35")} icon={<Bot className="size-6" />} title={t("s_99503f97be")} />}
+              : (
+                // Children replace the built-in title block rather than adding to it, so the
+                // heading is rebuilt here alongside the openers.
+                <ConversationEmptyState>
+                  <div className="text-muted-foreground"><Bot className="size-6" /></div>
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-medium">{t("s_99503f97be")}</h3>
+                    <p className="text-sm text-muted-foreground">{t("s_2849a22e35")}</p>
+                  </div>
+                  <QuickStartCards
+                    onInit={() => { onClearCommand(); void onPrompt({ files: [], text: "/init" }).catch(() => undefined); }}
+                    onSend={(text) => { void onPrompt({ files: [], text }).catch(() => undefined); }}
+                  />
+                </ConversationEmptyState>
+              )}
             followOutput={isGenerating}
             footer={footerNodes.length > 0 ? <>{footerNodes}</> : undefined}
             items={renderedTurns}
             pinToBottom={pinToBottom}
-            raiseScrollButton={todos.length > 0}
+            raiseScrollButton={activeDiffs.length > 0 || todos.some((todo) => todo.status !== "completed" && todo.status !== "cancelled")}
           />
         </BorderBeam>
 
         <div className="relative z-10 shrink-0 bg-background/95 px-3 pb-3 pt-0 shadow-[0_-10px_28px_-24px_hsl(var(--foreground)/0.55)] backdrop-blur-sm">
-          <TodoPanel active={isGenerating} todos={todos} />
-          {TRIGGER_CHARACTERS.includes(composerText.slice(0, 1)) && (
+          <TodoPanel active={isGenerating} diffs={activeDiffs} todos={todos} />
+          {(TRIGGER_CHARACTERS.includes(composerText.slice(0, 1)) || fileSearch !== undefined) && (
             <SlashCommandMenu
+              fileSearch={fileSearch}
+              onFileSearchChange={setFileSearch}
               agents={agents}
               commands={commands}
               disabledSkillNames={preferences.disabledSkillNames}
               mcpNames={mcpNames}
+              onAttachAgent={onAttachAgent}
+              onAttachMcp={onAttachMcp}
               onAttachFile={attachProjectFile}
               onAttachSkill={onAttachSkill}
               onSelectCommand={onSelectCommand}
-              onCompact={compactSession}
+              onCompact={() => { onClearCommand(); onCompact(); }}
+              onInit={() => { onClearCommand(); void onPrompt({ files: [], text: "/init" }).catch(() => undefined); }}
               onInsert={onSetComposerText}
               query={composerText}
               skills={skills}
@@ -612,7 +635,7 @@ export function AssistantShell(props: AssistantShellProps) {
             </div>
           )}
           <BorderBeam
-            active={!booting && Boolean(selectedSessionID)}
+            active={!booting}
             className="w-full"
             colorVariant="colorful"
             onMouseEnter={() => setComposerHovered(true)}
@@ -621,9 +644,9 @@ export function AssistantShell(props: AssistantShellProps) {
             strength={composerBeamStrength}
             theme={theme}
           >
-            <PromptInput className="rounded-[10px] border border-border/60 bg-card shadow-none" onSubmit={submitPrompt} onTextChange={onSetComposerText} text={composerText}>
+            <PromptInput className="rounded-[10px] border border-border/60 bg-card shadow-none" draftKey={activeSessionTabID} onSubmit={submitPrompt} onTextChange={onSetComposerText} openDraftKeys={sessionTabs.map((tab) => tab.id)} text={composerText}>
               <PromptInputAttachments />
-              <PromptInputTextarea className="min-h-10 max-h-28 py-2 text-sm" disabled={booting || !selectedSessionID} placeholder={contexts.length > 0 ? t("s_0e75c177e7") : composerHint()} />
+              <PromptInputTextarea className="min-h-10 max-h-28 py-2 text-sm" disabled={booting} placeholder={contexts.length > 0 ? t("s_0e75c177e7") : composerHint()} />
               <PromptInputFooter className="px-1.5 pb-1 pt-0.5">
                 <PromptInputTools className="flex min-w-0 flex-wrap gap-0.5">
                   <PromptInputAttachmentButton />
@@ -643,7 +666,7 @@ export function AssistantShell(props: AssistantShellProps) {
                 </PromptInputTools>
                 <div className="flex shrink-0 items-center gap-0.5">
                   <ContextUsageIndicator context={contextUsage} />
-                  <PromptInputSubmit aria-label={isGenerating ? t("s_76349aa64a") : t("s_94306b2fc3")} disabled={booting || !selectedSessionID} onStop={onStop} status={runStatus} />
+                  <PromptInputSubmit aria-label={isGenerating ? t("s_76349aa64a") : t("s_94306b2fc3")} disabled={booting} onStop={onStop} status={runStatus} />
                 </div>
               </PromptInputFooter>
             </PromptInput>
@@ -651,7 +674,50 @@ export function AssistantShell(props: AssistantShellProps) {
         </div>
       </div>
       <SessionDialog deletingSessionID={deletingSessionID} pendingApprovalSessionIDs={pendingApprovalSessionIDs} onCreate={onCreateSession} onDelete={onDeleteSession} onOpenChange={onSessionDialogOpenChange} onSelect={onSelectSession} open={sessionDialogOpen} selectedSessionID={selectedSessionID} sessions={sessions} />
-      <WorkspaceDialog updateStatus={updateStatus} baseUrl={getOpenCodeBaseUrl()} connected={connected === true} initialSection={workspaceSection} mcpNames={mcpNames} models={selectableModels} onConfigurationChanged={onConfigurationChanged} onOpenChange={onWorkspaceOpenChange} onPreferencesChanged={onPreferencesChanged} open={workspaceDialogOpen} projectID={currentSession?.projectID} projectPath={projectPath} skills={skills} />
+      <Dialog onOpenChange={(open) => { if (!open) onCancelPendingSessionTab(); }} open={Boolean(pendingSessionTabOpen)}>
+        <DialogContent className="max-w-[calc(100vw-1.5rem)] gap-3 p-4 sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">{t("tabs.limitTitle")}</DialogTitle>
+            <DialogDescription>{t("tabs.limitDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[min(45vh,18rem)] space-y-1 overflow-y-auto py-1">
+            {sessionTabs.map((tab) => {
+              const title = sessionTabTitle(tab, new Map(sessions.map((session) => [session.id, session])));
+              return (
+                <button
+                  className="group flex w-full min-w-0 items-center gap-3 rounded-md px-2.5 py-2 text-left text-xs hover:bg-muted"
+                  key={tab.id}
+                  onClick={() => onCloseSessionTabAndOpenPending(tab.id)}
+                  title={title}
+                  type="button"
+                >
+                  <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground group-hover:text-foreground">{t("tabs.closeThisAndOpen")}</span>
+                </button>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button onClick={onCancelPendingSessionTab} type="button" variant="ghost">{t("s_4d0b4688c7")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog onOpenChange={(open) => { if (!open) onSessionTitleCancel(); }} open={nativeTitleActions && editingSessionTitle}>
+        <DialogContent className="max-w-[calc(100vw-1.5rem)] gap-3 p-4 sm:max-w-sm">
+          <form onSubmit={(event) => { event.preventDefault(); onSessionTitleSave(); }}>
+            <DialogHeader>
+              <DialogTitle className="text-base">{t("s_757cc06ee1")}</DialogTitle>
+              <DialogDescription className="sr-only">{t("s_864aff361d")}</DialogDescription>
+            </DialogHeader>
+            <Input aria-label={t("s_864aff361d")} autoFocus className="mt-3" onChange={(event) => onSessionTitleChange(event.target.value)} value={sessionTitleDraft} />
+            <DialogFooter className="mt-4">
+              <Button onClick={onSessionTitleCancel} type="button" variant="ghost">{t("s_4d0b4688c7")}</Button>
+              <Button disabled={!sessionTitleDraft.trim()} type="submit">{t("s_fadf24dbc5")}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <WorkspaceDialog nativeTitleActions={nativeTitleActions} updateStatus={updateStatus} baseUrl={getOpenCodeBaseUrl()} connected={connected === true} initialSection={workspaceSection} mcpNames={mcpNames} models={selectableModels} onConfigurationChanged={onConfigurationChanged} onOpenChange={onWorkspaceOpenChange} onPreferencesChanged={onPreferencesChanged} open={workspaceDialogOpen} projectID={currentSession?.projectID} projectPath={projectPath} skills={skills} />
     </TooltipProvider>
   );
 }

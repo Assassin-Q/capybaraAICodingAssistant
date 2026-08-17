@@ -1,5 +1,60 @@
 # Capybara AI Coding Assistant V3 - Completion Audit
 
+## T17 - OpenCode V2 model variants and native IDEA tab overflow [x]
+### Implementation record (2026-08-14)
+
+- `frontend/src/lib/opencode.ts` now treats V2 `/api/model` as the runtime source of truth. An explicitly empty variant set is preserved and is never repopulated from legacy `/provider` data.
+- `frontend/src/lib/providerCatalog.ts` applies the same rule while merging the settings catalog, so stale `max`/`high` values cannot leak from the legacy response into the runtime picker.
+- `ModelSettings.tsx` still falls back to disk configuration for editing before an OpenCode restart, while the conversation picker only receives live V2 variants.
+- `modelRefWithAvailableVariant` now strips an unsupported or stale variant before a session switch or prompt. The existing guard clears the stale UI selection and reports a real switch error instead of silently sending a rejected variant.
+- `NativeSessionTabs.kt` and `AICodingToolWindowFactory.kt` register the left arrow, shrinkable tab viewport, and right arrow as three independent IDEA 2023.2.4 tab actions. The root action is never hidden, arrow slots have fixed sizes, and layout/scroll bounds are recalculated after Swing layout completes.
+
+### Runtime verification
+
+- Queried `http://127.0.0.1:65530/api/model`: `capybaraai/gpt-5.6-sol` and `gpt-5.6-terra` expose `none/low/medium/high/xhigh`; `sensenova` exposes `none/low/medium/high`; `opencode/deepseek-v4-flash-free` exposes no variants.
+- Created a temporary empty session, posted the V2 JSON model reference, received HTTP `204`, read the session back with the selected `low` variant, and deleted the temporary session. No credential values were read or written.
+
+### Verification
+
+- `pnpm.cmd exec tsc --noEmit` passed.
+- `pnpm.cmd build` passed.
+- The first standard `gradle ... buildPlugin` attempt was stopped by Windows virtual-memory error 1455 while the Kotlin daemon crashed. The successful retry used `-Dkotlin.compiler.execution.strategy=in-process`, `--max-workers=1`, and reduced Gradle JVM memory; `buildPlugin` passed.
+- `git diff --check` passed; no hand-written `.ts/.tsx/.kt` source file exceeds 1000 lines; no browser-native `confirm()` or `alert()` was added.
+
+---
+
+## T12 - IDEA context navigation and turn activity capsule `[x]`
+
+### Implementation record (2026-08-11)
+
+- `ContextChip.tsx` compacts long paths by removing only middle segments, keeps the line range
+  visible as a separate monospace label, exposes the full location through the title/ARIA label,
+  and sends file, selection, and directory clicks to the IDEA bridge. Directory clicks select the
+  matching node in the Project view; file and selection clicks open the editor at the requested line.
+- `IdeaInsightService.navigate` validates paths against the current project root and dispatches the
+  native IDEA navigation on the application thread. `BaseAICodingAction` continues to publish all
+  selected files, while `App.tsx` deduplicates bridge event IDs and only auto-submits
+  `explain_code`; add-to-chat, optimize, and test remain attachments until the user sends them.
+- `useSessionDiffs` tracks the active user turn separately from completed turn summaries. During a
+  run it polls the live snapshot/OpenCode diff without clearing the last successful result; after a
+  run it attaches the final per-turn files below the assistant conclusion.
+- `TodoPanel` renders a compact floating capsule while a run is active. It shows todo progress,
+  live `+/-` changes, or both; the combined state opens a two-tab todo/file-diff popover. The pill is
+  hidden after the run and each file can open the IDEA native three-way diff dialog.
+- `VirtualConversation` treats wheel, keyboard, touch, and native scrollbar drag as user scroll
+  gestures, so the return-to-bottom button is shown consistently without letting streamed layout
+  remeasurement force the user back to the bottom.
+
+### Verification (2026-08-11)
+
+- `pnpm.cmd exec tsc --noEmit` passed.
+- `pnpm.cmd build` passed.
+- `gradle -p idea-plugin buildPlugin -PintellijLocalPath="E:\\software\\IntelliJ IDEA 2023.2.4" --no-daemon` passed.
+- `git diff --check` passed; the largest changed source file is 971 lines.
+- Runtime limitation: the navigation, native diff dialog, and JCEF scrollbar behavior still need
+  confirmation inside the user's running IDEA instance; the current verification uses the bridge
+  harness and the packaged plugin build.
+
 Status legend: `[ ]` pending, `[-]` in progress, `[x]` implemented and verified.
 
 ## Verification Baseline (2026-08-08)
@@ -693,6 +748,60 @@ IDEA 的“跟随系统明暗模式”也没有复用插件的主题选择。
 
 ---
 
+## T11 — IDEA 原生工具窗顶栏动作与代码拆分 `[x]`
+
+### Codex 实施记录（实际执行：2026-08-11）
+
+- 新增 `CapybaraTitleActions.kt`，把状态、新会话、历史、设置、Git、主题、刷新注册为
+  IDEA `ToolWindowEx.setTitleActions(...)` 原生标题动作；状态点使用 Kotlin 缓存的连接/更新状态，
+  不在 `AnAction.update` 中发网络请求。
+- 新增 `PluginUpdateService.kt`，将版本检查完全迁移到 Kotlin；冷缓存首次请求等待真实结果，
+  并发请求共享同一个 Future，完成后触发 IDEA 动作栏刷新；前端通过 `GET /api/plugin-update`
+  读取相同缓存，不再从 JCEF 直接访问发布服务。
+- JCEF 加载地址增加 `nativeTitleActions=1`，硬编码隐藏 React 顶栏；原生动作通过现有
+  `/events` SSE 发送 `capybara.action`，前端复用既有会话、设置、Git 和主题逻辑。Git
+  保留一个不可见的 React Popover 锚点，保证 IDEA 原生 Git 动作仍打开现有 Git 面板。
+- `HttpServerManager` 增加运行状态判断，并在停止时移除当前项目的活动实例；因此标题动作只
+  操作当前项目的前端服务，不会误停共享的 OpenCode 服务。
+- 审批/问答状态集中到 `useApprovalInteractions.ts`，消息提交、命令分流、附件模态回退和
+  自动重试集中到 `usePromptSubmission.ts`；`App.tsx` 从 1161 行降至 937 行，避免重复状态
+  和旧实现并存造成审批与发送竞态。所有手写源码仍少于 1000 行。
+- 验证通过：`pnpm.cmd exec tsc --noEmit`、`pnpm.cmd build`、缓存 Gradle 8.14 配合
+  IDEA 2023.2.4 SDK 执行的 `buildPlugin`，以及 `git diff --check`；没有新增浏览器原生
+  `confirm()` / `alert()`。
+
+---
+
+## T13 — 顶栏主题/会话标题与模型选择状态修复 `[x]`
+
+### 问题与原因
+
+- IDEA 原生主题动作固定使用 `AllIcons.Actions.Show`，因此无论当前明暗状态都显示眼睛图标。
+- 视觉模型设置只提供模型选择回调，没有把 `undefined` 写回偏好的入口，选中后无法停用。
+- `App.tsx` 使用整个 `currentSession` 对象初始化模型；会话列表刷新产生的新对象会把刚完成的乐观模型
+  选择覆盖成旧值，所以底部模型名要切换会话后才更新。
+- 启用 IDEA 原生标题动作后 React 顶栏被隐藏，但当前会话名没有同步给 `ToolWindow`，原生顶栏也没有
+  能触发现有重命名逻辑的入口。
+
+### Codex 实施记录（实际执行：2026-08-11）
+
+- 原生主题动作改为按 `UIUtil.isUnderDarcula()` 动态显示 IDEA 自带太阳/月亮图标，并同步更新为“切换为
+  浅色/深色”的提示；点击仍通过既有 SSE 交给前端主题逻辑，不复制第二套切换实现。
+- 视觉模型选择器右侧新增无边框清除按钮；只在已配置视觉模型时显示，点击写回 `undefined` 并恢复
+  “不启用”状态。
+- 模型/档位/智能体只在当前会话 ID 真正变化时初始化；同一会话的列表刷新不再覆盖
+  `handleModelChange` 的即时状态，切换成功后仍回写会话列表，失败时仍恢复原选择。
+- 新增 `POST /api/panel/title`，前端在会话切换或改名后把当前会话名同步到 IDEA `ToolWindow.title`；
+  原生动作栏新增铅笔按钮，通过 `capybara.action` 打开项目 Dialog/Input/Button 实现的重命名弹窗。
+- 网页实测通过：Laguna 切到 Big Pickle 后模型按钮立即更新且等待后不回退，随后已还原 Laguna；视觉
+  模型选中后清除按钮出现，清除后按钮消失且恢复未配置；模拟 IDEA SSE 后原生标题模式能打开并取消
+  “重命名会话”弹窗。
+- 验证通过：`pnpm.cmd exec tsc --noEmit`、`pnpm.cmd build`、IDEA 2023.2.4 SDK 下的
+  `gradle -p idea-plugin buildPlugin`；所有本轮涉及源码均少于 1000 行，也没有新增原生
+  `confirm()` / `alert()`。
+
+---
+
 ## 仍未在真实 IDEA 里验证的项（给 Codex 的提醒）
 
 这些改动编译和打包都过了，但**没有在运行中的 IDEA 里点过**，改相关代码时请一并实测：
@@ -706,3 +815,203 @@ IDEA 的“跟随系统明暗模式”也没有复用插件的主题选择。
 - Git 按钮里点文件是否打开 IDEA 三栏 diff；
 - 从 `opencode.jsonc` 删除供应商是否真的写回了文件；
 - 工具窗口最小宽度 `stretchWidth` 是否生效。
+- 原生顶栏是否按当前 IDEA 主题显示正确的太阳/月亮图标、是否展示当前会话标题，以及铅笔动作保存改名后
+  是否立即刷新标题（目标 SDK 已编译通过，网页已用 SSE 模拟验证弹窗链路）。
+
+---
+
+## T14 — IDEA 原生多会话标签与 OpenCode V2 模型链路 `[x]`
+
+### 问题与原因
+
+- React 会话标签不适合 IDEA 狭窄工具窗口；用户需要标签位于 IDEA 原生工具窗顶栏，但普通网页访问仍应
+  保持单会话界面，通过历史会话面板切换。
+- `/api/model` 是模型目录，可能包含尚未配置凭据、当前不能调用的模型。直接渲染整个目录会让用户选择
+  一个看似存在、发送时却没有输出的模型。
+- OpenCode V2 的 prompt payload 不再携带模型；模型属于会话状态，必须先调用
+  `POST /api/session/{sessionID}/model`，再发送 prompt。供应商密钥也应走 V2 integration/credential，不能
+  明文写入 `opencode.jsonc`。
+- `VirtualConversation` 给 Virtuoso 的 `scrollerRef` 每次 render 都是新函数；React 会先以 `null` 清理旧
+  callback ref，再赋回元素，而回调又把两个值写入 state，形成持续重绘循环。
+
+### Codex 实施记录（实际执行：2026-08-12）
+
+- 新增 IDEA 原生 `NativeSessionTabsController` 和 `POST /api/panel/session-tabs`：标签支持选择、仅关闭视图、
+  每标签悬停改名/关闭、长标题省略、完整标题提示、左右滚动和活动标签定位。关闭标签不会删除或停止
+  OpenCode 会话，关闭活动标签后选择相邻标签，全部关闭后显示尚未落库的新对话草稿。
+- 修正原生标签的标题栏挂载位置：之前把标签作为第一个 `setTitleActions` 动作注册，而 IDEA 会把整组 title
+  actions 固定放在标题栏右侧，所以标签内部即使使用左对齐布局也仍会靠右。现在标签单独通过
+  `ToolWindowEx.setTabActions` 挂到 IDEA 的 west toolbar，状态、新建、历史、设置等按钮继续留在
+  `setTitleActions` 的右侧工具栏，形成“左侧会话标签 + 右侧命令按钮”的原生布局。
+- 原生标签不再使用 `JPanel` 在横向 `BoxLayout` 下近乎无限的默认最大宽度；每个标签按省略后标题的实际
+  字体宽度和操作按钮区域计算并锁定最小/首选/最大尺寸，因此短名称保持紧凑、不同名称具有不同宽度。
+  标题最多显示 18 个 Unicode 字符，超出时显示前 17 个字符和省略号，完整名称继续通过 tooltip 展示；
+  编辑/关闭按钮区域提前预留，悬停出现按钮时不会推动后续标签或造成标题栏抖动。
+- 修复标签溢出被裁切和切换短暂卡死：标签条改为实现 `Scrollable` 的真实横向视图，显式维护所有标签的
+  首选总宽度，布局完成后再把活动标签滚入视口；左右按钮按真实 `contentWidth - extentWidth` 判断状态，
+  并使用固定按钮槽位避免显隐时挤动标签。标签视口不再固定为 360px，而是跟随 IDEA 工具窗口宽度扩展，
+  只为右侧原生命令按钮预留空间，窄屏时才进入左右滚动。
+- 原生标签点击过去会在 IDEA EDT 上同步写入并 `flush()` SSE；当前端连接稍慢时整个 IDEA UI 线程会被拖住。
+  现在由项目级单线程 SSE broadcaster 按序后台发送，保持事件顺序但不阻塞标签点击和工具窗口绘制。
+- 已打开会话的运行时增加 `messagesLoaded` 缓存标记；切换回已经加载过的会话时直接复用该标签的内存消息，
+  仍会异步同步待审批、待办和运行状态，避免每次切换都重新拉取并解析整段消息历史。
+- 标签编辑/关闭按钮不再复用标签选择监听，避免一次点击同时发送“关闭/改名”和“选择”两个动作；鼠标从
+  标题移到子按钮时延后检查真实指针位置，避免按钮闪烁。上一版全局 `ToolWindow.title` 和全局改名路由已
+  删除，每个会话名只存在于对应原生标签中；本项取代 T13 中的全局标题同步方案。
+- `nativeTitleActions=1` 只由 IDEA JCEF 加载地址设置。仅该模式同步原生标签并显示连接页的多标签开关、
+  最大数量和溢出策略；普通网页不渲染标签条、强制单标签，历史会话选择直接覆盖当前视图。
+- “新建会话”先生成本地空白草稿，只有第一条消息真正提交时才调用 OpenCode 创建会话；因此连续点新建
+  不会在历史记录中产生空会话。草稿、会话运行状态、消息队列和输入内容按标签隔离。
+- 模型列表以 `/api/model` 的模型详情为基础，供应商目录以 `/api/provider` 为准。后续在 2026-08-13
+  实测确认 `/config/providers` 不包含通过 V2 auth/运行时加载的 `deepseekCurrent`、`sensenova`，用它过滤会
+  误删实际可用的自定义供应商；当前实现已移除该过滤，保留 `/api/model` 返回的有效模型。
+- 普通发送、排队后发送和失败重试前统一调用 V2 `POST /api/session/{sessionID}/model`；界面切换模型也
+  立即调用同一路由并乐观更新，失败恢复原值。已对照最新源码确认该路由由
+  `session.switchModel` 正式提供，避免继续向 V2 prompt 发送已废弃的模型字段。
+- 供应商 API Key 不再写入供应商 options；2026-08-13 进一步对照最新源码并实测后，认证改为正式 V2
+  `PUT /auth/{providerID}`，删除凭据使用 `DELETE /auth/{providerID}`。自定义供应商仍先由 IDEA 桥接安全
+  写入配置，再保存凭据并销毁当前工作区实例，后续请求自动按新配置重建，不停止共享的 65530 服务。
+- Virtuoso 的 scroller callback ref 改为稳定的 `useCallback`，且只在元素身份真正变化时写 state，消除
+  `Maximum update depth exceeded` 的持续重绘来源。网页实测先确认 65530 已连接、普通网页无标签条；测试
+  随后发现该循环并完成修复，修复后的再次浏览器加载被本地 URL 安全策略拦截，因此没有伪造“复测通过”。
+- IDEA 原生标签没有替用户启动或操作真实 IDEA，只完成目标 IDEA 2023.2.4 SDK 编译和插件打包；悬停、
+  改名、关闭活动标签和左右滚动仍需用户安装新包后点验。
+
+### 2026-08-13 溢出导航与切换性能补修
+
+- 上一版把左右导航按钮包在同一个自定义标签动作内部；IDEA 压缩 west toolbar 时会把整个动作裁掉，
+  于是标签已经溢出但按钮也不可见。现在注册为三个独立的原生 `setTabActions`：左箭头、标签视口、
+  右箭头。两侧按钮始终保留固定位置，不可滚动时只禁用；中间标签区被压缩后仍可用箭头访问后续会话。
+- 标签点击后先在 Swing EDT 本地更新激活下划线并把目标滚入视口，再通过 SSE 通知 JCEF；不再等待
+  Kotlin -> SSE -> React -> HTTP -> Kotlin 的完整往返才显示选中状态。
+- React 回传的标签标题列表没有变化时，Kotlin 只更新激活样式，不再销毁重建整排标签组件；改名、
+  新增或关闭导致结构变化时才重建，避免每次切换都触发标题栏完整布局。
+- 已加载会话切回时不再把缓存消息重新送入 `reconcileSessionMessages` 制造一份新数组；会话分组增加
+  基于不可变消息数组的 `WeakMap` 缓存，已完成的长会话可以复用分组结果，减少 JCEF 主线程重复解析
+  整段历史、重新创建虚拟列表/Markdown 节点造成的停顿。
+- `AssistantShell` 的整组消息节点也改为依赖会话轮次、diff 映射和流式状态的 `useMemo`，在标签切换或
+  非当前会话的后台状态变化时复用已有 `AssistantMessage` / Markdown React 节点，避免长对话切回时
+  再次创建整棵消息树。
+- 原生标签选择使用 React transition 提交，让浏览器优先响应当前交互；审批、Todo、会话 busy 状态仍在
+  切换后异步校准，不改变后台会话继续接收 SSE 的行为。
+
+### 验证
+
+- `pnpm.cmd exec tsc --noEmit`
+- `pnpm.cmd build`
+- `gradle -p idea-plugin buildPlugin -PintellijLocalPath="E:\software\IntelliJ IDEA 2023.2.4" --offline --no-daemon`
+- `git diff --check`；手写源码单文件均不超过 1000 行；未使用浏览器原生 `confirm()` / `alert()`。
+
+---
+
+## T15 — 供应商认证、模型档位即时同步与 IDEA 偏好持久化 `[x]`
+
+### 问题与原因
+
+- 供应商保存仍调用兼容层的 `POST /api/integration/{providerID}/connect/key`。自定义供应商 ID 不一定存在于
+  integration 目录，因此保存 `deepseekCurrent` / `sensenova` 时只得到通用 server error，Key 没有更新到
+  OpenCode 的正式认证存储。
+- 模型设置页只从 provider catalog 查模型详情，而对话模型来自 `/api/model`。选择自定义模型时，设置页
+  当下找不到 variants，回到对话后全局模型刷新又能看到档位，造成“保存后延迟出现”的错觉。
+- IDEA JCEF 前端使用随机本地端口，`localStorage` 按 origin 隔离。语言、会话标签、人格、禁用技能、视觉
+  模型和档位显示名虽然写入了浏览器缓存，重启 IDEA 换端口后却读不到。
+- 模型新增、启停、删除只改配置文件，没有使当前 OpenCode 工作区实例失效；设置页的本地状态和对话页
+  重新读取的模型目录可能短暂不一致。
+- 停止生成流程仍会先调用当前 OpenCode 明确返回 503 的 `session.wait` 占位接口，再退回 active 轮询，
+  带来无意义错误和延迟。
+
+### Codex 实施记录（实际执行：2026-08-13）
+
+- `setProviderAuth` 改为 `PUT /auth/{providerID}`，payload 为 `{ type: "api", key }`；删除凭据改为
+  `DELETE /auth/{providerID}`。保存/删除后调用 `POST /instance/dispose` 让当前工作区按新认证重建。
+  已在 `http://127.0.0.1:65530` 用临时探针 ID 实测 CORS 预检、PUT 和 DELETE 均返回成功，探针随后删除；
+  未读取、输出或写入用户密钥。
+- 删除 `/config/providers` 对 `/api/model` 的错误过滤。真实服务中 `/api/provider` 与 `/api/model` 包含
+  `deepseekCurrent`、`sensenova`，而 `/config/providers` 不包含它们；当前对话模型列表保留 V2 实际模型。
+- `ModelSettings` 接收 App 已加载的 `/api/model` 模型列表，并按 `providerID/modelID` 合并到 catalog；选择
+  模型时立即回填上下文、最大输出、模态、reasoning/tool-call 能力和 variants。档位编辑仍保持
+  `key -> 显示名称`，不把底层 JSON 参数暴露给用户。
+- 所有 `ideaApi.saveProvider` 调用都检查 `success`；配置文件写入失败时立即展示真实错误，不再继续保存凭据
+  或显示伪成功。模型保存、启停、删除和供应商删除成功后统一 dispose 工作区实例，使对话页立即读到新数据。
+- 新增项目级 `WorkspacePreferencesService`，通过 IntelliJ `PersistentStateComponent` 保存到 workspace.xml；
+  Kotlin 提供 `GET/POST /api/preferences`。IDEA 模式启动先读取持久化值并回填本地缓存，网页模式继续使用
+  localStorage。保存请求串行化，避免快速切换语言/标签设置时旧请求后到覆盖新值；API Key 不进入该存储。
+- 初始化拿到持久化语言后立即调用 `setLocale`，因此语言切换触发 React 根重挂载时会等待正在进行的偏好
+  保存，不会重新读取旧语言。会话标签、人格、技能禁用、视觉模型和档位标签使用同一持久化对象。
+- 删除未实现的 `session.wait` 调用；停止生成从一开始就轮询 `/api/session/active`，连续三次 idle 后同步消息。
+- 使用现有认证对两个自定义模型做了临时会话探针并立即删除会话：消息创建、模型切换和 prompt 入队均成功；
+  `deepseekCurrent` 当前存量凭据被上游以 HTTP 401 拒绝，`sensenova` 被上游以 HTTP 403 拒绝。安装新插件后
+  需要在供应商页重新保存各自 Key，才能由新的 V2 auth 路由替换旧凭据。
+- 网页模式最终以 `/opencode` 同源代理连接 65530 完成复测：对话底部显示 `sensenova-6.8-flash-lite`
+  和“关闭”档位；模型设置页加载完成后同时列出 `deepseekCurrent` 与“商汤日日新”。首次展开
+  `sensenova-6.8-flash-lite` 就直接显示 `high / low / medium / none` 及“高 / 低 / 中 / 关闭”，无需切回
+  对话触发二次刷新。前端生产构建、IDEA SDK 编译和插件打包均已完成，最终 JAR 已核验包含持久化服务、
+  `static/index.html` 与最新主 bundle。
+
+### 验证
+
+- `pnpm.cmd exec tsc --noEmit`
+- `pnpm.cmd build`
+- `gradle -p idea-plugin compileKotlin -PintellijLocalPath="E:\software\IntelliJ IDEA 2023.2.4" --offline --no-daemon`
+- `gradle -p idea-plugin buildPlugin -PintellijLocalPath="E:\software\IntelliJ IDEA 2023.2.4" --offline --no-daemon`
+- `git diff --check`；本轮涉及的手写源码单文件均不超过 1000 行；未新增浏览器原生
+  `confirm()` / `alert()`。
+
+---
+
+## T16 — 原生标签单击/溢出导航与自定义供应商 JSONC 保存 `[x]`
+
+### 问题与原因
+
+- 原生标签切换通过 SSE 通知 React，React 又异步 POST 整份标签快照；多个请求可能乱序到达，旧快照会
+  覆盖刚点击的活动标签。前端还使用 `startTransition` 延迟提交，用户因此经常需要点第二次。
+- 左右箭头是三个彼此独立的 IDEA action，而 Kotlin 收到任意未改变活动标签的快照仍会执行
+  `scrollActiveIntoView()`，用户手动滚动后会立即被拉回活动标签，看起来按钮完全无效。
+- `/api/provider` 同时返回内置供应商和来源为 `config` 的用户供应商。设置页只要在目录中找到
+  `deepseekCurrent` 就把它当成内置项，保存时进入“只写 V2 auth”的分支，没有调用 JSONC 写入服务。
+- OpenCode 最新源码允许自定义供应商同时从 `provider.options.apiKey` 和全局 `auth.json` 获取 Key。只写
+  `auth.json` 虽能运行，但不满足用户希望自定义供应商 JSONC 可见、可迁移的配置方式。
+
+### Codex 实施记录（实际执行：2026-08-13）
+
+- 原生标签快照增加单调递增 `revision`，Kotlin 丢弃乱序旧请求；原生点击在 `mousePressed` 阶段立即更新，
+  并移除 React `startTransition`，一次点击即可同步选中标签和会话。
+- 左箭头、标签视口、右箭头合并为同一个固定宽度的原生标题栏组件，导航按钮直接操作内部 viewport；仅当
+  活动标签真的变化时自动滚入视图，普通快照不再撤销用户手动滚动。
+- 设置页按 `/provider` 的 `source` 区分内置目录项与用户配置项；`source=config` 的 `deepseekCurrent`、
+  `sensenova` 会进入完整 JSONC 保存流程。写入服务优先更新已经包含同 ID 的配置文件，避免同名配置被写到
+  错误层级。
+- 自定义供应商输入新 Key 时同时写入 JSONC `options.apiKey` 和 OpenCode V2 `PUT /auth/{providerID}`，随后
+  dispose 当前工作区实例；内置目录供应商仍只写 V2 auth。未读取或输出任何用户密钥。
+- 在 `http://127.0.0.1:65530` 用临时无效探针验证 `PUT /auth` 与 `DELETE /auth` 均为 200，探针已删除；
+  检查配置时只统计供应商 ID/字段名，不输出字段值。
+
+### 验证
+
+- `pnpm.cmd exec tsc --noEmit`
+- IDEA 2023.2.4 SDK 下的 `gradle -p idea-plugin compileKotlin --offline --no-daemon`
+- `pnpm.cmd build`
+- `gradle -p idea-plugin buildPlugin -PintellijLocalPath="E:\software\IntelliJ IDEA 2023.2.4" --offline --no-daemon`
+- `git diff --check`；本轮涉及手写源码均少于 1000 行，未新增浏览器原生 `confirm()` / `alert()`。
+
+---
+
+## T18 — 根目录 `config.json` 密钥泄露修复 `[x]`
+
+### 问题与原因
+
+- OpenCode V2 的实例级 `PATCH /config?directory=<workspace>` 固定把合并配置写到工作区根目录的
+  `config.json`。前端曾用它保存 `disabled_providers` 和 MCP，旧配置里的供应商凭据被深度合并进该文件。
+- 该未跟踪文件创建于 2026-08-06 15:32:09、最后修改于 2026-08-13 17:29:46；它不是 Git 或
+  `OpenCodeConfigService` 创建的，而是实例级配置接口的落盘行为。
+
+### Codex 实施记录（实际执行：2026-08-14）
+
+- `openCodeApi.updateConfig` 改用 V2 `PATCH /global/config`，配置只写用户级 OpenCode 配置目录，不再携带
+  IDEA 项目路径调用实例级写接口。
+- Kotlin 供应商保存和删除固定操作 `~/.config/opencode/opencode.jsonc` / `opencode.json`；项目级配置只
+  保留审批 permission 临时覆盖，不再承载供应商凭据。
+- 迁移前仅比较字段存在性与密钥 SHA-256 是否一致，不输出密钥。用户目录已有的较新供应商配置不覆盖；
+  根目录独有的真实旧条目通过 `/global/config` 迁移，测试探针跳过，验证成功后删除根目录敏感副本。
+- `.gitignore` 增加 `/config.json` 和备份文件保护，防止旧 OpenCode 客户端意外生成的工作区副本进入 Git。
+- 实测 `/global/config` 返回 200、用户级 `opencode.jsonc` 更新，项目根目录未重新生成 `config.json`。

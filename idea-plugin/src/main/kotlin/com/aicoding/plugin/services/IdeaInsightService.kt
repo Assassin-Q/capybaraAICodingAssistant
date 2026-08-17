@@ -17,6 +17,8 @@ import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.wm.ToolWindowId
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiNamedElement
@@ -129,7 +131,14 @@ data class IdeaSymbolResponse(
 )
 
 @Serializable
-data class IdeaNavigateRequest(val path: String, val line: Int = 1, val column: Int = 1)
+data class IdeaNavigateRequest(
+    val path: String,
+    val line: Int = 1,
+    val column: Int = 1,
+    /** Last line of the referenced region; the editor selects line..endLine when it is larger. */
+    val endLine: Int = 0,
+    val selectInProject: Boolean = false,
+)
 
 @Serializable
 data class IdeaNativeActionResponse(val success: Boolean, val message: String? = null)
@@ -269,14 +278,40 @@ class IdeaInsightService(private val project: Project) {
     fun navigate(request: IdeaNavigateRequest): IdeaNativeActionResponse = runCatching {
         val file = resolveFile(request.path) ?: error("没有找到目标文件")
         ApplicationManager.getApplication().invokeLater {
-            OpenFileDescriptor(
-                project,
-                file,
-                request.line.coerceAtLeast(1) - 1,
-                request.column.coerceAtLeast(1) - 1,
-            ).navigate(true)
+            if (request.selectInProject || file.isDirectory) {
+                val selectDirectory = Runnable { ProjectView.getInstance(project).select(null, file, true) }
+                ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW)
+                    ?.activate(selectDirectory, true)
+                    ?: selectDirectory.run()
+            } else {
+                val startLine = request.line.coerceAtLeast(1) - 1
+                val descriptor = OpenFileDescriptor(
+                    project,
+                    file,
+                    startLine,
+                    request.column.coerceAtLeast(1) - 1,
+                )
+                descriptor.navigate(true)
+                // A snippet chip stands for a region, not a position: putting the caret on its
+                // first line said nothing about where it ended. The editor is asked to select the
+                // whole span so the reference lines up with what was attached.
+                val endLine = request.endLine - 1
+                if (endLine > startLine) {
+                    val editor = FileEditorManager.getInstance(project).selectedTextEditor
+                    val document = editor?.document
+                    if (document != null && endLine < document.lineCount) {
+                        editor.selectionModel.setSelection(
+                            document.getLineStartOffset(startLine),
+                            document.getLineEndOffset(endLine),
+                        )
+                    }
+                }
+            }
         }
-        IdeaNativeActionResponse(true, "已在 IDEA 中定位到 ${relativePath(file)}:${request.line}")
+        val location = relativePath(file).let { path ->
+            if (file.isDirectory) path else "$path:${request.line}"
+        }
+        IdeaNativeActionResponse(true, "已在 IDEA 中定位到 $location")
     }.getOrElse { IdeaNativeActionResponse(false, it.message ?: "无法在 IDEA 中打开文件") }
 
     fun refresh(): IdeaNativeActionResponse = runCatching {

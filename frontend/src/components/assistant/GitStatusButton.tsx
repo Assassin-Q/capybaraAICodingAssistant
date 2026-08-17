@@ -13,11 +13,15 @@ import { t } from "@/lib/i18n";
 
 interface GitStatusButtonProps {
   model?: ModelInfo;
+  /** Incremented by the IDEA title action to open this existing Git popover. */
+  openRequest?: number;
+  /** Keeps the popover mounted when the React toolbar is replaced by IDEA native actions. */
+  nativeTrigger?: boolean;
   projectPath?: string;
   variant?: string;
 }
 
-export function GitStatusButton({ model, projectPath, variant }: GitStatusButtonProps) {
+export function GitStatusButton({ model, nativeTrigger = false, openRequest = 0, projectPath, variant }: GitStatusButtonProps) {
   const [status, setStatus] = useState<GitStatusResponse>();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState("");
@@ -48,6 +52,10 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
     const timer = window.setInterval(() => void refresh(), 5000);
     return () => window.clearInterval(timer);
   }, [refresh]);
+
+  useEffect(() => {
+    if (nativeTrigger && openRequest > 0 && status?.available) setOpen(true);
+  }, [nativeTrigger, openRequest, status?.available]);
 
   const changeCount = status?.files?.length ?? 0;
   const untrackedCount = (status?.files ?? []).filter((file) => file.status === t("s_2f345ab234")).length;
@@ -87,8 +95,13 @@ export function GitStatusButton({ model, projectPath, variant }: GitStatusButton
       <PopoverTrigger asChild>
         <Button
           aria-label={hasChanges ? t("s_9daf4302ed", { p0: changeCount }) : t("s_044ef935a9")}
-          className="relative size-8 shrink-0"
+          aria-hidden={nativeTrigger}
+          className={cn(
+            "relative size-8 shrink-0",
+            nativeTrigger && "pointer-events-none fixed top-1 right-1 z-0 opacity-0"
+          )}
           size="icon"
+          tabIndex={nativeTrigger ? -1 : undefined}
           title={`${status.branch ?? "Git"}${hasChanges ? t("s_96e1a84d2d", { p0: changeCount }) : t("s_7c098875da")}`}
           type="button"
           variant="ghost"

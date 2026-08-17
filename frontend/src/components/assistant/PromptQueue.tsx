@@ -1,10 +1,11 @@
 import { CornerDownRight, FileText, Pencil, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type { PromptInputFile, PromptInputMessage } from "@/components/ai-elements/prompt-input";
+import type { PromptInputFile } from "@/components/ai-elements/prompt-input";
+import type { PromptRequest } from "@/components/assistant/promptPayload";
 import { t } from "@/lib/i18n";
 
-export interface QueuedPrompt extends PromptInputMessage {
+export interface QueuedPrompt extends PromptRequest {
   id: string;
 }
 

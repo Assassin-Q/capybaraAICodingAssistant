@@ -87,7 +87,12 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   return (
     <Message from="assistant">
-      <MessageContent className="max-w-full gap-2.5">
+      {/*
+        The collapsed "已处理 N秒" header is a single 24px line, so the bubble's standard gap left
+        an obvious hole between it and the answer. The row spacing is tightened here and the
+        pieces that need air — the diff summary and the usage line — keep their own margins.
+      */}
+      <MessageContent className="max-w-full gap-1">
         {visibleError && (
           <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             <div className="flex items-start gap-2">
@@ -107,8 +112,8 @@ export const AssistantMessage = memo(function AssistantMessage({
         {isStreaming && !hasProcess && !hasConclusion && <ThinkingLine />}
         <AssistantProcess conclusionPartID={conclusionPart?.id} isStreaming={isStreaming || runActive} message={message} onOpenSession={onOpenSession} />
         {conclusion.trim() && <MarkdownResponse isAnimating={false} mode={isStreaming ? "streaming" : "static"}>{conclusion}</MarkdownResponse>}
-        {!isStreaming && !runActive && <SessionDiffSummary diffs={diffs} />}
-        {!isStreaming && !runActive && <TokenUsageSummary model={message.model} usage={message.tokens} />}
+        {!isStreaming && !runActive && <div className="mt-1.5"><SessionDiffSummary diffs={diffs} /></div>}
+        {!isStreaming && !runActive && <div className="mt-1.5"><TokenUsageSummary model={message.model} usage={message.tokens} /></div>}
       </MessageContent>
     </Message>
   );

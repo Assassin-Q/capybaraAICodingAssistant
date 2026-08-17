@@ -10,7 +10,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ModelVariantEditor } from "@/components/assistant/ModelVariantEditor";
 import { normalizedVariantOverrides } from "@/components/assistant/modelVariantConfig";
 import type { ModelVariantMap } from "@/components/assistant/modelVariantConfig";
+import { modelIDSuggestions } from "@/components/assistant/modelIDSuggestions";
 import { errorMessage } from "@/components/assistant/shared";
+import { applyConfigToOpenCode } from "@/lib/configApply";
 import { ideaApi } from "@/lib/idea";
 import { openCodeApi } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
@@ -20,6 +22,7 @@ import { t } from "@/lib/i18n";
 
 interface ModelSettingsProps {
   modelVariantLabels: ModelVariantLabels;
+  models: ModelInfo[];
   onChanged: () => void;
   onModelVariantLabelsChange: (labels: ModelVariantLabels) => void;
   projectPath?: string;
@@ -98,6 +101,8 @@ const providerName = (providerID: string, catalog: ProviderCatalog): string =>
 
 const configuredProviderIDs = (config: OpenCodeConfig): string[] => Object.keys(config.provider ?? {});
 
+const emptyCatalog = (): ProviderCatalog => ({ all: [], connected: [], default: {} });
+
 const toProviderDraft = (id: string, config: OpenCodeConfig, catalog: ProviderCatalog): ProviderDraft => {
   const provider = config.provider?.[id];
   const catalogProvider = catalog.all.find((item) => item.id === id);
@@ -106,7 +111,10 @@ const toProviderDraft = (id: string, config: OpenCodeConfig, catalog: ProviderCa
   return {
     apiKey: "",
     baseURL: typeof options.baseURL === "string" ? options.baseURL : catalogProvider?.api?.url ?? "",
-    catalogProvider: !provider && Boolean(catalogProvider),
+    // `/api/provider` also reports user-defined config providers. Treat only providers that do
+    // not originate from config as catalog entries; otherwise editing deepseekCurrent followed the
+    // credential-only branch and never wrote its updated JSONC block.
+    catalogProvider: !provider && Boolean(catalogProvider) && catalogProvider?.source !== "config",
     disabled: config.disabled_providers?.includes(id) === true,
     id,
     name: provider?.name ?? providerName(id, catalog),
@@ -120,7 +128,7 @@ const draftFromCatalogProvider = (provider: ProviderCatalog["all"][number]): Pro
   return {
     apiKey: "",
     baseURL: provider.api?.url ?? Object.values(provider.models)[0]?.api?.url ?? "",
-    catalogProvider: true,
+    catalogProvider: provider.source !== "config",
     disabled: false,
     id: provider.id,
     name: provider.name,
@@ -161,7 +169,11 @@ const modelDraftFromConfig = (
   ),
   reasoning: model.reasoning ?? catalogModel?.capabilities?.reasoning ?? false,
   toolCall: model.tool_call ?? catalogModel?.capabilities?.toolcall ?? true,
-  variants: model.variants ?? {},
+  // Disk configuration remains editable before a restarted OpenCode process publishes these
+  // variants through `/api/model`.
+  variants: Object.keys(model.variants ?? {}).length > 0
+    ? model.variants ?? {}
+    : catalogModel?.variants ?? {},
 });
 
 const modelDraftFromCatalog = (model: ModelInfo, enabled: boolean): ModelDraft => ({
@@ -180,7 +192,7 @@ const modelDraftFromCatalog = (model: ModelInfo, enabled: boolean): ModelDraft =
   ),
   reasoning: model.capabilities?.reasoning === true,
   toolCall: model.capabilities?.toolcall !== false,
-  // Thinking levels the provider already publishes, so a matched ID brings its variants along.
+  // The live catalog is authoritative for the model's published variant IDs.
   variants: model.variants ?? {},
 });
 const toModelConfig = (draft: ModelDraft, existing?: CustomModelConfig): CustomModelConfig => ({
@@ -252,6 +264,7 @@ const cleanVariantLabels = (labels: Record<string, string>): Record<string, stri
 
 export function ModelSettings({
   modelVariantLabels,
+  models,
   onChanged,
   onModelVariantLabelsChange,
   projectPath,
@@ -282,11 +295,18 @@ export function ModelSettings({
     setError("");
     setNotice("");
     try {
-      const [nextCatalog, nextConfig] = await Promise.all([
-        openCodeApi.listProviderCatalog(projectPath),
-        openCodeApi.getConfig(projectPath),
+      const [nextCatalog, diskSnapshot] = await Promise.all([
+        // Reference data only — display names, default npm packages and suggested models for the
+        // "add a provider" picker. What is *configured* comes from the file, never from here.
+        openCodeApi.listProviderCatalog(projectPath).catch(() => emptyCatalog()),
+        ideaApi.getOpenCodeConfig(),
       ]);
-      const ids = [...new Set([...nextCatalog.connected, ...configuredProviderIDs(nextConfig)])];
+      // A read failure is reported rather than papered over: an empty editor that silently
+      // discards whatever it saves is worse than an error. A missing file is not a failure —
+      // the plugin returns success with an empty config, which is exactly a fresh install.
+      if (!diskSnapshot.success) throw new Error(diskSnapshot.message);
+      const nextConfig = diskSnapshot.config as OpenCodeConfig;
+      const ids = configuredProviderIDs(nextConfig);
       const nextID = preferredID && ids.includes(preferredID) ? preferredID : ids[0] ?? "";
       setCatalog(nextCatalog);
       setConfig(nextConfig);
@@ -318,8 +338,15 @@ export function ModelSettings({
   };
 
   const providerIDs = useMemo(
-    () => [...new Set([...catalog.connected, ...configuredProviderIDs(config)])],
-    [catalog.connected, config]
+    /**
+     * Only what the configuration file declares.
+     *
+     * This used to be unioned with OpenCode's connected providers, so anything it knew from
+     * auth.json alone appeared in the list and then failed every edit with "provider not found in
+     * opencode.json / opencode.jsonc" — a row that could be selected but never saved or removed.
+     */
+    () => configuredProviderIDs(config),
+    [config]
   );
   const availableCatalogProviders = useMemo(() => {
     const existing = new Set(providerIDs);
@@ -332,21 +359,41 @@ export function ModelSettings({
   }, [catalog.all, providerIDs, providerSearch]);
   const selectedConfig = selectedID ? config.provider?.[selectedID] ?? {} : {};
   const catalogModels = catalog.all.find((provider) => provider.id === selectedID)?.models ?? {};
+  const providerModels = useMemo(() => {
+    const merged = { ...catalogModels };
+    models.filter((model) => model.providerID === selectedID).forEach((model) => {
+      const previous = merged[model.id];
+      merged[model.id] = {
+        ...previous,
+        ...model,
+        variants: model.variants,
+      };
+    });
+    return merged;
+  }, [catalogModels, models, selectedID]);
   const configuredModels = selectedConfig.models ?? {};
   const disabledModelIDs = new Set(selectedConfig.blacklist ?? []);
-  const modelIDs = [...new Set([...Object.keys(catalogModels), ...Object.keys(configuredModels), ...disabledModelIDs])]
+  const modelIDs = [...new Set([...Object.keys(providerModels), ...Object.keys(configuredModels), ...disabledModelIDs])]
     .filter((id) => configuredModels[id]?.status !== "deprecated");
 
   /**
-   * Typing an ID the provider already publishes fills in everything we know about it — context,
-   * max output, capabilities, modalities and variants — instead of making the user retype the
-   * spec by hand. Fields the user already touched are left alone, so it never fights edits.
+   * Typing an ID that the V2 catalogue publishes fills in everything it says about the model —
+   * context, max output, capabilities, modalities and thinking variants — instead of making the
+   * user retype the spec by hand. Fields the user already touched are left alone.
+   *
+   * The lookup deliberately falls back to any provider serving the same id. A provider that was
+   * just added has no catalogue of its own, so matching only inside it filled in nothing at
+   * exactly the moment the spec is least likely to be known by heart — and the same id served
+   * elsewhere describes the same model.
    */
+  const publishedModel = (modelID: string): ModelInfo | undefined =>
+    providerModels[modelID] ?? models.find((model) => model.id === modelID);
+
   const applyModelID = (nextID: string, known?: ModelInfo) => {
     setSuggestionsOpen(!known);
     setModelDraft((current) => {
       const trimmed = nextID.trim();
-      const match = known ?? catalogModels[trimmed];
+      const match = known ?? publishedModel(trimmed);
       if (!match) return { ...current, id: nextID };
       const untouched = current.id.trim() === "" || current.id.trim() === trimmed
         ? true
@@ -357,33 +404,14 @@ export function ModelSettings({
     });
   };
 
-  /**
-   * Every model id in the catalog that looks like what is being typed, across all providers.
-   * A custom provider has no catalog of its own, so matching only inside it would never suggest
-   * anything — which is the case where filling the spec in by hand hurts most.
-   */
-  const modelIDSuggestions = (query: string): Array<{ model: ModelInfo; providerID: string }> => {
-    const needle = query.trim().toLowerCase();
-    if (needle.length < 2) return [];
-    const seen = new Set<string>();
-    const matches: Array<{ model: ModelInfo; providerID: string }> = [];
-    catalog.all.forEach((provider) => {
-      Object.values(provider.models ?? {}).forEach((model) => {
-        if (matches.length >= 8) return;
-        if (!model.id.toLowerCase().includes(needle)) return;
-        const key = `${provider.id}/${model.id}`;
-        if (seen.has(key) || model.id === query.trim()) return;
-        seen.add(key);
-        matches.push({ model, providerID: provider.id });
-      });
-    });
-    return matches;
-  };
 
   const draftForModel = (modelID: string): ModelDraft => {
     const enabled = !disabledModelIDs.has(modelID);
-    if (configuredModels[modelID]) return modelDraftFromConfig(modelID, configuredModels[modelID], catalogModels[modelID], enabled);
-    if (catalogModels[modelID]) return modelDraftFromCatalog(catalogModels[modelID], enabled);
+    // Same lookup as the ID field: a provider without a catalogue of its own still gets the
+    // published spec from wherever the catalogue does describe this model.
+    const published = publishedModel(modelID);
+    if (configuredModels[modelID]) return modelDraftFromConfig(modelID, configuredModels[modelID], published, enabled);
+    if (published) return modelDraftFromCatalog(published, enabled);
     return { ...emptyModel(), enabled, id: modelID, name: modelID };
   };
 
@@ -449,31 +477,36 @@ export function ModelSettings({
     try {
       const disabledProviders = new Set(config.disabled_providers ?? []);
       providerDraft.disabled ? disabledProviders.add(id) : disabledProviders.delete(id);
-      if (providerDraft.catalogProvider) {
-        if (providerDraft.apiKey.trim()) {
-          await openCodeApi.setProviderAuth(id, providerDraft.apiKey.trim(), projectPath);
-        }
-        await openCodeApi.updateConfig({ disabled_providers: [...disabledProviders] }, projectPath);
-        applyLocalConfig({ ...config, disabled_providers: [...disabledProviders] }, id);
-        onChanged();
-        return;
-      }
       const existing = config.provider?.[id] ?? {};
-      const selectedSdk = sdkOptions().find((option) => option.id === providerDraft.sdkType);
-      const npm = selectedSdk?.npm ?? providerDraft.npm.trim();
+      const apiKey = providerDraft.apiKey.trim();
+      const baseURL = providerDraft.baseURL.trim();
+      // A catalogue provider already has a name and an npm package from OpenCode's own registry.
+      // Writing them again would freeze today's values into the file and silently override any
+      // later correction upstream, so only what the user actually typed is stored.
+      const identity: ProviderConfig = providerDraft.catalogProvider
+        ? {}
+        : {
+            name: providerDraft.name.trim() || id,
+            npm: sdkOptions().find((option) => option.id === providerDraft.sdkType)?.npm ?? providerDraft.npm.trim(),
+          };
       const provider: ProviderConfig = {
         ...existing,
-        name: providerDraft.name.trim() || id,
-        npm,
+        ...identity,
         options: {
           ...(existing.options ?? {}),
-          ...(providerDraft.baseURL.trim() ? { baseURL: providerDraft.baseURL.trim() } : {}),
-          ...(providerDraft.apiKey.trim() ? { apiKey: providerDraft.apiKey.trim() } : {}),
+          // OpenCode reads the credential from here at load time, so the file alone is enough.
+          // It used to also be pushed to the V2 auth store, which left the same secret in two
+          // places that could disagree — and only the file survives a restart.
+          ...(apiKey ? { apiKey } : {}),
+          ...(baseURL ? { baseURL } : {}),
         },
       };
       const saved = await ideaApi.saveProvider(id, provider);
-      setNotice(saved.message ?? t("s_df3e8b58a7"));
-      await openCodeApi.updateConfig({ disabled_providers: [...disabledProviders] }, projectPath);
+      if (!saved.success) throw new Error(saved.message ?? t("s_df3e8b58a7"));
+      const disabledSaved = await ideaApi.saveConfigValue("disabled_providers", [...disabledProviders]);
+      if (!disabledSaved.success) throw new Error(disabledSaved.message ?? t("s_df3e8b58a7"));
+      const applied = await applyConfigToOpenCode();
+      applied.live ? setNotice(applied.message) : setError(applied.message);
       applyLocalConfig({
         ...config,
         disabled_providers: [...disabledProviders],
@@ -509,7 +542,9 @@ export function ModelSettings({
         models: { ...models, [modelID]: toModelConfig({ ...modelDraft, id: modelID }, previous) },
       };
       const saved = await ideaApi.saveProvider(providerID, nextProvider);
-      setNotice(saved.message ?? t("s_df3e8b58a7"));
+      if (!saved.success) throw new Error(saved.message ?? t("s_df3e8b58a7"));
+      const applied = await applyConfigToOpenCode();
+      applied.live ? setNotice(applied.message) : setError(applied.message);
       applyLocalConfig({ ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } }, providerID);
       setEditingModelID(modelID);
       setModelDraft({ ...modelDraft, id: modelID });
@@ -538,9 +573,10 @@ export function ModelSettings({
       const blacklist = new Set(existing.blacklist ?? []);
       enabled ? blacklist.delete(modelID) : blacklist.add(modelID);
       const nextProvider = { ...existing, blacklist: [...blacklist] };
-      // PATCH /config discards provider edits; the plugin writes them to opencode.jsonc instead.
       const saved = await ideaApi.saveProvider(providerID, nextProvider);
-      setNotice(saved.message ?? t("s_df3e8b58a7"));
+      if (!saved.success) throw new Error(saved.message ?? t("s_df3e8b58a7"));
+      const applied = await applyConfigToOpenCode();
+      applied.live ? setNotice(applied.message) : setError(applied.message);
       applyLocalConfig({ ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } }, providerID);
       onChanged();
     } catch (toggleError) {
@@ -550,12 +586,7 @@ export function ModelSettings({
     }
   };
 
-  /**
-   * OpenCode's `PATCH /config` has no delete primitive, so the whole provider map minus this
-   * entry is sent and the result is read back. If the server merged instead of replacing, the
-   * provider is only disabled and the user is told the entry is still in opencode.jsonc rather
-   * than being shown a success that did not happen.
-   */
+  /** Removes the entry from opencode.jsonc, then reads the file back to confirm it is gone. */
   const deleteProvider = async () => {
     const providerID = pendingDeleteProviderID;
     if (!projectPath || !providerID) return;
@@ -563,20 +594,20 @@ export function ModelSettings({
     setError("");
     setNotice("");
     try {
-      // Edits opencode.jsonc directly — PATCH /config only merges and cannot remove a key.
       const removal = await ideaApi.removeProvider(providerID);
       if (!removal.success) {
         setError(removal.message ?? t("s_2b3b7fd6c6", { p0: providerID }));
         return;
       }
+      const applied = await applyConfigToOpenCode();
+      if (!applied.live) setError(applied.message);
 
-      const verified = await openCodeApi.getConfig(projectPath).catch(() => config);
+      const snapshot = await ideaApi.getOpenCodeConfig().catch(() => undefined);
+      const verified = snapshot?.success ? (snapshot.config as OpenCodeConfig) : config;
       setPendingDeleteProviderID(undefined);
       applyLocalConfig(verified, configuredProviderIDs(verified)[0] ?? "");
-      setSelectedID(configuredProviderIDs(verified)[0] ?? catalog.connected[0] ?? "");
+      setSelectedID(configuredProviderIDs(verified)[0] ?? "");
       onChanged();
-      // OpenCode caches config at startup, so the list only settles after a reload.
-      setError(removal.message ?? "");
     } catch (deleteError) {
       setError(errorMessage(deleteError));
     } finally {
@@ -600,7 +631,9 @@ export function ModelSettings({
       };
       const nextProvider = { ...existing, blacklist, models };
       const saved = await ideaApi.saveProvider(providerID, nextProvider);
-      setNotice(saved.message ?? t("s_df3e8b58a7"));
+      if (!saved.success) throw new Error(saved.message ?? t("s_df3e8b58a7"));
+      const applied = await applyConfigToOpenCode();
+      applied.live ? setNotice(applied.message) : setError(applied.message);
       const nextConfig: OpenCodeConfig = { ...config, provider: { ...(config.provider ?? {}), [providerID]: nextProvider } };
       const nextVariantLabels = { ...modelVariantLabels };
       delete nextVariantLabels[modelVariantLabelKey(providerID, modelID)];
@@ -623,8 +656,14 @@ export function ModelSettings({
     setError("");
     setNotice("");
     try {
-      await openCodeApi.removeProviderAuth(id, projectPath);
-      setCatalog((current) => ({ ...current, connected: current.connected.filter((providerID) => providerID !== id) }));
+      const existing = config.provider?.[id] ?? {};
+      const { apiKey: _removed, ...options } = existing.options ?? {};
+      const provider: ProviderConfig = { ...existing, options };
+      const saved = await ideaApi.saveProvider(id, provider);
+      if (!saved.success) throw new Error(saved.message ?? t("s_df3e8b58a7"));
+      const applied = await applyConfigToOpenCode();
+      if (!applied.live) setError(applied.message);
+      applyLocalConfig({ ...config, provider: { ...(config.provider ?? {}), [id]: provider } }, id);
       onChanged();
     } catch (removeError) {
       setError(errorMessage(removeError));
@@ -633,15 +672,28 @@ export function ModelSettings({
     }
   };
 
+  const idSuggestions = modelIDSuggestions({
+    catalog,
+    editingProviderID: selectedID,
+    models,
+    query: modelDraft.id,
+  });
+
   const modelEditor = (
     <div className="grid gap-4 bg-muted/25 px-3 py-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <SettingField label={t("s_2b7c96b260")}>
           <div className="relative">
-            <Input disabled={Boolean(editingModelID) && editingModelID !== "new" && Boolean(catalogModels[editingModelID ?? ""])} onChange={(event) => applyModelID(event.target.value)} placeholder={t("s_695f4de76f")} title={t("s_f273d83ecf")} value={modelDraft.id} />
-            {editingModelID === "new" && suggestionsOpen && modelIDSuggestions(modelDraft.id).length > 0 && (
+            {/*
+              Always editable. This used to be locked whenever the catalogue knew the id, which
+              caught every custom model as well: the moment one was saved OpenCode published it
+              through /api/model, and its own id could never be corrected again. Renaming is
+              already handled on save, which moves the entry rather than duplicating it.
+            */}
+            <Input onChange={(event) => applyModelID(event.target.value)} placeholder={t("s_695f4de76f")} title={t("s_f273d83ecf")} value={modelDraft.id} />
+            {editingModelID === "new" && suggestionsOpen && idSuggestions.length > 0 && (
               <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-border bg-popover shadow-md">
-                {modelIDSuggestions(modelDraft.id).map(({ model, providerID }) => (
+                {idSuggestions.map(({ model, providerID }) => (
                   <button
                     className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-accent"
                     key={`${providerID}/${model.id}`}
@@ -652,7 +704,11 @@ export function ModelSettings({
                       <span className="block truncate font-mono text-[11px]">{model.id}</span>
                       <span className="block truncate text-[10px] text-muted-foreground">{model.name}</span>
                     </span>
-                    <Badge variant="outline">{providerName(providerID, catalog)}</Badge>
+                    {/* Which provider the spec comes from — not necessarily the one being
+                        edited, since a custom provider publishes no catalogue of its own. */}
+                    <Badge title={t("model.suggestionSource", { p0: providerName(providerID, catalog) })} variant="outline">
+                      {providerName(providerID, catalog)}
+                    </Badge>
                   </button>
                 ))}
               </div>
@@ -701,7 +757,7 @@ export function ModelSettings({
         </div>
       </div>
       <ModelVariantEditor
-        effective={editingModelID && editingModelID !== "new" ? catalogModels[editingModelID]?.variants ?? {} : {}}
+        effective={publishedModel(modelDraft.id.trim())?.variants ?? {}}
         labels={modelVariantLabelDraft}
         onChange={(variants) => setModelDraft((current) => ({ ...current, variants }))}
         onLabelsChange={setModelVariantLabelDraft}
@@ -779,10 +835,10 @@ export function ModelSettings({
             const model = draftForModel(id);
             // The provider marks retired models "deprecated"; the composer filters those out, so
             // showing them here as plain "enabled" made the two lists silently disagree.
-            const deprecated = catalogModels[id]?.status === "deprecated" || configuredModels[id]?.status === "deprecated";
+            const deprecated = providerModels[id]?.status === "deprecated" || configuredModels[id]?.status === "deprecated";
             // Written to opencode.jsonc but not in the catalog OpenCode has loaded — the file is
             // only read at startup, so this row exists on disk and nowhere else yet.
-            const awaitingRestart = !catalogModels[id] && Boolean(configuredModels[id]);
+            const awaitingRestart = !providerModels[id] && Boolean(configuredModels[id]);
             return <div key={id}>
               <div className="flex items-center gap-2 px-3 py-2.5 hover:bg-accent/50">
                 <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => toggleModelEditor(id)} type="button">

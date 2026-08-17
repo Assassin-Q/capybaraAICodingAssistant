@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { loadWorkspacePreferences, saveWorkspacePreferences } from "@/lib/preferences";
 import { cn } from "@/lib/utils";
 import type { WorkspacePreferences } from "@/lib/preferences";
-import type { UpdateStatus } from "@/lib/updateCheck";
+import type { UpdateStatus } from "@/lib/idea";
 import type { ModelInfo } from "@/lib/opencode";
 import { t } from "@/lib/i18n";
 
@@ -33,6 +33,7 @@ interface WorkspaceDialogProps {
   connected: boolean;
   initialSection?: SectionID;
   mcpNames: string[];
+  nativeTitleActions: boolean;
   models: ModelInfo[];
   onConfigurationChanged: () => void;
   onOpenChange: (open: boolean) => void;
@@ -66,6 +67,7 @@ export function WorkspaceDialog({
   connected,
   initialSection = "connection",
   mcpNames,
+  nativeTitleActions,
   models,
   onConfigurationChanged,
   onOpenChange,
@@ -120,9 +122,12 @@ export function WorkspaceDialog({
               baseUrl={baseUrl}
               connected={connected}
               language={preferences.language}
+              nativeTitleActions={nativeTitleActions}
               onChanged={onConfigurationChanged}
               onLanguageChange={(language) => updatePreferences({ ...preferences, language })}
+              onSessionTabsChange={(sessionTabs) => updatePreferences({ ...preferences, sessionTabs })}
               projectPath={projectPath}
+              sessionTabs={preferences.sessionTabs}
               updateStatus={updateStatus}
             />
           )}
@@ -130,6 +135,7 @@ export function WorkspaceDialog({
             <>
               <ModelSettings
                 modelVariantLabels={preferences.modelVariantLabels}
+                models={models}
                 onChanged={onConfigurationChanged}
                 onModelVariantLabelsChange={(modelVariantLabels) => updatePreferences({
                   ...preferences,
@@ -148,7 +154,7 @@ export function WorkspaceDialog({
           )}
           {activeSection === "persona" && <PersonaSettings mcpNames={mcpNames} onSave={updatePreferences} preferences={preferences} skills={skills} />}
           {activeSection === "memory" && <MemorySettings models={models} onChanged={onConfigurationChanged} />}
-          {activeSection === "skills" && <SkillSettings disabledSkillNames={preferences.disabledSkillNames} onDisabledSkillNamesChange={(disabledSkillNames) => updatePreferences({ ...preferences, disabledSkillNames })} projectPath={projectPath} />}
+          {activeSection === "skills" && <SkillSettings disabledSkillNames={preferences.disabledSkillNames} onChanged={onConfigurationChanged} onDisabledSkillNamesChange={(disabledSkillNames) => updatePreferences({ ...preferences, disabledSkillNames })} projectPath={projectPath} />}
           {activeSection === "plugins" && <PluginSettings />}
           {activeSection === "mcp" && <McpSettings onChanged={onConfigurationChanged} projectPath={projectPath} />}
         </main>

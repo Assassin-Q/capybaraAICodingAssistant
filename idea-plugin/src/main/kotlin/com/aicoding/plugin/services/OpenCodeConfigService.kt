@@ -6,7 +6,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFileManager
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -18,6 +21,13 @@ data class RemoveProviderRequest(val providerID: String)
 data class SaveProviderRequest(val providerID: String, /** Raw JSON object for this provider. */ val config: String)
 
 @Serializable
+data class SaveConfigValueRequest(
+    val key: String,
+    /** Raw JSON for the value — object, array or primitive. */
+    val value: String,
+)
+
+@Serializable
 data class ConfigEditResponse(
     val success: Boolean,
     val message: String? = null,
@@ -25,8 +35,17 @@ data class ConfigEditResponse(
     val file: String? = null,
 )
 
+@Serializable
+data class ConfigSnapshotResponse(
+    val success: Boolean,
+    /** Merged in OpenCode load order, with credentials replaced by a sentinel. */
+    val config: JsonObject = JsonObject(emptyMap()),
+    val files: List<String> = emptyList(),
+    val message: String? = null,
+)
+
 /**
- * Edits `opencode.jsonc` / `opencode.json` directly.
+ * Edits the user-level `~/.config/opencode/opencode.jsonc` / `opencode.json` directly.
  *
  * OpenCode's `PATCH /config` can only merge — it has no way to remove a key, verified against a
  * live server. Deleting a provider therefore has to happen in the file. The edit is textual and
@@ -38,12 +57,39 @@ class OpenCodeConfigService(private val project: Project) {
     private val logger = Logger.getInstance(OpenCodeConfigService::class.java)
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * Reads configuration files instead of OpenCode's cached `/config` snapshot. Model variants
+     * written to disk can otherwise be absent until the service restarts. Credentials are always
+     * redacted before this result is returned to JCEF.
+     */
+    fun readConfigSnapshot(): ConfigSnapshotResponse = runCatching {
+        val existing = loadCandidates().filter { Files.isRegularFile(it) }
+        var merged = JsonObject(emptyMap())
+        val loaded = mutableListOf<String>()
+        existing.forEach { file ->
+            val parsed = runCatching {
+                json.parseToJsonElement(stripComments(Files.readString(file))) as? JsonObject
+            }.getOrNull() ?: return@forEach
+            merged = mergeObjects(merged, parsed)
+            loaded += file.toString()
+        }
+        ConfigSnapshotResponse(
+            success = true,
+            config = redactSecrets(merged) as JsonObject,
+            files = loaded,
+            message = if (loaded.isEmpty()) "没有找到 OpenCode 配置文件" else null,
+        )
+    }.getOrElse { error ->
+        logger.info("OpenCode config read failed: ${error.message}")
+        ConfigSnapshotResponse(false, message = error.message ?: "读取 OpenCode 配置失败")
+    }
+
     fun removeProvider(request: RemoveProviderRequest): ConfigEditResponse = runCatching {
         val providerID = request.providerID.trim()
         require(providerID.isNotBlank()) { "缺少供应商 ID" }
         require(providerID.matches(Regex("^[A-Za-z0-9_.-]+$"))) { "供应商 ID 含有非法字符" }
 
-        val file = candidates().firstOrNull { path ->
+        val file = providerCandidates().firstOrNull { path ->
             Files.isRegularFile(path) && containsProvider(Files.readString(path), providerID)
         } ?: return ConfigEditResponse(
             success = false,
@@ -199,9 +245,13 @@ class OpenCodeConfigService(private val project: Project) {
         val colon = text.indexOf(':', keyIndex).takeIf { it >= 0 } ?: return null
         val valueStart = text.indexOfFirst(colon + 1) { !it.isWhitespace() }.takeIf { it >= 0 } ?: return null
         val valueEnd = when (text[valueStart]) {
-            '{' -> matchBrace(text, valueStart)?.plus(1) ?: return null
+            '{', '[' -> matchBrace(text, valueStart)?.plus(1) ?: return null
             '"' -> text.indexOf('"', valueStart + 1).takeIf { it > 0 }?.plus(1) ?: return null
-            else -> return null
+            // Numbers, booleans and null run to the next comma or the closing brace.
+            else -> text.indexOfFirst(valueStart) { it == ',' || it == '}' || it == '\n' }
+                .takeIf { it > valueStart }
+                ?.let { end -> text.substring(valueStart, end).trimEnd().length + valueStart }
+                ?: return null
         }
         return keyIndex until valueEnd
     }
@@ -258,8 +308,10 @@ class OpenCodeConfigService(private val project: Project) {
         require(providerID.isNotBlank()) { "缺少供应商 ID" }
         require(providerID.matches(Regex("^[A-Za-z0-9_.-]+$"))) { "供应商 ID 含有非法字符" }
 
-        val file = candidates().firstOrNull { Files.isRegularFile(it) }
-            ?: return ConfigEditResponse(false, "没有找到 opencode.json / opencode.jsonc")
+        val file = providerCandidates().firstOrNull { path ->
+            Files.isRegularFile(path) && containsProvider(Files.readString(path), providerID)
+        } ?: providerCandidates().firstOrNull { Files.isRegularFile(it) }
+            ?: createGlobalConfigFile()
         val original = Files.readString(file)
         val parsed = runCatching { json.parseToJsonElement(stripComments(original)) as? JsonObject }.getOrNull()
             ?: return ConfigEditResponse(false, "无法解析 $file，请检查语法", file.toString())
@@ -267,24 +319,86 @@ class OpenCodeConfigService(private val project: Project) {
         val providers = (parsed["provider"] as? JsonObject)?.toMutableMap() ?: mutableMapOf()
         val entry = runCatching { json.parseToJsonElement(request.config) as? JsonObject }.getOrNull()
             ?: return ConfigEditResponse(false, "供应商配置不是合法的 JSON 对象", file.toString())
-        providers[providerID] = entry
-        val rendered = "\"provider\": " + json.encodeToString(JsonObject.serializer(), JsonObject(providers))
+        // V2 provider/model endpoints can know a custom provider while GET /config is rebuilding
+        // and returns an incomplete entry. Preserve fields omitted by that frontend snapshot (most
+        // importantly `models`) while replacing fields it explicitly sent. An explicit model
+        // deletion still works because that request includes the complete, reduced models object.
+        val previous = providers[providerID] as? JsonObject
+        providers[providerID] = mergeProviderConfig(previous, entry)
 
-        val span = keySpan(original, "provider")
+        writeTopLevelKey(
+            file = file,
+            original = original,
+            key = "provider",
+            rendered = json.encodeToString(JsonObject.serializer(), JsonObject(providers)),
+        ) { written -> (written["provider"] as? JsonObject)?.containsKey(providerID) == true }
+    }.getOrElse { error ->
+        logger.info("Provider save failed: ${error.message}")
+        ConfigEditResponse(false, error.message ?: "保存供应商失败")
+    }
+
+    /**
+     * Writes one top-level key, for settings that are not providers — `disabled_providers` today.
+     *
+     * These used to go through OpenCode's `PATCH /config`, which only ever reaches the running
+     * server: the value was accepted, then lost on the next restart because the file never agreed.
+     * Two sources of truth for one setting drift apart, so there is now only the file.
+     */
+    fun saveConfigValue(request: SaveConfigValueRequest): ConfigEditResponse = runCatching {
+        val key = request.key.trim()
+        require(key.isNotBlank()) { "缺少配置项名称" }
+        require(key.matches(Regex("^[A-Za-z0-9_.\$-]+$"))) { "配置项名称含有非法字符" }
+        val value = runCatching { json.parseToJsonElement(request.value) }.getOrNull()
+            ?: return ConfigEditResponse(false, "配置项 $key 的值不是合法的 JSON")
+
+        val file = providerCandidates().firstOrNull { path ->
+            Files.isRegularFile(path) && indexOfTopLevelKey(stripComments(Files.readString(path)), key) >= 0
+        } ?: providerCandidates().firstOrNull { Files.isRegularFile(it) }
+            ?: createGlobalConfigFile()
+        val original = Files.readString(file)
+        if (runCatching { json.parseToJsonElement(stripComments(original)) as? JsonObject }.getOrNull() == null) {
+            return ConfigEditResponse(false, "无法解析 $file，请检查语法", file.toString())
+        }
+
+        writeTopLevelKey(
+            file = file,
+            original = original,
+            key = key,
+            rendered = json.encodeToString(JsonElement.serializer(), value),
+        ) { written -> written[key] == value }
+    }.getOrElse { error ->
+        logger.info("Config value save failed: ${error.message}")
+        ConfigEditResponse(false, error.message ?: "保存配置失败")
+    }
+
+    /**
+     * Replaces (or inserts) one top-level key textually, so comments and formatting elsewhere in a
+     * hand-maintained JSONC file survive. A `.capybara.bak` copy is taken first and restored when
+     * [verify] cannot find the change, which turns a botched edit into a no-op rather than a
+     * configuration file the user has to repair by hand.
+     */
+    private fun writeTopLevelKey(
+        file: Path,
+        original: String,
+        key: String,
+        rendered: String,
+        verify: (JsonObject) -> Boolean,
+    ): ConfigEditResponse {
+        val pair = "\"$key\": $rendered"
+        val span = keySpan(original, key)
         val updated = if (span != null) {
-            original.replaceRange(span, rendered)
+            original.replaceRange(span, pair)
         } else {
             val opening = original.indexOf('{')
             if (opening < 0) return ConfigEditResponse(false, "配置文件不是 JSON 对象", file.toString())
-            original.substring(0, opening + 1) + "\n  " + rendered + "," + original.substring(opening + 1)
+            original.substring(0, opening + 1) + "\n  " + pair + "," + original.substring(opening + 1)
         }
 
         val backup = file.resolveSibling("${file.fileName}.capybara.bak")
         Files.copy(file, backup, StandardCopyOption.REPLACE_EXISTING)
         Files.writeString(file, updated)
         val verified = runCatching {
-            ((json.parseToJsonElement(stripComments(Files.readString(file))) as JsonObject)["provider"] as? JsonObject)
-                ?.containsKey(providerID) == true
+            verify(json.parseToJsonElement(stripComments(Files.readString(file))) as JsonObject)
         }.getOrDefault(false)
         if (!verified) {
             Files.copy(backup, file, StandardCopyOption.REPLACE_EXISTING)
@@ -292,14 +406,7 @@ class OpenCodeConfigService(private val project: Project) {
         }
 
         VirtualFileManager.getInstance().asyncRefresh(null)
-        ConfigEditResponse(
-            success = true,
-            message = "已写入 ${file.fileName}，重启 OpenCode 后生效。",
-            file = file.toString(),
-        )
-    }.getOrElse { error ->
-        logger.info("Provider save failed: ${error.message}")
-        ConfigEditResponse(false, error.message ?: "保存供应商失败")
+        return ConfigEditResponse(true, "已写入 ${file.fileName}", file.toString())
     }
 
     /** Only the two files inside the opened project. */
@@ -308,15 +415,43 @@ class OpenCodeConfigService(private val project: Project) {
         return listOf(projectRoot.resolve("opencode.jsonc"), projectRoot.resolve("opencode.json"))
     }
 
-    private fun candidates(): List<Path> {
+    /** Provider credentials and model configuration are user-owned, never workspace-owned. */
+    private fun providerCandidates(): List<Path> {
         val home = Path.of(System.getProperty("user.home"))
-        val projectRoot = project.basePath?.let(Path::of)
-        return listOfNotNull(
-            projectRoot?.resolve("opencode.jsonc"),
-            projectRoot?.resolve("opencode.json"),
+        return listOf(
             home.resolve(".config/opencode/opencode.jsonc"),
             home.resolve(".config/opencode/opencode.json"),
         )
+    }
+
+    private fun createGlobalConfigFile(): Path {
+        val file = providerCandidates().first()
+        Files.createDirectories(file.parent)
+        Files.writeString(file, "{\n  \"\$schema\": \"https://opencode.ai/config.json\"\n}\n")
+        return file
+    }
+
+    /** OpenCode loads global files first, then project-local and explicit config locations. */
+    private fun loadCandidates(): List<Path> {
+        val home = Path.of(System.getProperty("user.home"))
+        val global = home.resolve(".config/opencode")
+        val projectRoot = project.basePath?.let(Path::of)
+        val explicitFile = System.getenv("OPENCODE_CONFIG")?.takeIf(String::isNotBlank)?.let(Path::of)
+        val explicitDir = System.getenv("OPENCODE_CONFIG_DIR")?.takeIf(String::isNotBlank)?.let(Path::of)
+        return listOfNotNull(
+            global.resolve("config.json"),
+            global.resolve("opencode.json"),
+            global.resolve("opencode.jsonc"),
+            explicitFile,
+            projectRoot?.resolve("opencode.json"),
+            projectRoot?.resolve("opencode.jsonc"),
+            projectRoot?.resolve(".opencode/opencode.json"),
+            projectRoot?.resolve(".opencode/opencode.jsonc"),
+            home.resolve(".opencode/opencode.json"),
+            home.resolve(".opencode/opencode.jsonc"),
+            explicitDir?.resolve("opencode.json"),
+            explicitDir?.resolve("opencode.jsonc"),
+        ).distinct()
     }
 
     private fun containsProvider(text: String, providerID: String): Boolean =
@@ -324,6 +459,52 @@ class OpenCodeConfigService(private val project: Project) {
             val parsed = json.parseToJsonElement(stripComments(text)) as? JsonObject
             (parsed?.get("provider") as? JsonObject)?.containsKey(providerID) == true
         }.getOrDefault(false)
+
+    private fun mergeProviderConfig(previous: JsonObject?, next: JsonObject): JsonObject {
+        val merged = previous?.toMutableMap() ?: mutableMapOf()
+        next.forEach { (key, value) ->
+            val oldValue = merged[key]
+            when {
+                // The sentinel means "unchanged", so with nothing to keep the key is dropped
+                // rather than written. Persisting it would store the literal placeholder as the
+                // credential — a provider that then fails to authenticate for no visible reason.
+                isRedacted(value) -> oldValue?.let { merged[key] = it } ?: merged.remove(key)
+                key == "models" -> merged[key] = value
+                oldValue is JsonObject && value is JsonObject -> merged[key] = mergeObjects(oldValue, value)
+                else -> merged[key] = value
+            }
+        }
+        return JsonObject(merged)
+    }
+
+    private fun mergeObjects(previous: JsonObject, next: JsonObject): JsonObject {
+        val merged = previous.toMutableMap()
+        next.forEach { (key, value) ->
+            val oldValue = merged[key]
+            when {
+                isRedacted(value) -> oldValue?.let { merged[key] = it } ?: merged.remove(key)
+                oldValue is JsonObject && value is JsonObject -> merged[key] = mergeObjects(oldValue, value)
+                else -> merged[key] = value
+            }
+        }
+        return JsonObject(merged)
+    }
+
+    private fun redactSecrets(value: JsonElement): JsonElement = when (value) {
+        is JsonObject -> JsonObject(value.mapValues { (key, child) ->
+            if (isSensitiveKey(key)) JsonPrimitive(REDACTED_VALUE) else redactSecrets(child)
+        })
+        is JsonArray -> JsonArray(value.map(::redactSecrets))
+        else -> value
+    }
+
+    private fun isSensitiveKey(key: String): Boolean {
+        val normalized = key.lowercase().replace("-", "").replace("_", "")
+        return normalized in SENSITIVE_KEYS || normalized.endsWith("apikey") || normalized.endsWith("token")
+    }
+
+    private fun isRedacted(value: JsonElement): Boolean =
+        value is JsonPrimitive && value.isString && value.content == REDACTED_VALUE
 
     /**
      * Removes `"id": { ... }` from inside the `provider` object by matching braces, along with
@@ -360,7 +541,10 @@ class OpenCodeConfigService(private val project: Project) {
     }
 
     /** Brace matcher that skips over strings and escapes. */
+    /** Works for both `{}` and `[]`; `disabled_providers` is an array, every other key an object. */
     private fun matchBrace(text: String, openIndex: Int): Int? {
+        val open = text[openIndex]
+        val close = if (open == '[') ']' else '}'
         var depth = 0
         var index = openIndex
         var inString = false
@@ -372,8 +556,8 @@ class OpenCodeConfigService(private val project: Project) {
                 character == '\\' && inString -> escaped = true
                 character == '"' -> inString = !inString
                 inString -> Unit
-                character == '{' -> depth += 1
-                character == '}' -> {
+                character == open -> depth += 1
+                character == close -> {
                     depth -= 1
                     if (depth == 0) return index
                 }
@@ -413,6 +597,17 @@ class OpenCodeConfigService(private val project: Project) {
          */
         /** Written into the sidecar when the file had no permission key to begin with. */
         const val ABSENT_MARKER = "__capybara_absent__"
+        const val REDACTED_VALUE = "__capybara_redacted__"
+
+        val SENSITIVE_KEYS = setOf(
+            "apikey",
+            "authorization",
+            "cookie",
+            "credential",
+            "password",
+            "secret",
+            "token",
+        )
 
         val GATED_ACTIONS = listOf(
             "edit",

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bot, Check, ChevronDown, Cpu, Gauge, SlidersHorizontal } from "lucide-react";
 
 import {
@@ -106,18 +106,39 @@ export function VariantPicker({ className, hasDefault = false, labels = {}, onCh
   const [open, setOpen] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
   const providerVariants = [...new Set(variants.filter((variant) => variant !== "default"))];
+  const published = providerVariants.join(",");
+
+  /**
+   * Settle on a real level rather than sitting on a "默认" the model does not have.
+   *
+   * When the model publishes its own "default" variant, undefined means exactly that and the entry
+   * in the list is genuine. When it does not, the picker was showing 默认 for a level that appears
+   * nowhere in the list and the request went out carrying no level at all — a state the user never
+   * chose and could not see the effect of. The first published level is taken instead.
+   *
+   * Declared above the early return below: a hook that runs only for models with levels would
+   * change the hook order from one render to the next.
+   */
+  useEffect(() => {
+    if (hasDefault || !published) return;
+    const levels = published.split(",");
+    if (value && levels.includes(value)) return;
+    onChange(levels[0]);
+  }, [hasDefault, onChange, published, value]);
+
   if (providerVariants.length === 0) return null;
   // A model that publishes no "default" level has no such thing to fall back to — offering it
   // sent an unknown variant to the provider.
   const options = hasDefault ? ["default", ...providerVariants] : providerVariants;
-  const selectedValue = value && options.includes(value) ? value : options[0] ?? "default";
+  const selectedValue = value && options.includes(value) ? value : undefined;
   const displayLabel = (option: string): string => labels[option]?.trim() || variantLabel(option);
+  const triggerLabel = displayLabel(selectedValue ?? "default");
   return (
     <ModelSelector onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setHasInteracted(false); }} open={open}>
       <ModelSelectorTrigger asChild>
         <Button aria-label={t("s_00487b9418")} className={cn("h-7 min-w-14 gap-1 rounded-md bg-transparent px-1.5 text-[11px] hover:bg-muted/70", className)} size="sm" title={t("s_00487b9418")} type="button" variant="ghost">
           <Gauge className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate">{displayLabel(selectedValue)}</span>
+          <span className="truncate">{triggerLabel}</span>
           <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
         </Button>
       </ModelSelectorTrigger>

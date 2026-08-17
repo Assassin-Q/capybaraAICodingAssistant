@@ -1,4 +1,4 @@
-import type { ActivePrompt } from "@/hooks/useRunLifecycle";
+import type { ActivePrompt } from "@/hooks/useSessionRuntime";
 import type { AssistantMessage, SessionMessage, UserMessage } from "@/lib/opencode";
 
 export interface RestoredRunState {

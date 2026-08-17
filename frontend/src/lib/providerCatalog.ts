@@ -48,8 +48,15 @@ const normalizeModelVariants = (
   const record = asRecord(value);
   if (!record) return undefined;
   return Object.fromEntries(
-    Object.entries(record).filter(([, variant]) => Boolean(asRecord(variant)))
-  ) as Record<string, Record<string, unknown>>;
+    Object.entries(record).flatMap(([id, variant]) => {
+      const entry = asRecord(variant);
+      if (entry) return [[id, entry] as const];
+      // Some OpenCode-compatible catalog responses expose a variant as a null/empty
+      // request body. It is still a valid selectable key.
+      if (variant === null || variant === undefined) return [[id, {}] as const];
+      return [];
+    })
+  );
 };
 
 const toModelInfo = (
@@ -159,6 +166,15 @@ const listPayload = (value: unknown): unknown[] => {
   return [];
 };
 
+/** `/config/providers` is the V2 source of truth for providers with usable credentials. */
+export const parseConfigProviderIDs = (value: unknown): string[] => {
+  const wrapper = asRecord(value);
+  const providers = Array.isArray(wrapper?.providers) ? wrapper.providers : [];
+  return providers
+    .map((item) => stringValue(asRecord(item)?.id))
+    .filter(Boolean);
+};
+
 /** Parse the V2 `/api/model` response, which is a location wrapper around an array. */
 export const parseModelList = (value: unknown): ModelInfo[] =>
   listPayload(value)
@@ -231,9 +247,9 @@ export const mergeProviderCatalogs = (
       models[modelID] = {
         ...previousModel,
         ...model,
-        variants: Object.keys(model.variants ?? {}).length > 0
-          ? model.variants
-          : previousModel?.variants,
+        // `/api/model` is runtime truth. Preserve an empty set instead of repopulating it
+        // from legacy data with variants the current OpenCode process cannot resolve.
+        variants: model.variants,
       };
     });
     providers.set(provider.id, {
@@ -242,6 +258,10 @@ export const mergeProviderCatalogs = (
       api: provider.api ?? previous?.api,
       models,
       name: provider.name || previous?.name || provider.id,
+      // The V2 endpoint intentionally omits storage provenance. An ID absent from the models.dev
+      // legacy catalog can only have come from user config/plugin data; classify it as config so
+      // settings persist edits instead of taking the credential-only built-in-provider path.
+      source: previous?.source === "config" || !previous ? "config" : provider.source,
     });
   });
   return {

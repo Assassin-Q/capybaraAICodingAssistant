@@ -4,17 +4,18 @@ import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppearanceSettings } from "@/components/assistant/AppearanceSettings";
 import { LanguageSettings } from "@/components/assistant/LanguageSettings";
+import { SessionTabSettings } from "@/components/assistant/SessionTabSettings";
 import type { LocalePreference } from "@/lib/i18n";
-import type { UpdateStatus } from "@/lib/updateCheck";
 import { OpenCodeRequirementNotice } from "@/components/assistant/OpenCodeRequirementNotice";
 import { UpdateNotice } from "@/components/assistant/UpdateNotice";
 import { ConfirmDialog } from "@/components/assistant/ConfirmDialog";
 import { SettingsMessage, useConfirm, useSettingsFeedback } from "@/components/assistant/settingsShared";
 import { errorMessage } from "@/components/assistant/shared";
-import { ideaApi, type IdeaRuntimeConfig } from "@/lib/idea";
+import { ideaApi, type IdeaRuntimeConfig, type UpdateStatus } from "@/lib/idea";
 import { setOpenCodeBaseUrl } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
+import type { SessionTabPreferences } from "@/lib/preferences";
 
 interface ConnectionSettingsProps {
   /** Current language preference and its setter, surfaced here alongside the appearance controls. */
@@ -23,12 +24,15 @@ interface ConnectionSettingsProps {
   updateStatus?: UpdateStatus;
   baseUrl: string;
   connected: boolean;
+  nativeTitleActions: boolean;
   /** Reloads models, agents, sessions and commands after the endpoint changes. */
   onChanged: () => void;
   projectPath?: string;
+  sessionTabs: SessionTabPreferences;
+  onSessionTabsChange: (value: SessionTabPreferences) => void;
 }
 
-export function ConnectionSettings({ baseUrl, connected, language, onChanged, onLanguageChange, projectPath, updateStatus }: ConnectionSettingsProps) {
+export function ConnectionSettings({ baseUrl, connected, language, nativeTitleActions, onChanged, onLanguageChange, onSessionTabsChange, projectPath, sessionTabs, updateStatus }: ConnectionSettingsProps) {
   const [restarting, setRestarting] = useState(false);
   /** Set when a restart turned out to be a no-op against an externally started server. */
   const [external, setExternal] = useState<IdeaRuntimeConfig>();
@@ -149,12 +153,21 @@ export function ConnectionSettings({ baseUrl, connected, language, onChanged, on
       <p className="text-xs text-muted-foreground">
         {t("s_7e74e791fb")}
       </p>
-      {/* Appearance had its own page for two settings; it lives here now. */}
+      {/*
+        Appearance had its own page for two settings; it lives here now, and last.
+        Language and conversation tabs are things a user changes while setting the panel up, so
+        they come first; the theme mapping is picked once and then left alone. Each block gets its
+        own divider so they read as sibling sections rather than one long column.
+      */}
       <div className="border-t border-border pt-5">
         <LanguageSettings onChange={onLanguageChange} value={language} />
 
-        {/* The language buttons ran straight into the appearance heading. A divider and real
-            spacing make the two read as sibling sections rather than one long block. */}
+        {nativeTitleActions && (
+          <div className="mt-6 border-t border-border pt-6">
+            <SessionTabSettings onChange={onSessionTabsChange} value={sessionTabs} />
+          </div>
+        )}
+
         <div className="mt-6 border-t border-border pt-6">
           <AppearanceSettings />
         </div>

@@ -21,6 +21,8 @@ import { t } from "@/lib/i18n";
 interface ManagedSkillListProps {
   disabledSkillNames: string[];
   onDisabledSkillNamesChange: (names: string[]) => void;
+  /** Fired after a successful import, toggle or removal so the composer re-reads its skills. */
+  onChanged?: () => void;
   projectPath?: string;
   reloadToken?: number;
 }
@@ -42,6 +44,7 @@ const scopeFilters = (): Array<{ id: ManagedScope | "all"; label: string }> => [
 
 export function ManagedSkillList({
   disabledSkillNames,
+  onChanged,
   onDisabledSkillNamesChange,
   projectPath,
   reloadToken,
@@ -86,14 +89,18 @@ export function ManagedSkillList({
       setBusy(true);
       try {
         const result = await action();
-        if (report(result, fallback)) await refresh();
+        if (!report(result, fallback)) return;
+        await refresh();
+        // The composer reads skills from disk through the plugin, so this alone is enough —
+        // no OpenCode restart, which is why the list used to stay stale until the panel reopened.
+        onChanged?.();
       } catch (actionError) {
         setError(errorMessage(actionError));
       } finally {
         setBusy(false);
       }
     },
-    [refresh, report, setError]
+    [onChanged, refresh, report, setError]
   );
 
   const importSkill = (target: ManagedScope) =>

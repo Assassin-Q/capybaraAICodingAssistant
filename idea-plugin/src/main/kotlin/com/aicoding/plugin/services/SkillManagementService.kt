@@ -50,8 +50,6 @@ data class SkillHubInstallRequest(
     val overwrite: Boolean = false,
     /** Community namespace handle, mirrors `skillhub install --namespace`. */
     val namespace: String? = null,
-    /** "en" installs from clawhub.ai instead of skillhub.cn. */
-    val locale: String = "zh",
 )
 
 /** Mirrors the filters exposed by `skillhub search`: query words, --search-limit and --org. */
@@ -66,8 +64,6 @@ data class SkillHubSearchRequest(
     val category: String? = null,
     val source: String? = null,
     val requiresApiKey: Boolean? = null,
-    /** "en" routes to clawhub.ai; anything else keeps the Chinese catalogue. */
-    val locale: String = "zh",
 )
 
 @Serializable
@@ -215,8 +211,6 @@ internal fun networkFailureMessage(error: Throwable, fallback: String): String =
 }
 
 class SkillManagementService(private val project: Project) {
-    private val clawHub = ClawHubCatalogService()
-
     private val json = Json { ignoreUnknownKeys = true }
     private val httpClient: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(6))
@@ -297,15 +291,7 @@ class SkillManagementService(private val project: Project) {
         SkillActionResponse(true, "技能已删除")
     }.getOrElse { SkillActionResponse(false, it.message ?: "无法删除技能") }
 
-    fun skillHubStatus(locale: String = "zh"): SkillHubStatus {
-        if (locale.equals("en", ignoreCase = true)) return clawHub.status()
-        return skillHubStatusCn()
-    }
-
-    /** Topics for the English catalogue; the Chinese one ships a fixed scene list instead. */
-    fun clawHubTopics(): List<String> = runCatching { clawHub.topics() }.getOrDefault(emptyList())
-
-    private fun skillHubStatusCn(): SkillHubStatus = runCatching {
+    fun skillHubStatus(): SkillHubStatus = runCatching {
         val response = httpClient.send(
             HttpRequest.newBuilder(URI.create("$CATALOG_ENDPOINT?page=1&pageSize=1&sortBy=score&order=desc&keyword="))
                 .header("Accept", "application/json")
@@ -384,12 +370,7 @@ class SkillManagementService(private val project: Project) {
         )
     }.getOrElse { SkillHubSearchResponse(false, page = 1, pageSize = 20, message = networkFailureMessage(it, "SkillHub 搜索失败")) }
 
-    fun searchSkillHub(request: SkillHubSearchRequest): SkillHubSearchResponse {
-        if (request.locale.equals("en", ignoreCase = true)) return clawHub.search(request)
-        return searchSkillHubCn(request)
-    }
-
-    private fun searchSkillHubCn(request: SkillHubSearchRequest): SkillHubSearchResponse = runCatching {
+    fun searchSkillHub(request: SkillHubSearchRequest): SkillHubSearchResponse = runCatching {
         val query = request.query.trim()
         require(query.length <= 120) { "SkillHub 搜索关键词过长" }
         val limit = request.limit.coerceIn(1, 100)
@@ -477,17 +458,8 @@ class SkillManagementService(private val project: Project) {
             deleteTree(target)
         }
 
-        // clawhub.ai serves archives from `/api/v1/download` keyed by slug *and* owner handle, and
-        // the listing does not carry the handle, so the URL is resolved through that catalogue
-        // instead of being assembled from the Chinese one.
-        val english = request.locale.equals("en", ignoreCase = true)
-        val clawHubTarget = if (english) clawHub.downloadUrl(coordinate) else null
-        require(!english || clawHubTarget != null) { "无法在 ClawHub 上确定该技能的作者，暂时无法安装" }
-        val downloadUrl = clawHubTarget?.first ?: "$DOWNLOAD_ENDPOINT?slug=${encode(coordinate)}"
-        val installedRef = clawHubTarget?.second ?: coordinate
-
         val response = httpClient.send(
-            HttpRequest.newBuilder(URI.create(downloadUrl))
+            HttpRequest.newBuilder(URI.create("$DOWNLOAD_ENDPOINT?slug=${encode(coordinate)}"))
                 .header("User-Agent", USER_AGENT)
                 .timeout(Duration.ofSeconds(120))
                 .GET()
@@ -501,9 +473,7 @@ class SkillManagementService(private val project: Project) {
         refreshFiles()
         SkillActionResponse(
             success = true,
-            // Reports the ref actually taken: a slug published by several owners resolves to one of
-            // them, and the user should see which.
-            message = "已安装 $installedRef（$entries 个文件）",
+            message = "已安装 $coordinate（$entries 个文件）",
             imported = parseSkill(target.resolve("SKILL.md"), rootFor(target)),
         )
     }.getOrElse { SkillActionResponse(false, it.message ?: "SkillHub 技能安装失败") }

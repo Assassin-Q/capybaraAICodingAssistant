@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { errorMessage } from "@/components/assistant/shared";
+import { applyConfigToOpenCode } from "@/lib/configApply";
+import { ideaApi } from "@/lib/idea";
 import { openCodeApi } from "@/lib/opencode";
 import { cn } from "@/lib/utils";
 import type { McpConfig, McpStatus, OpenCodeConfig } from "@/lib/opencode";
@@ -141,7 +143,12 @@ export function McpSettings({ onChanged, projectPath }: McpSettingsProps) {
     setLoading(true);
     setError("");
     try {
-      const [nextConfig, nextStatuses] = await Promise.all([openCodeApi.getConfig(projectPath), openCodeApi.listMcp(projectPath)]);
+      const [snapshot, nextStatuses] = await Promise.all([
+        ideaApi.getOpenCodeConfig(),
+        openCodeApi.listMcp(projectPath).catch(() => ({})),
+      ]);
+      if (!snapshot.success) throw new Error(snapshot.message);
+      const nextConfig = snapshot.config as OpenCodeConfig;
       setConfig(nextConfig);
       setStatuses(nextStatuses);
       const names = Object.keys(nextConfig.mcp ?? {});
@@ -191,6 +198,18 @@ export function McpSettings({ onChanged, projectPath }: McpSettingsProps) {
     setError("");
   };
 
+/**
+   * Writes the servers to opencode.jsonc, then restarts OpenCode so it reads them. PATCH /config
+   * only reached the running process and was lost on the next start; the file alone is not enough
+   * either, because OpenCode reads its configuration once at startup.
+   */
+  const writeMcp = async (mcp: Record<string, McpConfig>) => {
+    const saved = await ideaApi.saveConfigValue("mcp", mcp);
+    if (!saved.success) throw new Error(saved.message ?? t("s_ecab861b55"));
+    const applied = await applyConfigToOpenCode();
+    if (!applied.live) setError(applied.message);
+  };
+
   const save = async () => {
     if (!projectPath) return;
     setSaving(true);
@@ -201,7 +220,7 @@ export function McpSettings({ onChanged, projectPath }: McpSettingsProps) {
       if (selectedName && resolved.name !== selectedName) throw new Error(t("s_d9ef23ed15"));
       if (resolved.config.type === "remote" && !resolved.config.url) throw new Error(t("s_bc269dcffe"));
       if (resolved.config.type === "local" && (!resolved.config.command || resolved.config.command.length === 0)) throw new Error(t("s_a1bd5f8275"));
-      await openCodeApi.updateConfig({ mcp: { [resolved.name]: resolved.config } }, projectPath);
+      await writeMcp({ ...(config.mcp ?? {}), [resolved.name]: resolved.config });
       setSelectedName(resolved.name);
       setDraft(draftFromConfig(resolved.name, resolved.config));
       await refresh(resolved.name);
@@ -220,8 +239,7 @@ export function McpSettings({ onChanged, projectPath }: McpSettingsProps) {
     setSaving(true);
     setError("");
     try {
-      const next = { ...current, enabled };
-      await openCodeApi.updateConfig({ mcp: { [name]: next } }, projectPath);
+      await writeMcp({ ...(config.mcp ?? {}), [name]: { ...current, enabled } });
       await refresh(name);
       onChanged();
     } catch (toggleError) {

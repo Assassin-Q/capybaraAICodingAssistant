@@ -1,8 +1,69 @@
 import type { ContextChip } from "@/components/assistant/shared";
-import type { PromptInputFile } from "@/components/ai-elements/prompt-input";
-import type { PromptAttachment } from "@/lib/opencode";
+import type { PromptInputFile, PromptInputMessage } from "@/components/ai-elements/prompt-input";
+import type { ModelInfo, PromptAttachment } from "@/lib/opencode";
 import type { EmbeddedTextAttachment } from "@/lib/textAttachments";
+import { withAttachmentSource } from "@/lib/attachmentSource";
 import { t } from "@/lib/i18n";
+
+export interface PromptRequest extends PromptInputMessage {
+  /** MCP servers the user pinned; named in the prompt so the model reaches for their tools. */
+  mcpNames?: string[];
+  /** Explicit @subagent selections are sent through OpenCode V2's prompt.agents field. */
+  subagentIDs?: string[];
+  /** Freezes the model controls that were selected when this request entered a session queue. */
+  execution?: PromptExecutionContext;
+}
+
+export interface PromptExecutionContext {
+  agentID: string;
+  model?: ModelInfo;
+  variant?: string;
+}
+
+export const createMcpContext = (name: string): ContextChip => {
+  const now = Date.now();
+  return {
+    action: "add_to_chat",
+    addedAt: now,
+    content: name,
+    fileName: name,
+    id: `mcp:${name}`,
+    kind: "mcp",
+    timestamp: now,
+  };
+};
+
+export const createAgentContext = (agentID: string): ContextChip => {
+  const now = Date.now();
+  return {
+    action: "add_to_chat",
+    addedAt: now,
+    content: agentID,
+    fileName: agentID,
+    id: `agent:${agentID}`,
+    kind: "agent",
+    timestamp: now,
+  };
+};
+
+export const splitPromptContexts = (contexts: ContextChip[]): {
+  files: PromptInputFile[];
+  mcpNames: string[];
+  subagentIDs: string[];
+} => ({
+  // Agents travel in prompt.agents and MCP servers in the prompt text, so neither becomes a file.
+  files: contexts
+    .filter((context) => context.kind !== "agent" && context.kind !== "mcp")
+    .map(contextToPromptInputFile),
+  mcpNames: [...new Set(contexts
+    .filter((context) => context.kind === "mcp")
+    .map((context) => context.fileName || context.content)
+    .filter(Boolean))],
+  subagentIDs: [...new Set(contexts
+    .filter((context) => context.kind === "agent")
+    .map((context) => context.fileName || context.content)
+    .filter(Boolean))],
+});
 
 const textExtensions = new Set(["csv", "json", "jsonc", "log", "md", "mdx", "txt", "xml", "yaml", "yml"]);
 
@@ -51,7 +112,12 @@ const contextContent = (context: ContextChip): string => {
 };
 
 export const contextToPromptInputFile = (context: ContextChip, index: number): PromptInputFile => {
-  const mime = contextMime(context);
+  // The originating path travels with the media type so the chip under the bubble can navigate
+  // back to it, the same way the chip above the composer does — including after a reload, when
+  // all that survives is what the server stored.
+  const mime = withAttachmentSource(contextMime(context), context.fileName
+    ? { lineRange: context.lineRange, path: context.fileName }
+    : undefined);
   const name = contextName(context, index);
   const file = new File([contextContent(context)], name, { type: mime });
   return {

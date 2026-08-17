@@ -13,3 +13,7 @@ frontend/.env.local
 frontend/dist/
 idea-plugin/build/
 idea-plugin/.gradle/
+# OpenCode's legacy instance-scoped PATCH /config writes secrets here. Configuration belongs in
+# ~/.config/opencode; keep an accidental workspace copy out of Git as a second line of defence.
+/config.json
+/config.json.capybara.bak

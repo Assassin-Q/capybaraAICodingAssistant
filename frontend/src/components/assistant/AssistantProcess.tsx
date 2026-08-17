@@ -160,6 +160,21 @@ function TodoSnapshot({ todos }: { todos: TodoInfo[] }) {
   );
 }
 
+/**
+ * The newest sentence of a reasoning stream, for the one-line preview beside "思考中".
+ *
+ * Markdown syntax and newlines are stripped rather than rendered: this sits inside a single-line
+ * label, and a half-finished code fence or list marker arriving mid-stream would garble it.
+ */
+const reasoningTail = (text: string): string => {
+  const flat = text
+    .replace(/```[\s\S]*?(```|$)/g, " ")
+    .replace(/[#>*_`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return flat.length > 90 ? `…${flat.slice(-90)}` : flat;
+};
+
 type NarrativePart = AssistantTextPart | AssistantReasoningPart;
 type ProcessBlock =
   | { type: "narrative"; part: NarrativePart }
@@ -190,8 +205,27 @@ const actionGroupTitle = (tools: AssistantToolPart[]): string => {
     .join("，");
 };
 
-const formatDuration = (created: number, completed?: number): string => {
-  const elapsed = Math.max(0, (completed ?? Date.now()) - created);
+/**
+ * When a finished turn actually ended.
+ *
+ * `time.completed` is missing whenever the run did not finish cleanly — an aborted or failed turn
+ * never gets one. Falling back to `Date.now()` meant such a turn recomputed its duration on every
+ * later render, so an old failed answer sat there counting upwards while the *next* turn streamed.
+ * The turn's own parts carry the real end, and when even those are silent it is better to say
+ * nothing than to show a number that grows on its own.
+ */
+const lastActivityAt = (message: AssistantMessage): number | undefined => {
+  if (message.time.completed) return message.time.completed;
+  let latest = 0;
+  message.content.forEach((part) => {
+    if (part.type === "tool") latest = Math.max(latest, part.time.completed ?? part.time.ran ?? part.time.created);
+    else if (part.type === "reasoning") latest = Math.max(latest, part.time?.completed ?? part.time?.created ?? 0);
+  });
+  return latest > 0 ? latest : undefined;
+};
+
+const formatDuration = (created: number, completed: number): string => {
+  const elapsed = Math.max(0, completed - created);
   const seconds = Math.max(1, Math.round(elapsed / 1000));
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -368,7 +402,20 @@ const Narrative = memo(function Narrative({
     return (
       <Reasoning autoClose={false} defaultOpen={false} isStreaming={reasoningStreaming}>
         <ReasoningTrigger
-          getThinkingMessage={(streaming) => streaming ? <Shimmer duration={1}>{t("s_138d5364bb")}</Shimmer> : t("s_edab852efe")}
+          getThinkingMessage={(streaming) => streaming
+            ? (
+              <>
+                <Shimmer duration={1}>{t("s_138d5364bb")}</Shimmer>
+                {/*
+                  The tail of what is being thought, in lighter type beside the label. A shimmering
+                  word on its own says a request is open, not that anything is happening; the
+                  newest sentence shows the run is alive without asking the user to expand a panel
+                  that keeps growing under them.
+                */}
+                <span className="min-w-0 flex-1 truncate text-muted-foreground/55">{reasoningTail(part.text)}</span>
+              </>
+            )
+            : t("s_edab852efe")}
         />
         <ReasoningContent streaming={reasoningStreaming}>{part.text}</ReasoningContent>
       </Reasoning>
@@ -445,6 +492,7 @@ export function AssistantProcess({
     part.type === "reasoning" || part.type === "tool" || (part.type === "text" && part.id !== conclusionPartID && Boolean(part.text.trim()))
   ) as Array<NarrativePart | AssistantToolPart>, [conclusionPartID, message.content]);
   const blocks = useMemo(() => buildProcessBlocks(parts), [parts]);
+  const finishedAt = useMemo(() => lastActivityAt(message), [message]);
   const hasExecution = parts.some((part) => part.type === "tool" || part.type === "reasoning");
   // Collapsed until the user opens it, in both states. Nothing here may auto-toggle `open`:
   // new reasoning or tool parts keep arriving mid-run, and collapsing under the user's cursor
@@ -481,7 +529,9 @@ export function AssistantProcess({
       {!isStreaming && (
         <ChainOfThoughtHeader className="inline-flex h-6 w-fit max-w-full items-center gap-1.5 px-0.5 py-0 text-[11px] leading-none">
           <span className="inline-flex h-4 min-w-0 items-center leading-none">
-            {t("s_c1ca09f80e", { p0: formatDuration(message.time.created, message.time.completed) })}
+            {finishedAt === undefined
+              ? t("run.processedNoDuration")
+              : t("s_c1ca09f80e", { p0: formatDuration(message.time.created, finishedAt) })}
           </span>
         </ChainOfThoughtHeader>
       )}

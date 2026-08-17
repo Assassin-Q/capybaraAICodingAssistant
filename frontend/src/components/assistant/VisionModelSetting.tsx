@@ -1,6 +1,7 @@
-import { Eye } from "lucide-react";
+import { Eye, X } from "lucide-react";
 
 import { MemoryModelPicker } from "@/components/assistant/MemoryModelPicker";
+import { Button } from "@/components/ui/button";
 import { modelAcceptsImages } from "@/lib/visionFallback";
 import type { ModelInfo } from "@/lib/opencode";
 import type { WorkspacePreferences } from "@/lib/preferences";
@@ -30,12 +31,19 @@ export function VisionModelSetting({ models, onChange, value }: VisionModelSetti
         <h3 className="text-sm font-semibold">{t("vision.settingsTitle")}</h3>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{t("vision.settingsHint")}</p>
-      <div className="mt-3 max-w-md">
-        <MemoryModelPicker
-          models={capable}
-          onChange={(model) => onChange({ modelID: model.id, providerID: model.providerID })}
-          value={selectedKey}
-        />
+      <div className="mt-3 flex max-w-md items-center gap-1.5">
+        <div className="min-w-0 flex-1">
+          <MemoryModelPicker
+            models={capable}
+            onChange={(model) => onChange({ modelID: model.id, providerID: model.providerID })}
+            value={selectedKey}
+          />
+        </div>
+        {value && (
+          <Button aria-label={t("vision.none")} className="size-9 shrink-0" onClick={() => onChange(undefined)} size="icon" title={t("vision.none")} type="button" variant="ghost">
+            <X className="size-3.5" />
+          </Button>
+        )}
       </div>
       {capable.length === 0 && (
         <p className="mt-2 text-[11px] leading-4 text-amber-600 dark:text-amber-500">

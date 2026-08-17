@@ -96,9 +96,7 @@ const categoryLabels = (): Record<string, string> => ({
 
 /** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
 const sourceLabels = (): Record<string, string> => ({
-  // Same key, two catalogues: skillhub.cn labels its own entries "clawhub", and clawhub.ai items
-  // are tagged with it too. The name shown follows whichever site is being browsed.
-  clawhub: getLocale() === "en" ? "ClawHub" : "SkillHub",
+  clawhub: "SkillHub",
   community: t("s_367c1ec5d7"),
   enterprise: t("s_00c5fdb039"),
 });
@@ -147,11 +145,6 @@ function SkillIcon({ skill }: { skill: SkillHubSkill }) {
 
 export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
   const [status, setStatus] = useState<SkillHubStatus>();
-  /**
-   * Which catalogue this panel is showing. English uses clawhub.ai, everything else
-   * skillhub.cn — two different services with different data, not two translations of one.
-   */
-  const locale = getLocale();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortId>("score");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
@@ -179,7 +172,6 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
           order,
           page: nextPage,
           query: searchQuery.trim(),
-          locale,
           requiresApiKey: apiKey === "all" ? undefined : apiKey === "required",
           sortBy: sort,
           source,
@@ -202,7 +194,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
         setLoading(false);
       }
     },
-    [apiKey, category, locale, order, setError, sort, source]
+    [apiKey, category, order, setError, sort, source]
   );
 
   useEffect(() => {
@@ -212,7 +204,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
   useEffect(() => {
     let cancelled = false;
     void skillsApi
-      .hubStatus(locale)
+      .hubStatus()
       .then((next) => {
         if (cancelled) return;
         setStatus(next);
@@ -222,20 +214,9 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [load, locale]);
+  }, [load]);
 
-  /**
-   * clawhub.ai has no fixed category list — every skill carries free-form topics — so in English
-   * the filter is built from whatever the catalogue currently holds rather than from a table that
-   * describes a different site.
-   */
-  const [topics, setTopics] = useState<string[]>([]);
-  useEffect(() => {
-    if (locale !== "en") return;
-    void skillsApi.hubTopics().then(setTopics).catch(() => setTopics([]));
-  }, [locale]);
-
-  const categories = locale === "en" ? topics : Object.keys(categoryLabels());
+  const categories = Object.keys(categoryLabels());
   const sources = Object.keys(sourceLabels());
   const visible = results ?? [];
   const pageCount = Math.max(1, Math.ceil(total / 20));
@@ -258,7 +239,6 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
     try {
       const result = await skillsApi.installFromHub({
         coordinate: skill.publicSlug ?? skill.slug,
-        locale,
         overwrite: false,
         scope,
       });
@@ -289,7 +269,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
       <SettingsHeader
-        description={locale === "en" ? t("skillhub.clawhubSubtitle") : t("s_b771750ad7")}
+        description={t("s_b771750ad7")}
         loading={loading}
         onRefresh={() => void load(query)}
         title="SkillHub"
@@ -366,13 +346,11 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
             }}
             options={[{ value: "all", label: t("s_80bedda93c") }, ...categories.map((value) => ({
               value,
-              label: locale === "en" ? value : (categoryLabels()[value] ?? value),
+              label: categoryLabels()[value] ?? value,
             }))]}
             value={category}
           />
-          {/* clawhub.ai publishes from one source and marks nothing as needing an API key, so
-              these two filters would only ever offer a single meaningless choice there. */}
-          {locale !== "en" && <FilterMenu
+          <FilterMenu
             label={t("s_c63f79e636")}
             onChange={(value) => {
               setSource(value);
@@ -383,8 +361,8 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
               label: sourceLabels()[value] ?? value,
             }))]}
             value={source}
-          />}
-          {locale !== "en" && <FilterMenu
+          />
+          <FilterMenu
             label="API Key"
             onChange={(value) => {
               setApiKey(value);
@@ -398,7 +376,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
               { value: "required", label: t("s_aa170923aa") },
             ]}
             value={apiKey}
-          />}
+          />
         </div>
       </div>
 
@@ -424,7 +402,7 @@ export function SkillHubPanel({ onInstalled }: SkillHubPanelProps) {
                   <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                     <h3 className="truncate text-sm font-medium">{skill.name ?? skill.slug}</h3>
                     {skill.category && (
-                      <Badge variant="secondary">{locale === "en" ? skill.category : (categoryLabels()[skill.category] ?? skill.category)}</Badge>
+                      <Badge variant="secondary">{categoryLabels()[skill.category] ?? skill.category}</Badge>
                     )}
                     {skill.requiresApiKey && (
                       <Badge variant="outline">

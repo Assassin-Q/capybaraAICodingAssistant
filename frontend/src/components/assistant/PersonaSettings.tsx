@@ -45,9 +45,27 @@ function ToneRoleSettings({ onSave, preferences }: ToneRoleSettingsProps) {
     const preset = findPersonaPreset(presetId);
     if (!preset) return;
     setSaved(false);
-    // Picking a preset edits the draft content only. Whether the persona is on is the switch's
-    // business, and silently turning it on here would take a decision away from the user.
-    setPersona((current) => ({ ...current, instructions: preset.instructions, name: preset.name, presetId: preset.id }));
+    /**
+     * Picking a preset is a choice, not a draft.
+     *
+     * It only filled the editor and waited for the save button, so the tone marked as selected was
+     * not the tone actually in effect — and the button lit up for something the user had not
+     * written. Editing the text afterwards is what turns it into a custom role, and that edit is
+     * the only thing the button is there to commit.
+     *
+     * Whether the persona is on stays the switch's business; enabling it here would take a
+     * decision away from the user.
+     */
+    const next = onSave({
+      ...preferences,
+      persona: {
+        ...preferences.persona,
+        instructions: preset.instructions,
+        name: preset.name,
+        presetId: preset.id,
+      },
+    });
+    setPersona(next.persona);
   };
   const customize = (changes: Partial<typeof persona>) => update({ ...changes, presetId: CUSTOM_PERSONA_ID });
 

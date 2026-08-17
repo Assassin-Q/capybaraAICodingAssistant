@@ -8,7 +8,7 @@ export interface IdeContextEvent {
   id: string;
   action: "add_to_chat" | "explain_code" | "optimize_code" | "generate_test";
   content: string;
-  kind?: "file" | "directory" | "selection" | "binary" | "skill";
+  kind?: "file" | "directory" | "selection" | "binary" | "skill" | "agent" | "mcp";
   fileName?: string;
   lineRange?: IdeLineRange;
   timestamp: number;
@@ -46,7 +46,58 @@ export interface IdeaRuntimeConfig {
   externalPid?: number;
 }
 
+/** Result of a direct edit to opencode.jsonc, including which file was touched. */
+export interface ConfigEditResponse {
+  success: boolean;
+  message?: string;
+  file?: string;
+}
+
+export interface OpenCodeConfigSnapshot {
+  success: boolean;
+  config: Record<string, unknown>;
+  files: string[];
+  message?: string;
+}
+
 export type IdeaTheme = "dark" | "light";
+
+export interface UpdateStatus {
+  hasUpdate: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  downloadUrl: string;
+  /** True when the Kotlin-side release check could not reach the release service. */
+  unavailable: boolean;
+}
+
+export type PanelAction =
+  | "new-session"
+  | "history"
+  | "settings"
+  | "git"
+  | "theme"
+  | "refresh"
+  | "close-all-session-tabs"
+  | `select-session-tab:${string}`
+  | `close-session-tab:${string}`
+  | `close-other-session-tabs:${string}`
+  | `close-left-session-tabs:${string}`
+  | `close-right-session-tabs:${string}`
+  | `rename-session-tab:${string}`;
+
+export interface NativeSessionTab {
+  id: string;
+  sessionID?: string;
+  title: string;
+}
+
+export interface NativeSessionTabsState {
+  activeTabID: string;
+  multiTab: boolean;
+  revision: number;
+  tabs: NativeSessionTab[];
+}
 
 export interface IdeaThemeOption {
   current: boolean;
@@ -259,6 +310,16 @@ export interface IdeaSnapshotFileDiff {
   status: "added" | "deleted" | "modified";
 }
 
+export interface IdeaNavigateRequest {
+  path: string;
+  line?: number;
+  column?: number;
+  /** Last line of the referenced region; the editor selects the whole span when it is larger. */
+  endLine?: number;
+  /** Select a directory in IDEA's Project view instead of opening an editor. */
+  selectInProject?: boolean;
+}
+
 export const localApiBaseUrl = (
   import.meta.env.VITE_IDEA_API_BASE || `${window.location.origin}/api`
 ).replace(/\/$/, "");
@@ -321,7 +382,7 @@ const normalizeContextEvent = (raw: unknown): IdeContextEvent | null => {
   return {
     action,
     content,
-    kind: data.kind === "directory" || data.kind === "selection" || data.kind === "binary" || data.kind === "file"
+    kind: data.kind === "directory" || data.kind === "selection" || data.kind === "binary" || data.kind === "file" || data.kind === "skill" || data.kind === "agent"
       ? data.kind
       : undefined,
     fileName: typeof data.fileName === "string" ? data.fileName : undefined,
@@ -337,6 +398,32 @@ const normalizeContextEvent = (raw: unknown): IdeContextEvent | null => {
 
 export const ideaApi = {
   getRuntimeConfig: () => request<IdeaRuntimeConfig>("/opencode-info"),
+  /** Reads the JSONC files on disk so newly configured model variants are visible before restart. */
+  getOpenCodeConfig: () => request<OpenCodeConfigSnapshot>("/opencode/config"),
+
+  /**
+   * Writes one top-level key of opencode.jsonc — `disabled_providers` today.
+   *
+   * Settings that are not providers used to go through OpenCode's `PATCH /config`, which only
+   * updates the running server: the change was accepted and then lost on the next start, because
+   * the file it reloads from never learned about it.
+   */
+  saveConfigValue: (key: string, value: unknown) =>
+    request<ConfigEditResponse>("/opencode/save-config-value", {
+      body: JSON.stringify({ key, value: JSON.stringify(value) }),
+      method: "POST",
+    }),
+
+  /** Canonical non-secret UI preferences stored in IDEA's project workspace file. */
+  getWorkspacePreferences: () => request<unknown>("/preferences"),
+
+  saveWorkspacePreferences: (preferences: unknown) => request<unknown>("/preferences", {
+    body: JSON.stringify(preferences),
+    keepalive: true,
+    method: "POST",
+  }),
+
+  getPluginUpdate: () => request<UpdateStatus>("/plugin-update"),
 
   /** Whether OpenCode is installed and new enough for the v2 session API this panel relies on. */
   openCodeRequirement: () => request<OpenCodeRequirement>("/ide/opencode-requirement"),
@@ -392,7 +479,7 @@ export const ideaApi = {
    * provider edits, including a model blacklist, have to go through the plugin.
    */
   saveProvider: (providerID: string, config: unknown) =>
-    request<{ success: boolean; message?: string; file?: string }>("/opencode/save-provider", {
+    request<ConfigEditResponse>("/opencode/save-provider", {
       body: JSON.stringify({ config: JSON.stringify(config), providerID }),
       method: "POST",
     }),
@@ -402,7 +489,7 @@ export const ideaApi = {
    * is the only way to actually remove one; the plugin backs the file up before editing.
    */
   removeProvider: (providerID: string) =>
-    request<{ success: boolean; message?: string; file?: string }>("/opencode/remove-provider", {
+    request<ConfigEditResponse>("/opencode/remove-provider", {
       body: JSON.stringify({ providerID }),
       method: "POST",
     }),
@@ -426,6 +513,19 @@ export const ideaApi = {
     const response = await request<{ path?: string }>("/project-path");
     return response.path;
   },
+
+  navigate: (target: IdeaNavigateRequest) =>
+    request<{ success: boolean; message?: string }>("/ide/navigate", {
+      body: JSON.stringify(target),
+      method: "POST",
+    }),
+
+  /** Mirrors the active OpenCode session name into IDEA's native tool-window title. */
+  setPanelSessionTabs: (state: NativeSessionTabsState) =>
+    request<{ success: boolean }>("/panel/session-tabs", {
+      body: JSON.stringify(state),
+      method: "POST",
+    }),
 
   reloadFileSystem: () =>
     request<{ success: boolean }>("/reload", { method: "POST" }),
@@ -540,7 +640,8 @@ export const subscribeIdeaEvents = (
   onContext: (event: IdeContextEvent) => void,
   onTheme?: (theme: IdeaTheme) => void,
   onError?: () => void,
-  onApprovalPending?: (sessionIDs: string[]) => void
+  onApprovalPending?: (sessionIDs: string[]) => void,
+  onPanelAction?: (action: PanelAction) => void,
 ) => {
   const source = new EventSource(`${localApiBaseUrl}/events`);
 
@@ -569,11 +670,36 @@ export const subscribeIdeaEvents = (
     }
   };
 
+  const handlePanelAction = (event: MessageEvent<string>) => {
+    try {
+      const parsed = JSON.parse(event.data) as { action?: unknown };
+      const action = parsed.action;
+      if (
+        action === "new-session" ||
+        action === "history" ||
+        action === "settings" ||
+        action === "git" ||
+        action === "theme" ||
+        action === "refresh" ||
+        (typeof action === "string" && (
+          action.startsWith("select-session-tab:") ||
+          action.startsWith("close-session-tab:") ||
+          action.startsWith("rename-session-tab:")
+        ))
+      ) {
+        onPanelAction?.(action as PanelAction);
+      }
+    } catch {
+      // Ignore malformed action events without interrupting the shared stream.
+    }
+  };
+
   source.onmessage = handleMessage;
   source.onerror = () => onError?.();
   source.addEventListener("chat_message", handleMessage);
   source.addEventListener("ide.context", handleMessage);
   source.addEventListener("ide.theme", handleTheme);
+  source.addEventListener("capybara.action", handlePanelAction);
   source.addEventListener("approval.pending", (event: MessageEvent<string>) => {
     try {
       const parsed = JSON.parse(event.data) as { sessions?: unknown };

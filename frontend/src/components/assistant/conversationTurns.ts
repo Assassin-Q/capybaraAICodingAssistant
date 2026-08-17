@@ -17,6 +17,9 @@ export interface StreamingAssistantState {
   hasVisibleContent: boolean;
 }
 
+/** Message arrays are immutable. Keep completed tab transcripts grouped across tab switches. */
+const groupedTurnsCache = new WeakMap<SessionMessage[], ConversationTurn[]>();
+
 const mergeParts = (
   current: AssistantTurn["content"],
   incoming: AssistantMessage["content"]
@@ -107,7 +110,22 @@ const mergeAssistantTurn = (current: AssistantTurn | undefined, message: Assista
   };
 };
 
+/**
+ * Housekeeping OpenCode injects into the transcript, which is for the model rather than the reader.
+ *
+ * It sends the current date as a system message on the first prompt after midnight, so a divider
+ * reading "Today's date is now: …" appeared mid-conversation with nothing the user had said or
+ * asked about. The message still reaches the model; it just is not drawn.
+ */
+const ENVIRONMENT_NOTICES = [/^today'?s date is now\b/i];
+
+const isEnvironmentNotice = (message: SessionMessage): boolean =>
+  message.type === "system"
+  && ENVIRONMENT_NOTICES.some((pattern) => pattern.test((message.text ?? "").trim()));
+
 export const groupConversationTurns = (messages: SessionMessage[]): ConversationTurn[] => {
+  const cached = groupedTurnsCache.get(messages);
+  if (cached) return cached;
   const assistantsByParent = new Map<string, AssistantTurn>();
   const unparentedAssistantIDs = new Set<string>();
   messages.forEach((message) => {
@@ -124,6 +142,7 @@ export const groupConversationTurns = (messages: SessionMessage[]): Conversation
 
   const turns: ConversationTurn[] = [];
   messages.forEach((message) => {
+    if (isEnvironmentNotice(message)) return;
     if (message.type !== "assistant") {
       turns.push(message);
       if (message.type === "user") {
@@ -141,6 +160,7 @@ export const groupConversationTurns = (messages: SessionMessage[]): Conversation
     }
     turns[turns.length - 1] = mergeAssistantTurn(previous, message);
   });
+  groupedTurnsCache.set(messages, turns);
   return turns;
 };
 

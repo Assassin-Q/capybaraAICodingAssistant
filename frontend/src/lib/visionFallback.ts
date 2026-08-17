@@ -1,5 +1,6 @@
 import { openCodeApi } from "@/lib/opencode";
 import type { AssistantMessage, ModelInfo, ModelRef, PromptAttachment } from "@/lib/opencode";
+import { wrapPromptAugmentation } from "@/lib/promptAugmentation";
 import { t } from "@/lib/i18n";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -64,6 +65,8 @@ export interface VisionFallbackInput {
 export interface VisionFallbackResult {
   /** Attachments to actually send: the images have been removed. */
   attachments: PromptAttachment[];
+  /** The images that were converted, so the bubble can still show what the user attached. */
+  images: PromptAttachment[];
   /** Text to append to the prompt, empty when nothing was converted. */
   text: string;
 }
@@ -86,7 +89,7 @@ export async function describeImagesForTextModel({
   visionModel,
 }: VisionFallbackInput): Promise<VisionFallbackResult> {
   const images = attachments.filter(isImage);
-  if (images.length === 0) return { attachments, text: "" };
+  if (images.length === 0) return { attachments, images, text: "" };
 
   const session = await openCodeApi.createSession(projectPath, visionModel);
   const described: string[] = [];
@@ -106,7 +109,12 @@ export async function describeImagesForTextModel({
 
   return {
     attachments: attachments.filter((attachment) => !isImage(attachment)),
-    text: `\n\n${t("vision.header", { count: images.length })}\n${described.join("\n\n")}`,
+    // The images themselves are handed back so the bubble can keep showing what was attached;
+    // they are removed from what the conversation model receives, not from what the user sees.
+    images,
+    text: `\n\n${wrapPromptAugmentation(
+      `${t("vision.header", { count: images.length })}\n${described.join("\n\n")}`
+    )}`,
   };
 }
 

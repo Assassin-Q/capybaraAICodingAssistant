@@ -10,7 +10,7 @@
 
 [![Gitee Stars](https://gitee.com/qianguanshui/capybaraAICodingAssistant/badge/star.svg?style=flat-square)](https://gitee.com/qianguanshui/capybaraAICodingAssistant)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
-[![Release](https://img.shields.io/badge/Release-v1.0.0-green?style=flat-square)](https://gitee.com/qianguanshui/capybaraAICodingAssistant/releases)
+[![Release](https://img.shields.io/badge/Release-v3.0.0-green?style=flat-square)](https://gitee.com/qianguanshui/capybaraAICodingAssistant/releases)
 
 </div>
 
@@ -38,7 +38,7 @@
 
 现有的 AI 编程工具大多为 CLI、VS Code 插件或其变种，而对于使用 IntelliJ IDEA 的开发者，国内外各大厂商的idea编程代理均不够灵活——无法自由添加自定义模型，功能上开发者自定义程度不高，限制极大。
 
-故基于 [OpenCode](https://opencode.ai) 开源编程代理工具，编写了这款 IntelliJ IDEA 插件。前端直接嵌入 IDEA 中，依赖 OpenCode 服务运行，并提供了快速添加文件、代码补全（待完善）、右键菜单操作等功能。
+故基于 [OpenCode](https://opencode.ai) 开源编程代理工具，编写了这款 IntelliJ IDEA 插件。前端直接嵌入 IDEA 中（JCEF），插件自动拉起并管理本地 OpenCode 服务，并提供了快速添加文件、右键菜单操作、原生会话标签、内置浏览器、记忆系统、国际化等功能，代码补全待完善。
 
 Q：为什么重写前端，不引用官方前端
 
@@ -52,7 +52,7 @@ IntelliJ IDEA插件系统兼容性限制很多，如遇到问题请提Issues
 
 ### 方法一：直接导入
 
-从 `https://gitee.com/qianguanshui/capybaraAICodingAssistant/releases/tag/v1.0.1` 目录获取 ZIP 包，在 IDEA 中通过 `Settings → Plugins → ⚙ → Install Plugin from Disk` 导入即可使用。
+从 [Gitee Releases](https://gitee.com/qianguanshui/capybaraAICodingAssistant/releases) 页面获取 ZIP 包，在 IDEA 中通过 `Settings → Plugins → ⚙ → Install Plugin from Disk` 导入即可使用。
 
 ### 方法二：源码编译
 
@@ -62,73 +62,70 @@ cd frontend
 pnpm install
 pnpm build
 
-# 2. 构建插件
+# 2. 构建插件（需要 gradle；gradle build 会自动重新构建前端）
 cd ../idea-plugin
-./gradle build
+gradle build
 
 # 3. 产物在 idea-plugin/build/distributions/ 目录下,获取 ZIP 包，在 IDEA 中通过 `Settings → Plugins → ⚙ → Install Plugin from Disk` 导入即可使用。
 ```
 
 
-> 插件依赖 OpenCode 服务，请确保本地已安装并配置好 [OpenCode](https://opencode.ai)。
+> 插件内置 OpenCode 进程管理，打开面板时会自动检测并拉起 OpenCode 服务；未安装或版本过低时，面板内会给出安装指引。详情见 [OpenCode](https://opencode.ai)。
 
 ---
 
 ## 项目结构
 
 ```
-ai-coding/
-├── frontend/                 # React + TypeScript + Vite 前端
+capybaraAICodingAssistant/
+├── frontend/                        # React + TypeScript + Vite 前端（Tailwind CSS 4）
 │   ├── src/
-│   │   ├── components/       # UI 组件（聊天、设置、权限面板等）
-│   │   ├── providers/        # Ant Design X SDK 聊天提供商
-│   │   ├── hooks/            # 自定义 Hooks（SSE 处理、滚动、压缩）
-│   │   ├── types/            # TypeScript 类型定义
-│   │   └── utils/            # API 客户端、工具函数
+│   │   ├── components/
+│   │   │   ├── ai-elements/         # 自研 AI 会话组件（会话、输入框、工具调用、推理、附件等）
+│   │   │   ├── assistant/           # 助手面板（消息、设置、待办、会话标签、Skill Hub 等）
+│   │   │   └── ui/                  # shadcn/ui 风格 Radix 基础组件
+│   │   ├── hooks/                   # 自定义 Hooks（SSE 事件流、运行生命周期、会话 Diff/压缩/标签）
+│   │   ├── lib/                     # API 客户端（opencode.ts / idea.ts）、类型定义、工具函数
+│   │   ├── locales/                 # 中英文语言包
+│   │   └── index.css                # Tailwind 主题变量（JCEF 兼容的 legacy 色彩）
+│   ├── vite.config.ts               # 构建产物输出到 ../idea-plugin/src/main/resources/static
 │   └── package.json
-├── idea-plugin/              # IntelliJ IDEA 插件（Kotlin）
+├── idea-plugin/                     # IntelliJ IDEA 插件（Kotlin 1.9.20 / JVM 17）
 │   └── src/main/kotlin/com/aicoding/plugin/
-│       ├── server/           # Ktor HTTP 服务器（API 代理）
-│       ├── services/         # OpenCode 进程管理、设置持久化
-│       ├── actions/          # 右键菜单操作（解释/优化/测试/添加对话）
-│       ├── ui/               # JCEF 浏览器面板、编辑器集成
-│       └── completion/       # AI 代码补全
-├── .opencode/                # OpenCode CLI 配置
-└── AGENTS.md                 # 开发指南
+│       ├── server/                  # JDK 内置 HttpServer：静态资源服务、/api 桥接、SSE 广播
+│       ├── services/                # OpenCode 进程管理、Diff、记忆系统、文件搜索、更新检测等
+│       ├── actions/                 # 编辑器右键菜单（解释/优化/生成测试/加入对话）
+│       ├── ui/                      # JCEF 面板、内置浏览器、原生会话标签
+│       └── resources/META-INF/plugin.xml
+├── docs/                            # 文档与截图
+└── AGENTS.md                        # 开发指南
 ```
 
 ## 已实现功能
 
 - **AI 对话** — 流式聊天界面，支持多轮对话与 SSE 实时更新
-- **会话管理** — 创建、重命名、删除、分叉（Fork）、历史浏览
-- **模型提供商** — 多提供商管理（OpenAI、DeepSeek 等），自定义模型接入
-- **技能系统（Skills）** — 创建/编辑/导入/导出可复用 AI 指令，支持项目/全局作用域
+- **会话管理** — 创建、重命名、删除、分叉（Fork）、历史浏览，原生多标签并行会话
+- **模型提供商** — 多提供商管理（OpenAI、DeepSeek 等），自定义模型接入与模型变体配置
+- **技能系统（Skills）** — 创建/编辑/导入/导出可复用 AI 指令，支持项目/全局作用域，内置 Skill Hub
 - **MCP 服务器** — Model Context Protocol 集成，支持本地与远程服务器
-- **权限管理** — 按模式定义允许/询问/拒绝规则（文件、命令、编辑等）
-- **代码操作** — 右键菜单：解释代码、优化代码、生成单元测试、翻译、添加到对话
-- **文件搜索** — 按文件名/内容搜索，支持模糊/精确匹配与扩展名过滤
-- **Diff 查看** — 代码差异内联可视化
+- **权限管理** — 按模式定义允许/询问/拒绝规则（文件、命令、编辑等），由面板统一裁决
+- **记忆系统** — 项目级长期记忆，支持向量检索与本地嵌入模型配置
+- **人格与专业角色** — 自定义助手人格（Persona）与专业角色预设
+- **代码操作** — 右键菜单：解释代码、优化代码、生成单元测试、加入对话
+- **文件搜索** — IDEA 原生文件搜索，支持文件名/内容匹配
+- **Diff 查看** — 会话代码差异内联可视化，可在 IDEA 编辑器内打开
 - **待办事项** — AI 生成的任务列表与跟踪
 - **交互式问卷** — 多选/选择题面板
-- **主题切换** — 深色/浅色主题，CSS 变量驱动
+- **内置浏览器** — 可被 OpenCode 控制的内置 JCEF 浏览器窗口，支持页面交互与调试
+- **Maven 运行桥接** — 驱动 IDEA 原生 Maven Runner 执行构建与测试
+- **Git 状态感知** — 面板内展示当前仓库改动状态
+- **主题切换** — 深色/浅色主题，跟随 IDEA 主题，CSS 变量驱动
+- **国际化** — 完整中英文界面，默认跟随 IDE 语言
+- **Token 统计** — 运行级 Token 用量统计
 - **会话压缩** — 自动压缩以管理上下文窗口
-- **文件附件** — 消息中引用文件
-
----
-
-## TODO（待适配内容）
-
-- [x] 权限自动确认(待完整功能测试)
-- [x] MCP 配置管理(待完整功能测试)
-- [x] Skill 配置管理(待完整功能测试)
-- [x] 权限规则配置(待完整功能测试)
-- [x] 语音输入-浏览器语音识别(待完整功能测试)
-- [ ] Token统计
-- [ ] 插件配置面板
-- [ ] 语言配置（国际化）
-- [ ] AI 代码补全
-- [ ] 代码审查批量还原
-- [ ] 其它好的点子...
+- **文件附件** — 消息中引用文件与编辑器选区
+- **语音输入** — 浏览器语音识别输入
+- **更新检测** — 新版本检测与更新提示
 
 ---
 
@@ -137,12 +134,15 @@ ai-coding/
 | 层 | 技术                              |
 |---|---------------------------------|
 | 前端框架 | React 18 + TypeScript 5.2       |
-| UI 库 | Ant Design 6 + Ant Design X 2.4 |
+| UI 库 | Tailwind CSS 4 + shadcn/ui 风格 Radix 组件 + 自研 ai-elements 会话组件 |
+| Markdown/代码渲染 | Streamdown + Shiki           |
+| 图标 | lucide-react                    |
 | 构建工具 | Vite 5 + pnpm                   |
-| 插件语言 | Kotlin 1.9.20                   |
-| IDE 平台 | IntelliJ IDEA 2023.2+           |
+| 插件语言 | Kotlin 1.9.20（JVM 17）           |
+| 插件 HTTP 服务 | JDK 内置 HttpServer（静态资源 + API 桥接 + SSE） |
+| IDE 平台 | IntelliJ IDEA 2023.2+（JCEF）     |
 | AI 后端 | OpenCode（开源）                    |
-| 编辑器 | diffs & Monaco Editor           |
+| 编辑器 | IDEA 原生编辑器（Diff 内联展示）          |
 
 ---
 
@@ -156,14 +156,10 @@ ai-coding/
 | ![mcp](./docs/images/example/mcp.png) | ![skills](./docs/images/example/skills.png) |
 | **权限配置** | **对话-工具调用** |
 | ![permission](./docs/images/example/permission.png) | ![tool](./docs/images/example/tool.png) |
-| **对话-读取文件** | **对话-编辑代码** |
-| ![read](./docs/images/example/read.png) | ![edit](./docs/images/example/edit.png) |
-| **待办事项** | |
-| ![todo](./docs/images/example/todo.png) | |
+| **待办事项** | **对话-编辑代码** |
+| ![todo](./docs/images/example/todo.png) | ![edit](./docs/images/example/edit.png) |
 
 ---
-
-
 
 
 

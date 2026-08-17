@@ -19,6 +19,7 @@ import com.aicoding.plugin.services.FileAttachRequest
 import com.aicoding.plugin.services.FrontendLogRequest
 import com.aicoding.plugin.services.FrontendLogService
 import com.aicoding.plugin.services.OpenCodeRequirementService
+import com.aicoding.plugin.services.PluginUpdateService
 import com.aicoding.plugin.services.FileSearchRequest
 import com.aicoding.plugin.services.GitStatusService
 import com.aicoding.plugin.services.IdeaFileSearchService
@@ -51,6 +52,7 @@ import com.aicoding.plugin.services.PluginImportRequest
 import com.aicoding.plugin.services.PluginLocationRequest
 import com.aicoding.plugin.services.PluginManagementService
 import com.aicoding.plugin.services.RemoveProviderRequest
+import com.aicoding.plugin.services.SaveConfigValueRequest
 import com.aicoding.plugin.services.SaveProviderRequest
 import com.aicoding.plugin.services.SkillHubDetailRequest
 import com.aicoding.plugin.services.SkillHubDetailService
@@ -60,6 +62,7 @@ import com.aicoding.plugin.services.SkillHubSearchRequest
 import com.aicoding.plugin.services.SkillImportRequest
 import com.aicoding.plugin.services.SkillLocationRequest
 import com.aicoding.plugin.services.SkillManagementService
+import com.aicoding.plugin.services.WorkspacePreferencesService
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.application.ApplicationManager
@@ -132,7 +135,10 @@ private data class ApprovalPendingRequest(val sessionID: String, val pending: Bo
 @Serializable
 private data class ApprovalPendingEvent(val sessions: List<String>)
 
-class HttpServerManager(private val project: Project) {
+class HttpServerManager(
+    private val project: Project,
+    private val onPanelSessionTabsChange: (PanelSessionTabsRequest) -> Unit = {},
+) {
     init {
         // The panel owns the instance; services only need a way to reach broadcastSse.
         active[project] = this
@@ -169,10 +175,12 @@ class HttpServerManager(private val project: Project) {
     private val browserService = project.getService(BrowserControlService::class.java)
     private val gitStatusService = project.getService(GitStatusService::class.java)
     private val openCodeConfigService = project.getService(OpenCodeConfigService::class.java)
+    private val workspacePreferences = project.getService(WorkspacePreferencesService::class.java)
     private var branchWatcher: java.util.concurrent.ScheduledExecutorService? = null
     private val sseClients = CopyOnWriteArrayList<OutputStream>()
     private var server: HttpServer? = null
     private var executor: ExecutorService? = null
+    private var sseExecutor: ExecutorService? = null
     private var lafConnection: MessageBusConnection? = null
     private var projectPath: String? = project.basePath
     private var port = 0
@@ -199,6 +207,9 @@ class HttpServerManager(private val project: Project) {
         createdServer.createContext("/browser", BrowserHandler())
         createdServer.createContext("/", StaticHandler())
         executor = Executors.newCachedThreadPool()
+        sseExecutor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "Capybara SSE broadcaster").apply { isDaemon = true }
+        }
         createdServer.executor = executor
         createdServer.start()
         server = createdServer
@@ -275,13 +286,18 @@ class HttpServerManager(private val project: Project) {
         }
         sseClients.clear()
         server?.stop(0)
+        sseExecutor?.shutdownNow()
+        sseExecutor = null
         executor?.shutdownNow()
         executor = null
         server = null
         port = 0
+        active.remove(project, this)
     }
 
     fun getPort(): Int = port
+
+    fun isRunning(): Boolean = server != null
 
     private fun currentIdeaTheme(): String = if (UIUtil.isUnderDarcula()) "dark" else "light"
 
@@ -312,12 +328,20 @@ class HttpServerManager(private val project: Project) {
                         writeJson(exchange, 200, ProjectPathResponse(projectPath))
                     exchange.requestURI.path == "/api/opencode-info" && exchange.requestMethod == "GET" ->
                         writeJson(exchange, 200, openCodeEndpoint)
+                    exchange.requestURI.path == "/api/opencode/config" && exchange.requestMethod == "GET" ->
+                        writeJson(exchange, 200, openCodeConfigService.readConfigSnapshot())
+                    exchange.requestURI.path == "/api/preferences" && exchange.requestMethod == "GET" ->
+                        writeResponse(exchange, 200, workspacePreferences.read(), "application/json; charset=utf-8")
+                    exchange.requestURI.path == "/api/preferences" && exchange.requestMethod == "POST" ->
+                        handleWorkspacePreferences(exchange)
                     exchange.requestURI.path == "/api/opencode/restart" && exchange.requestMethod == "POST" ->
                         handleRestartOpenCode(exchange)
                     exchange.requestURI.path == "/api/opencode/remove-provider" && exchange.requestMethod == "POST" ->
                         writeJson(exchange, 200, openCodeConfigService.removeProvider(body<RemoveProviderRequest>(exchange)))
                     exchange.requestURI.path == "/api/events" && exchange.requestMethod == "GET" ->
                         handleSse(exchange)
+                    exchange.requestURI.path == "/api/panel/session-tabs" && exchange.requestMethod == "POST" ->
+                        handlePanelSessionTabs(exchange)
                     exchange.requestURI.path == "/api/reload" && exchange.requestMethod == "POST" ->
                         handleReload(exchange)
                     exchange.requestURI.path == "/api/save-file" && exchange.requestMethod == "POST" ->
@@ -365,12 +389,16 @@ class HttpServerManager(private val project: Project) {
                         writeJson(exchange, 200, memoryEmbedding.startDownload(body<MemoryEmbeddingDownloadRequest>(exchange).model))
                     exchange.requestURI.path == "/api/memory/embedding/model" && exchange.requestMethod == "DELETE" ->
                         writeJson(exchange, 200, memoryEmbedding.deleteModel(queryParam(exchange, "id").orEmpty()))
+                    exchange.requestURI.path == "/api/plugin-update" && exchange.requestMethod == "GET" ->
+                        writeJson(exchange, 200, PluginUpdateService.instance.statusForClient())
                     exchange.requestURI.path == "/api/health" && exchange.requestMethod == "GET" ->
                         writeJson(exchange, 200, HealthResponse(true, port))
                     exchange.requestURI.path == "/api/server-info" && exchange.requestMethod == "GET" ->
                         writeJson(exchange, 200, HealthResponse(true, port))
                     exchange.requestURI.path == "/api/opencode/save-provider" && exchange.requestMethod == "POST" ->
                         writeJson(exchange, 200, openCodeConfigService.saveProvider(body<SaveProviderRequest>(exchange)))
+                    exchange.requestURI.path == "/api/opencode/save-config-value" && exchange.requestMethod == "POST" ->
+                        writeJson(exchange, 200, openCodeConfigService.saveConfigValue(body<SaveConfigValueRequest>(exchange)))
                     exchange.requestURI.path.startsWith("/api/approval-mode") -> handleApprovalMode(exchange)
                     exchange.requestURI.path.startsWith("/api/skills") -> handleSkills(exchange)
                     exchange.requestURI.path.startsWith("/api/plugins") -> handlePlugins(exchange)
@@ -466,6 +494,36 @@ class HttpServerManager(private val project: Project) {
                 }
             }
         }
+    }
+
+    private fun handlePanelSessionTabs(exchange: HttpExchange) {
+        val request = body<PanelSessionTabsRequest>(exchange)
+        val tabs = request.tabs.take(50).mapNotNull { tab ->
+            val id = tab.id.trim().take(180)
+            if (id.isBlank()) null else tab.copy(
+                id = id,
+                sessionID = tab.sessionID?.trim()?.take(180),
+                title = tab.title.trim().take(120).ifBlank { "新会话" },
+            )
+        }
+        onPanelSessionTabsChange(
+            PanelSessionTabsRequest(
+                activeTabID = request.activeTabID.take(180),
+                revision = request.revision.coerceAtLeast(0),
+                tabs = tabs,
+            ),
+        )
+        writeJson(exchange, 200, ReloadResponse(true))
+    }
+
+    private fun handleWorkspacePreferences(exchange: HttpExchange) {
+        val raw = exchange.requestBody.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        writeResponse(
+            exchange,
+            200,
+            workspacePreferences.save(raw),
+            "application/json; charset=utf-8",
+        )
     }
 
     private fun handleReload(exchange: HttpExchange) {
@@ -663,9 +721,7 @@ class HttpServerManager(private val project: Project) {
                 writeJson(exchange, 200, skillService.setEnabled(body<SkillLocationRequest>(exchange)))
             route == "/delete" && method == "POST" ->
                 writeJson(exchange, 200, skillService.delete(body<SkillLocationRequest>(exchange)))
-            route == "/hub/status" && method == "GET" ->
-                writeJson(exchange, 200, skillService.skillHubStatus(queryParam(exchange, "locale") ?: "zh"))
-            route == "/hub/topics" && method == "GET" -> writeJson(exchange, 200, skillService.clawHubTopics())
+            route == "/hub/status" && method == "GET" -> writeJson(exchange, 200, skillService.skillHubStatus())
             route == "/hub/search" && method == "POST" ->
                 writeJson(exchange, 200, skillService.searchSkillHub(body<SkillHubSearchRequest>(exchange)))
             route == "/hub/install" && method == "POST" ->
@@ -822,6 +878,12 @@ class HttpServerManager(private val project: Project) {
     }
 
     fun broadcastSse(eventType: String, data: String) {
+        val task = Runnable { broadcastSseNow(eventType, data) }
+        val broadcaster = sseExecutor
+        if (broadcaster == null) task.run() else broadcaster.execute(task)
+    }
+
+    private fun broadcastSseNow(eventType: String, data: String) {
         val clients = sseClients.toList()
         clients.forEach { output ->
             try {
@@ -831,6 +893,10 @@ class HttpServerManager(private val project: Project) {
                 runCatching { output.close() }
             }
         }
+    }
+
+    fun broadcastPanelAction(action: String) {
+        broadcastSse("capybara.action", json.encodeToString(PanelActionEvent.serializer(), PanelActionEvent(action)))
     }
 
     private fun writeSse(output: OutputStream, eventType: String?, data: String) {

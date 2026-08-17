@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Command, FileCode2, Search, Server, Sparkles } from "lucide-react";
+import { Bot, Command, FileCode2, Search, Server, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ideaFileSearchApi, type FileSearchHit } from "@/lib/ideaIntegrations";
@@ -14,13 +14,28 @@ interface SlashCommandMenuProps {
   mcpNames: string[];
   /** Attaches a project file as context, mirroring the editor's right-click action. */
   onAttachFile: (path: string) => void;
+  /** Attaches a subagent through OpenCode V2's structured prompt.agents field. */
+  onAttachAgent: (agentID: string) => void;
+  /** Pins an MCP server above the composer; the prompt names it for the model at send time. */
+  onAttachMcp: (name: string) => void;
   /** Skills are referenced by name and absolute path, not attached as project files. */
   onAttachSkill: (name: string, location: string) => void;
+  /** Runs project initialisation immediately. */
+  onInit: () => void;
   /** Selecting a command pins it as a card above the composer instead of typing it in. */
   onSelectCommand: (name: string) => void;
   /** Runs a manual session compaction. */
   onCompact: () => void;
   onInsert: (text: string) => void;
+  /**
+   * The file-reference term, or undefined when the picker is closed.
+   *
+   * File search used to be driven by the composer text starting with "/引用文件", which put the
+   * command into the message the user was writing and left it to be deleted by hand. The mode is
+   * explicit state now, and the term lives in the picker's own box.
+   */
+  fileSearch?: string;
+  onFileSearchChange: (value: string | undefined) => void;
   query: string;
   skills: SkillInfo[];
 }
@@ -54,13 +69,13 @@ const gateways = (): Array<{ description: string; kind: EntryKind; label: string
 ];
 
 /**
- * Files are reached through this command rather than a trigger character of their own.
+ * Opening text for commands whose card alone says nothing about what to act on.
  *
- * Keeping the query in the composer text is what makes the second step work without a mode flag:
- * everything after the command is the search term, so the same text-driven path drives both menus.
+ * A function, not a constant: a module-level t() freezes the string to the load-time locale.
  */
-/** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
-const fileCommand = (): string => t("s_22a59aa648");
+const commandDefaultArgs = (): Record<string, string> => ({
+  review: t("command.defaultArgs.review"),
+});
 
 const sourceLabel = (kind: EntryKind): string => {
   if (kind === "agent") return t("s_16bb55f008");
@@ -101,11 +116,16 @@ export function SlashCommandMenu({
   commands,
   disabledSkillNames,
   mcpNames,
+  onAttachAgent,
   onAttachFile,
+  onAttachMcp,
   onAttachSkill,
   onCompact,
+  onInit,
+  onFileSearchChange,
   onInsert,
   onSelectCommand,
+  fileSearch,
   query,
   skills,
 }: SlashCommandMenuProps) {
@@ -114,9 +134,10 @@ export function SlashCommandMenu({
   const [fileHits, setFileHits] = useState<FileSearchHit[]>([]);
   const [fileSearching, setFileSearching] = useState(false);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const fileMode = query.startsWith(fileCommand());
+  const fileMode = fileSearch !== undefined;
   const prefix = fileMode ? "" : query.slice(0, 1);
-  const term = fileMode ? query.slice(fileCommand().length).trim() : query.slice(1).trim();
+  const term = fileMode ? fileSearch.trim() : query.slice(1).trim();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const disabled = useMemo(() => new Set(disabledSkillNames), [disabledSkillNames]);
 
   /**
@@ -161,7 +182,7 @@ export function SlashCommandMenu({
 
     if (prefix === "/") {
       values.push({
-        action: () => onSelectCommand("init"),
+        action: onInit,
         description: t("s_8337e72fc3"),
         id: "cmd:init",
         kind: "command",
@@ -177,9 +198,9 @@ export function SlashCommandMenu({
         sourceLabel: sourceLabel("command"),
       });
       values.push({
+        action: () => onFileSearchChange(""),
         description: t("s_47cf3e7d9e"),
         id: "cmd:file",
-        insert: fileCommand(),
         kind: "file",
         label: t("s_2d730c6b6e"),
         sourceLabel: t("s_5da56aba3c"),
@@ -201,8 +222,14 @@ export function SlashCommandMenu({
             : "command";
         values.push({
           // Pinned as a card rather than typed in: the command name is not part of what the user
-          // is writing, and leaving it in the text meant editing around it.
-          action: () => onSelectCommand(command.name),
+          // is writing, and leaving it in the text meant editing around it. Commands that take a
+          // subject start the composer off with the common one, so the card is not left sitting
+          // above an empty box with nothing to send.
+          action: () => {
+            onSelectCommand(command.name);
+            const preset = commandDefaultArgs()[command.name];
+            if (preset) onInsert(preset);
+          },
           description: command.description ?? t("s_420903c36c"),
           id: `cmd:${command.name}`,
           kind,
@@ -230,10 +257,12 @@ export function SlashCommandMenu({
         label: skill.name,
         sourceLabel: sourceLabel("skill"),
       }));
+      // A chip, like skills and subagents: writing `$name` into the text made the server part of
+      // the sentence the user was composing, and it had to be edited around.
       mcpNames.forEach((name) => values.push({
+        action: () => onAttachMcp(name),
         description: t("s_1846b2af9e", { p0: name }),
         id: `mcp:${name}`,
-        insert: `$${name} `,
         kind: "mcp",
         label: name,
         sourceLabel: sourceLabel("mcp"),
@@ -244,9 +273,9 @@ export function SlashCommandMenu({
       agents
         .filter((agent) => agent.mode === "subagent" && !agent.hidden && !agent.disabled)
         .forEach((agent) => values.push({
+          action: () => onAttachAgent(agent.id),
           description: agent.description ?? t("s_4640b8205d"),
           id: `agent:${agent.id}`,
-          insert: `@${agent.id} `,
           kind: "agent",
           label: agent.id,
           sourceLabel: sourceLabel("agent"),
@@ -257,7 +286,7 @@ export function SlashCommandMenu({
       // Already ranked by IDEA, and re-scoring here against the file name would throw away the
       // content matches, whose relevance lives in the body rather than the path.
       return fileHits.map((hit) => ({
-        action: () => onAttachFile(hit.path),
+        action: () => { onAttachFile(hit.path); onFileSearchChange(undefined); },
         description: hit.line ? t("s_35163dd609", { p0: hit.line, p1: hit.preview ?? "" }) : hit.relativePath,
         id: `file:${hit.path}`,
         kind: "file" as const,
@@ -272,7 +301,7 @@ export function SlashCommandMenu({
       .sort((left, right) => left.score - right.score || left.index - right.index)
       .map((item) => item.entry)
       .filter((entry, index, all) => all.findIndex((item) => item.id === entry.id) === index);
-  }, [agents, commands, disabled, fileHits, fileMode, mcpNames, onAttachFile, onAttachSkill, onCompact, onSelectCommand, prefix, skills, term]);
+  }, [agents, commands, disabled, fileHits, fileMode, mcpNames, onAttachAgent, onAttachFile, onAttachMcp, onAttachSkill, onCompact, onFileSearchChange, onInit, onInsert, onSelectCommand, prefix, skills, term]);
 
   const choose = useMemo(() => (entry: CommandEntry) => {
     if (entry.action) {
@@ -283,9 +312,9 @@ export function SlashCommandMenu({
       entry.action();
       return;
     }
-    // A gateway rewrites the composer to a bare trigger, and the file command hands over to the
-    // file picker — neither may be marked dismissed or the menu they exist to open closes at once.
-    if (entry.insert && entry.insert.length > 1 && entry.insert !== fileCommand()) {
+    // A gateway rewrites the composer to a bare trigger, which may not be marked dismissed or
+    // the menu it exists to open closes at once.
+    if (entry.insert && entry.insert.length > 1) {
       setDismissedPrefix(entry.insert.trim());
     }
     onInsert(entry.insert ?? "");
@@ -303,7 +332,11 @@ export function SlashCommandMenu({
   // Mirrors the render guard below. The listener is registered unconditionally, so while the menu
   // was hidden it still swallowed Enter — picking /init inserted the text and then ate the very
   // keystroke meant to send it, which is why only the send button worked.
-  const hidden = Boolean(dismissedPrefix) && query.startsWith(dismissedPrefix);
+  const hidden = !fileMode && Boolean(dismissedPrefix) && query.startsWith(dismissedPrefix);
+
+  useEffect(() => {
+    if (fileMode) fileInputRef.current?.focus();
+  }, [fileMode]);
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.isComposing || hidden || entries.length === 0) return;
@@ -337,6 +370,23 @@ export function SlashCommandMenu({
     : t("s_88aee91c88");
   return (
     <section aria-label={t("s_41ea8bcfbb")} className="absolute bottom-[calc(100%+0.5rem)] left-3 z-30 w-[calc(100%-1.5rem)] max-w-2xl overflow-hidden rounded-lg border-0 bg-popover shadow-md ring-1 ring-border/30">
+      {fileMode && (
+        <div className="flex items-center gap-2 border-b border-border/40 px-2.5 py-2">
+          <Search className="size-3.5 shrink-0 text-muted-foreground" />
+          <input
+            aria-label={t("s_2d730c6b6e")}
+            className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+            onChange={(event) => onFileSearchChange(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Escape") onFileSearchChange(undefined); }}
+            placeholder={t("s_39ebea348c")}
+            ref={fileInputRef}
+            value={fileSearch ?? ""}
+          />
+          <Button aria-label={t("s_c620893e29")} className="size-5 shrink-0" onClick={() => onFileSearchChange(undefined)} size="icon" type="button" variant="ghost">
+            <X className="size-3" />
+          </Button>
+        </div>
+      )}
       <div className="max-h-72 overflow-y-auto p-1.5">
         {entries.length === 0 ? (
           <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground"><Search className="size-3.5" />{emptyLabel}</div>

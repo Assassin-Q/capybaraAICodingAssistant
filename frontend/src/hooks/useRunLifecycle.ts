@@ -1,204 +1,176 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 
-import { errorMessage } from "@/components/assistant/shared";
-import type { RunStatus } from "@/components/assistant/shared";
 import { reconcileSessionMessages } from "@/components/assistant/liveEvents";
 import { appendRunFailure, defaultEmptyRunError, hasRunOutput } from "@/components/assistant/runFailure";
+import { errorMessage } from "@/components/assistant/shared";
+import type { SessionRuntimeController } from "@/hooks/useSessionRuntime";
 import { openCodeApi } from "@/lib/opencode";
 import type { SessionMessage } from "@/lib/opencode";
 
-export interface ActivePrompt {
-  fingerprint: string;
-  generation: number;
-  messageID: string;
-  sessionID: string;
-  startedAt: number;
-}
-
 interface RunLifecycleRefs {
-  activeAssistantMessageIDs: MutableRefObject<Set<string>>;
-  activePrompt: MutableRefObject<ActivePrompt | undefined>;
-  activePromptHasActivity: MutableRefObject<boolean>;
   cancelledPromptIDs: MutableRefObject<Set<string>>;
-  promptGeneration: MutableRefObject<number>;
-  queueDrainPaused: MutableRefObject<boolean>;
-  selectedSessionIDRef: MutableRefObject<string>;
   suppressedStreamingSessionIDs: MutableRefObject<Set<string>>;
 }
 
 interface UseRunLifecycleInput {
+  onRunSettled?: (sessionID: string) => void;
   projectPath?: string;
   refs: RunLifecycleRefs;
+  runtime: SessionRuntimeController;
   selectedSessionID: string;
   setError: Dispatch<SetStateAction<string>>;
-  setMessages: Dispatch<SetStateAction<SessionMessage[]>>;
-  setRunStatus: Dispatch<SetStateAction<RunStatus>>;
-  setStreamingAssistantID: Dispatch<SetStateAction<string | undefined>>;
+}
+
+interface StatusPoll {
+  timer?: number;
+  token: number;
 }
 
 export function useRunLifecycle({
+  onRunSettled,
   projectPath,
   refs,
+  runtime,
   selectedSessionID,
   setError,
-  setMessages,
-  setRunStatus,
-  setStreamingAssistantID,
 }: UseRunLifecycleInput) {
-  const statusPollTimer = useRef<number>();
-  const statusPollToken = useRef(0);
-  const finishingRun = useRef(false);
-  const stopInFlight = useRef(false);
+  const statusPolls = useRef(new Map<string, StatusPoll>());
+  const finishingRuns = useRef(new Set<string>());
+  const stoppingRuns = useRef(new Set<string>());
 
-  const clearStatusPolling = useCallback(() => {
-    statusPollToken.current += 1;
-    if (statusPollTimer.current !== undefined) {
-      window.clearTimeout(statusPollTimer.current);
-      statusPollTimer.current = undefined;
-    }
+  const clearStatusPolling = useCallback((sessionID?: string) => {
+    const sessionIDs = sessionID ? [sessionID] : [...statusPolls.current.keys()];
+    sessionIDs.forEach((targetSessionID) => {
+      const poll = statusPolls.current.get(targetSessionID);
+      if (poll?.timer !== undefined) window.clearTimeout(poll.timer);
+      if (poll) poll.token += 1;
+      statusPolls.current.delete(targetSessionID);
+    });
   }, []);
 
   useEffect(() => () => clearStatusPolling(), [clearStatusPolling]);
 
   const finishRun = useCallback(async (sessionID: string, generation?: number, failureReason?: string) => {
-    if (refs.selectedSessionIDRef.current !== sessionID) return;
-    const currentPrompt = refs.activePrompt.current;
+    const state = runtime.get(sessionID);
+    const currentPrompt = state.activePrompt;
     if (generation !== undefined && currentPrompt && currentPrompt.generation !== generation) return;
-    if (!currentPrompt || finishingRun.current) return;
-    finishingRun.current = true;
-    clearStatusPolling();
+    if (!currentPrompt || finishingRuns.current.has(sessionID)) return;
+    finishingRuns.current.add(sessionID);
+    clearStatusPolling(sessionID);
     try {
       let incoming = await openCodeApi.getMessages(sessionID, projectPath);
-      for (let attempt = 0; attempt < 24; attempt += 1) {
+      for (let attempt = 0; !currentPrompt.allowEmptyOutput && attempt < 24; attempt += 1) {
         const runAssistants = incoming.filter((message): message is Extract<SessionMessage, { type: "assistant" }> =>
           message.type === "assistant" && message.time.created >= currentPrompt.startedAt
         );
-        const hasSettledAssistant = runAssistants.length > 0 && runAssistants.every((message) =>
+        const settled = runAssistants.length > 0 && runAssistants.every((message) =>
           Boolean(message.time.completed || message.finish || message.error)
         );
-        if (hasSettledAssistant) break;
+        if (settled) break;
         await new Promise((resolve) => window.setTimeout(resolve, 250));
-        if (refs.selectedSessionIDRef.current !== sessionID) return;
+        if (runtime.get(sessionID).activePrompt?.generation !== currentPrompt.generation) return;
         incoming = await openCodeApi.getMessages(sessionID, projectPath);
       }
-      if (refs.selectedSessionIDRef.current === sessionID) {
-        const reason = failureReason || defaultEmptyRunError();
-        const finalMessages = hasRunOutput(incoming, currentPrompt)
-          ? incoming
-          : appendRunFailure(incoming, currentPrompt, reason);
-        setMessages((current) => reconcileSessionMessages(current, finalMessages));
-        if (!hasRunOutput(incoming, currentPrompt)) setError(reason);
+      const hasOutput = hasRunOutput(incoming, currentPrompt);
+      const reason = failureReason || defaultEmptyRunError();
+      const finalMessages = hasOutput || currentPrompt.allowEmptyOutput
+        ? incoming
+        : appendRunFailure(incoming, currentPrompt, reason);
+      runtime.setMessages(sessionID, (messages) => reconcileSessionMessages(messages, finalMessages));
+      if (!hasOutput && !currentPrompt.allowEmptyOutput && runtime.refs.selectedSessionID.current === sessionID) {
+        setError(reason);
       }
     } catch {
-      // The live reducer already rendered the final event. Reconciliation is a fallback.
+      // Live events already contain the result; reconciliation is a durable fallback.
     } finally {
-      const activeGeneration = refs.activePrompt.current?.generation;
-      const ownsActivePrompt = activeGeneration === currentPrompt.generation;
-      const stillSelected = refs.selectedSessionIDRef.current === sessionID;
-      if (ownsActivePrompt) {
-        refs.activePrompt.current = undefined;
-        refs.activePromptHasActivity.current = false;
-        refs.activeAssistantMessageIDs.current.clear();
+      const latest = runtime.get(sessionID);
+      const ownsPrompt = latest.activePrompt?.generation === currentPrompt.generation;
+      if (ownsPrompt) {
+        latest.activePrompt = undefined;
+        latest.hasActivity = false;
+        latest.assistantMessageIDs.clear();
       }
       refs.suppressedStreamingSessionIDs.current.delete(sessionID);
-      finishingRun.current = false;
-      if (stillSelected && (ownsActivePrompt || activeGeneration === undefined)) {
-        setStreamingAssistantID(undefined);
-        setRunStatus("ready");
+      finishingRuns.current.delete(sessionID);
+      if (ownsPrompt || latest.activePrompt === undefined) {
+        runtime.setStreamingAssistantID(sessionID, undefined);
+        runtime.setRunStatus(sessionID, "ready");
       }
+      if (ownsPrompt) onRunSettled?.(sessionID);
     }
-  }, [clearStatusPolling, projectPath, refs, setError, setMessages, setRunStatus, setStreamingAssistantID]);
+  }, [clearStatusPolling, onRunSettled, projectPath, refs.suppressedStreamingSessionIDs, runtime, setError]);
 
   const pollSessionStatus = useCallback((sessionID: string, generation: number) => {
-    clearStatusPolling();
-    const token = statusPollToken.current;
+    clearStatusPolling(sessionID);
+    const poll: StatusPoll = { token: Date.now() + Math.random() };
+    statusPolls.current.set(sessionID, poll);
+    const token = poll.token;
     const startedAt = Date.now();
     let consecutiveIdleChecks = 0;
 
     const check = async () => {
-      if (token !== statusPollToken.current) return;
-      const currentPrompt = refs.activePrompt.current;
-      if (!currentPrompt || currentPrompt.sessionID !== sessionID || currentPrompt.generation !== generation) return;
-
+      const activePoll = statusPolls.current.get(sessionID);
+      if (!activePoll || activePoll.token !== token) return;
+      const state = runtime.get(sessionID);
+      const prompt = state.activePrompt;
+      if (!prompt || prompt.generation !== generation) return;
       try {
         const status = await openCodeApi.getSessionStatus(sessionID, projectPath);
-        if (status.type === "busy") {
-          consecutiveIdleChecks = 0;
-        } else {
-          consecutiveIdleChecks += 1;
-        }
-        const elapsed = Date.now() - startedAt;
-        // `session.active` can still report the interrupted loop for a few
-        // cycles. Only assistant events belonging to this prompt are valid
-        // evidence for finishing it; otherwise the old loop can consume the
-        // next prompt and clear the new run too early.
-        const hasRunEvidence = refs.activePromptHasActivity.current;
-        const idleWithoutEventsTimedOut = !hasRunEvidence && elapsed >= 5000;
-        if (consecutiveIdleChecks >= 3 && (hasRunEvidence || idleWithoutEventsTimedOut)) {
+        consecutiveIdleChecks = status.type === "busy" ? 0 : consecutiveIdleChecks + 1;
+        const timedOutWithoutEvents = !state.hasActivity && Date.now() - startedAt >= 5000;
+        if (consecutiveIdleChecks >= 3 && (state.hasActivity || timedOutWithoutEvents)) {
           await finishRun(sessionID, generation);
           return;
         }
       } catch {
-        // Keep polling while the SSE connection remains available.
+        // Keep polling while SSE remains the primary transport.
       }
-      if (token === statusPollToken.current) {
-        statusPollTimer.current = window.setTimeout(() => void check(), 300);
+      const latestPoll = statusPolls.current.get(sessionID);
+      if (latestPoll?.token === token) {
+        latestPoll.timer = window.setTimeout(() => void check(), 300);
       }
     };
 
-    statusPollTimer.current = window.setTimeout(() => void check(), 250);
-  }, [clearStatusPolling, finishRun, projectPath, refs, setMessages, setRunStatus, setStreamingAssistantID]);
+    poll.timer = window.setTimeout(() => void check(), 250);
+  }, [clearStatusPolling, finishRun, projectPath, runtime]);
 
   const handleStop = useCallback(async () => {
-    if (!selectedSessionID || !projectPath || stopInFlight.current) return;
-    stopInFlight.current = true;
-    const stoppedSessionID = selectedSessionID;
-    const prompt = refs.activePrompt.current;
+    if (!selectedSessionID || !projectPath || stoppingRuns.current.has(selectedSessionID)) return;
+    stoppingRuns.current.add(selectedSessionID);
+    const state = runtime.get(selectedSessionID);
+    const prompt = state.activePrompt;
     if (prompt?.messageID) refs.cancelledPromptIDs.current.add(prompt.messageID);
-    refs.activeAssistantMessageIDs.current.forEach((messageID) => refs.cancelledPromptIDs.current.add(messageID));
-    refs.suppressedStreamingSessionIDs.current.add(stoppedSessionID);
-    refs.activePrompt.current = undefined;
-    refs.queueDrainPaused.current = true;
-    refs.activeAssistantMessageIDs.current.clear();
-    refs.activePromptHasActivity.current = false;
-    setStreamingAssistantID(undefined);
-    clearStatusPolling();
-    setRunStatus("submitted");
+    state.assistantMessageIDs.forEach((messageID) => refs.cancelledPromptIDs.current.add(messageID));
+    refs.suppressedStreamingSessionIDs.current.add(selectedSessionID);
+    state.activePrompt = undefined;
+    state.queuePaused = true;
+    state.assistantMessageIDs.clear();
+    state.hasActivity = false;
+    runtime.setStreamingAssistantID(selectedSessionID, undefined);
+    clearStatusPolling(selectedSessionID);
+    runtime.setRunStatus(selectedSessionID, "submitted");
     try {
-      await openCodeApi.interrupt(stoppedSessionID, projectPath);
-      let waitFailed = false;
-      try {
-        // V2 exposes a server-side wait primitive. It prevents the UI from
-        // accepting a new queued prompt while the interrupted loop is still
-        // unwinding, which active-session polling cannot guarantee.
-        await openCodeApi.waitForSession(stoppedSessionID, projectPath);
-      } catch {
-        waitFailed = true;
+      await openCodeApi.interrupt(selectedSessionID, projectPath);
+      let consecutiveIdleChecks = 0;
+      for (let attempt = 0; attempt < 48; attempt += 1) {
+        const status = await openCodeApi.getSessionStatus(selectedSessionID, projectPath);
+        consecutiveIdleChecks = status.type === "idle" ? consecutiveIdleChecks + 1 : 0;
+        if (consecutiveIdleChecks >= 3) break;
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
       }
-      if (waitFailed) {
-        let consecutiveIdleChecks = 0;
-        for (let attempt = 0; attempt < 48; attempt += 1) {
-          const status = await openCodeApi.getSessionStatus(stoppedSessionID, projectPath);
-          consecutiveIdleChecks = status.type === "idle" ? consecutiveIdleChecks + 1 : 0;
-          if (consecutiveIdleChecks >= 3) break;
-          await new Promise((resolve) => window.setTimeout(resolve, 250));
-        }
-      }
-      const incoming = await openCodeApi.getMessages(stoppedSessionID, projectPath);
-      if (refs.selectedSessionIDRef.current === stoppedSessionID) {
-        setMessages((current) => reconcileSessionMessages(current, incoming));
-      }
-      refs.suppressedStreamingSessionIDs.current.delete(stoppedSessionID);
-      if (refs.selectedSessionIDRef.current === stoppedSessionID) setRunStatus("ready");
+      const incoming = await openCodeApi.getMessages(selectedSessionID, projectPath);
+      runtime.setMessages(selectedSessionID, (messages) => reconcileSessionMessages(messages, incoming));
+      refs.suppressedStreamingSessionIDs.current.delete(selectedSessionID);
+      runtime.setRunStatus(selectedSessionID, "ready");
     } catch (interruptError) {
-      refs.suppressedStreamingSessionIDs.current.delete(stoppedSessionID);
-      if (refs.selectedSessionIDRef.current === stoppedSessionID) setRunStatus("ready");
-      setError(errorMessage(interruptError));
+      refs.suppressedStreamingSessionIDs.current.delete(selectedSessionID);
+      runtime.setRunStatus(selectedSessionID, "ready");
+      if (runtime.refs.selectedSessionID.current === selectedSessionID) setError(errorMessage(interruptError));
     } finally {
-      stopInFlight.current = false;
+      stoppingRuns.current.delete(selectedSessionID);
     }
-  }, [clearStatusPolling, projectPath, refs, selectedSessionID, setError, setMessages, setRunStatus, setStreamingAssistantID]);
+  }, [clearStatusPolling, projectPath, refs, runtime, selectedSessionID, setError]);
 
   return { clearStatusPolling, finishRun, handleStop, pollSessionStatus };
 }

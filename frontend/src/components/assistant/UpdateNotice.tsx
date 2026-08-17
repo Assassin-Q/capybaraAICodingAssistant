@@ -1,7 +1,7 @@
 import { ArrowUpCircle, ExternalLink } from "lucide-react";
 
 import { t } from "@/lib/i18n";
-import type { UpdateStatus } from "@/lib/updateCheck";
+import type { UpdateStatus } from "@/lib/idea";
 
 /**
  * States the installed version, and points at the release when a newer one exists.

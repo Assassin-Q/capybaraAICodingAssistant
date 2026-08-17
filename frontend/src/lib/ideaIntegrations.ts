@@ -1,4 +1,5 @@
 import { ideaRequest } from "@/lib/idea";
+import type { SkillInfo } from "@/lib/opencode";
 
 export type ManagedScope = "project" | "global";
 
@@ -75,8 +76,6 @@ export interface SkillHubSearchRequest {
   category?: string;
   source?: string;
   requiresApiKey?: boolean;
-  /** "en" routes the query to clawhub.ai instead of skillhub.cn. */
-  locale?: string;
 }
 
 export interface ManagedPluginFile {
@@ -222,10 +221,7 @@ export const skillsApi = {
 
   remove: (location: string) => post<SkillActionResponse>("/skills/delete", { location }),
 
-  hubStatus: (locale: string) => ideaRequest<SkillHubStatus>(`/skills/hub/status?locale=${encodeURIComponent(locale)}`),
-
-  /** Topics the English catalogue currently carries; the Chinese one has fixed scene categories. */
-  hubTopics: () => ideaRequest<string[]>("/skills/hub/topics"),
+  hubStatus: () => ideaRequest<SkillHubStatus>("/skills/hub/status"),
 
 
   searchHub: (input: SkillHubSearchRequest) =>
@@ -235,8 +231,6 @@ export const skillsApi = {
     coordinate: string;
     scope: ManagedScope;
     overwrite?: boolean;
-    /** "en" installs from clawhub.ai. */
-    locale?: string;
   }) => post<SkillActionResponse>("/skills/hub/install", input),
 
   /** Detail, file tree, versions and the TRACE report in one round trip. */
@@ -245,6 +239,20 @@ export const skillsApi = {
 
   hubFile: (slug: string, namespace: string, path: string) =>
     post<SkillHubFileContent>("/skills/hub/file", { namespace, path, slug }),
+};
+
+/** The composer uses every enabled SKILL.md visible to IDEA, not only OpenCode's live registry. */
+export const loadDiskSkills = async (): Promise<SkillInfo[]> => {
+  const managed = await skillsApi.list().catch(() => []);
+  return managed
+    .filter((skill) => skill.enabled)
+    .map((skill) => ({
+      content: "",
+      description: skill.description,
+      location: skill.location,
+      name: skill.name,
+      slash: false,
+    }));
 };
 
 export const pluginsApi = {

@@ -36,6 +36,7 @@ private const val MIN_PANEL_HEIGHT = 480
 class AICodingPanel(
     private val project: Project,
     private val toolWindow: ToolWindow,
+    private val sessionTabs: NativeSessionTabsController,
 ) : JPanel(BorderLayout()), Disposable {
     /**
      * Null when this IDE cannot give us JCEF, which the panel has to survive rather than crash on.
@@ -50,7 +51,10 @@ class AICodingPanel(
     private val browser: JBCefBrowser? = runCatching {
         if (JBCefApp.isSupported()) JBCefBrowser.createBuilder().setOffScreenRendering(false).build() else null
     }.getOrNull()
-    private val httpServer = HttpServerManager(project)
+    private val httpServer = HttpServerManager(
+        project = project,
+        onPanelSessionTabsChange = sessionTabs::update,
+    )
     private val cards = JPanel(CardLayout())
     private val statusLabel = JLabel("正在加载 Capybara AI...", SwingConstants.CENTER)
     private var frontendUrl = ""
@@ -90,7 +94,8 @@ class AICodingPanel(
             httpServer.start()
             // Cache-busted per IDE run: a JCEF profile that already cached the old index.html
             // would otherwise keep serving it even after the plugin is reinstalled.
-            frontendUrl = "http://127.0.0.1:${httpServer.getPort()}/?build=${System.currentTimeMillis()}"
+            frontendUrl = "http://127.0.0.1:${httpServer.getPort()}/" +
+                "?build=${System.currentTimeMillis()}&nativeTitleActions=1"
             println("Capybara JCEF loading $frontendUrl")
             browser.loadURL(frontendUrl)
         } catch (error: Exception) {

@@ -1,4 +1,5 @@
 import { CUSTOM_PERSONA_ID, findPersonaPreset, personaPresets } from "@/lib/personaPresets";
+import { ideaApi } from "@/lib/idea";
 import { t } from "@/lib/i18n";
 import {
   AUTO_PROFESSIONAL_ROLE_ID,
@@ -17,6 +18,15 @@ export interface PersonaPreferences {
 
 export type ModelVariantLabels = Record<string, Record<string, string>>;
 
+export interface SessionTabPreferences {
+  /** When disabled, opening a session replaces the current tab. */
+  enabled: boolean;
+  /** Null means there is no tab limit. Multi-tab mode otherwise keeps at least two tabs. */
+  maxOpen: number | null;
+  /** Controls what happens when opening another tab would exceed maxOpen. */
+  overflow: "prompt" | "replace-oldest";
+}
+
 /** Re-exported so callers do not need to reach into the i18n module for the preference shape. */
 import type { LocalePreference } from "@/lib/i18n";
 export type { LocalePreference } from "@/lib/i18n";
@@ -28,6 +38,7 @@ export interface WorkspacePreferences {
   modelVariantLabels: ModelVariantLabels;
   persona: PersonaPreferences;
   professionalRoles: ProfessionalRolePreferences;
+  sessionTabs: SessionTabPreferences;
   /**
    * Describes images for conversation models that cannot read them. Undefined leaves images
    * untouched, which is the right default: converting silently would hide a real capability gap.
@@ -46,9 +57,16 @@ const DEFAULT_PREFERENCES: WorkspacePreferences = {
     instructions: personaPresets()[0].instructions,
   },
   professionalRoles: createDefaultProfessionalRolePreferences(),
+  sessionTabs: {
+    enabled: true,
+    maxOpen: 8,
+    overflow: "prompt",
+  },
 };
 
 const LANGUAGE_KEY = "capybara-ai:language";
+const IDEA_PREFERENCES_BRIDGE = new URLSearchParams(window.location.search).get("nativeTitleActions") === "1";
+let pendingIdeaPreferenceSave: Promise<unknown> | undefined;
 
 const preferenceKey = (projectPath?: string): string =>
   `capybara-ai:workspace-preferences:${projectPath ?? "default"}`;
@@ -104,7 +122,21 @@ const normalizeProfessionalRoles = (value: unknown): ProfessionalRolePreferences
   return { enabled: raw.enabled === true, roles, selectedRoleId };
 };
 
-const normalize = (value: unknown): WorkspacePreferences => {
+const normalizeSessionTabs = (value: unknown): SessionTabPreferences => {
+  const defaults = DEFAULT_PREFERENCES.sessionTabs;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return defaults;
+  const raw = value as Partial<SessionTabPreferences>;
+  const numericLimit = typeof raw.maxOpen === "number" && Number.isFinite(raw.maxOpen)
+    ? Math.max(2, Math.min(50, Math.round(raw.maxOpen)))
+    : null;
+  return {
+    enabled: raw.enabled !== false,
+    maxOpen: raw.maxOpen === null ? null : numericLimit ?? defaults.maxOpen,
+    overflow: raw.overflow === "replace-oldest" ? "replace-oldest" : "prompt",
+  };
+};
+
+export const normalizeWorkspacePreferences = (value: unknown): WorkspacePreferences => {
   if (!value || typeof value !== "object") return DEFAULT_PREFERENCES;
   const raw = value as Partial<WorkspacePreferences>;
   const persona = (raw.persona ?? {}) as Partial<PersonaPreferences>;
@@ -131,6 +163,7 @@ const normalize = (value: unknown): WorkspacePreferences => {
     modelVariantLabels: normalizeModelVariantLabels(raw.modelVariantLabels),
     persona: normalizedPersona,
     professionalRoles: normalizeProfessionalRoles(raw.professionalRoles),
+    sessionTabs: normalizeSessionTabs(raw.sessionTabs),
     visionModel: normalizeVisionModel(raw.visionModel),
   };
 };
@@ -146,21 +179,58 @@ const normalizeVisionModel = (value: unknown): WorkspacePreferences["visionModel
 
 export const loadWorkspacePreferences = (projectPath?: string): WorkspacePreferences => {
   try {
-    return normalize(JSON.parse(window.localStorage.getItem(preferenceKey(projectPath)) ?? "null"));
+    return normalizeWorkspacePreferences(JSON.parse(window.localStorage.getItem(preferenceKey(projectPath)) ?? "null"));
   } catch {
     return DEFAULT_PREFERENCES;
   }
+};
+
+const cacheWorkspacePreferences = (
+  projectPath: string | undefined,
+  preferences: unknown
+): WorkspacePreferences => {
+  const normalized = normalizeWorkspacePreferences(preferences);
+  window.localStorage.setItem(preferenceKey(projectPath), JSON.stringify(normalized));
+  window.localStorage.setItem(LANGUAGE_KEY, normalized.language);
+  return normalized;
+};
+
+export const loadPersistedWorkspacePreferences = async (
+  projectPath?: string
+): Promise<WorkspacePreferences> => {
+  const local = loadWorkspacePreferences(projectPath);
+  if (!IDEA_PREFERENCES_BRIDGE) return local;
+  try {
+    await pendingIdeaPreferenceSave;
+    const persisted = await ideaApi.getWorkspacePreferences();
+    if (persisted && typeof persisted === "object" && !Array.isArray(persisted)) {
+      return cacheWorkspacePreferences(projectPath, persisted);
+    }
+    await ideaApi.saveWorkspacePreferences(local);
+  } catch (error) {
+    console.error("Unable to load IDEA workspace preferences", error);
+  }
+  return local;
 };
 
 export const saveWorkspacePreferences = (
   projectPath: string | undefined,
   preferences: WorkspacePreferences
 ): WorkspacePreferences => {
-  const normalized = normalize(preferences);
-  window.localStorage.setItem(preferenceKey(projectPath), JSON.stringify(normalized));
+  const normalized = cacheWorkspacePreferences(projectPath, preferences);
   // Mirrored outside the per-project record on purpose — see loadLanguagePreference.
-  window.localStorage.setItem(LANGUAGE_KEY, normalized.language);
-  return loadWorkspacePreferences(projectPath);
+  if (IDEA_PREFERENCES_BRIDGE) {
+    const save = (pendingIdeaPreferenceSave ?? Promise.resolve())
+      .then(() => ideaApi.saveWorkspacePreferences(normalized))
+      .catch((error) => {
+        console.error("Unable to save IDEA workspace preferences", error);
+      });
+    pendingIdeaPreferenceSave = save;
+    void save.finally(() => {
+      if (pendingIdeaPreferenceSave === save) pendingIdeaPreferenceSave = undefined;
+    });
+  }
+  return normalized;
 };
 
 /**
