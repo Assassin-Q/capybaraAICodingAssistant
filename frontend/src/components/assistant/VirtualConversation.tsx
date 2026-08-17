@@ -23,6 +23,7 @@ interface VirtualConversationProps {
 const BOTTOM_THRESHOLD = 50;
 const COMPLETION_SCROLL_DELAY = 500;
 const COMPLETION_FOLLOW_DELAY = 3000;
+const SESSION_SWITCH_SETTLE_DELAY = 1500;
 
 /**
  * Virtualized conversation history with explicit user-controlled output following.
@@ -50,6 +51,7 @@ export function VirtualConversation({
   const runActiveRef = useRef(runActive);
   const previousRunActive = useRef(runActive);
   const previousPin = useRef(pinToBottom);
+  const sessionSettleAllowedRef = useRef(true);
 
   const setAutoScrollEnabled = useCallback((enabled: boolean) => {
     autoScrollRef.current = enabled;
@@ -82,8 +84,10 @@ export function VirtualConversation({
   // A selected conversation always opens at its newest content. An active run also resumes follow.
   useEffect(() => {
     if (!conversationKey) return;
+    sessionSettleAllowedRef.current = true;
     setAutoScrollEnabled(runActive);
     let frame = 0;
+    let settleTimer = 0;
     let previousHeight = -1;
     let stableFrames = 0;
     const deadline = performance.now() + 1200;
@@ -97,7 +101,13 @@ export function VirtualConversation({
       }
     };
     frame = window.requestAnimationFrame(settle);
-    return () => window.cancelAnimationFrame(frame);
+    settleTimer = window.setTimeout(() => {
+      if (sessionSettleAllowedRef.current) scrollToBottom();
+    }, SESSION_SWITCH_SETTLE_DELAY);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(settleTimer);
+    };
   }, [conversationKey, scrollToBottom, setAutoScrollEnabled]);
 
   // Submitting is an explicit request to follow the new round, even if the user had scrolled up.
@@ -163,7 +173,10 @@ export function VirtualConversation({
     const scroller = scrollerEl;
     if (!scroller) return;
 
-    const stopFollowing = () => setAutoScrollEnabled(false);
+    const stopFollowing = () => {
+      sessionSettleAllowedRef.current = false;
+      setAutoScrollEnabled(false);
+    };
     const isScrollbarPointer = (event: MouseEvent | PointerEvent): boolean => {
       const bounds = scroller.getBoundingClientRect();
       const gutter = Math.max(scroller.offsetWidth - scroller.clientWidth, 12);
