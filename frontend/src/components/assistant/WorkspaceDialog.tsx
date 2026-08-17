@@ -99,7 +99,7 @@ export function WorkspaceDialog({
 
   return (
     <div aria-label={t("s_52e823f821")} aria-modal="true" className="fixed inset-0 z-50 flex h-full w-full overflow-hidden bg-background text-foreground" role="dialog">
-      <aside className="flex w-14 shrink-0 flex-col border-r border-border bg-muted/30 py-2 sm:w-52 sm:p-3">
+      <aside className="flex w-14 shrink-0 flex-col border-r border-border bg-muted/30 py-2 sm:w-40 sm:p-3">
         <div className="mb-3 flex h-8 items-center gap-2 px-2 sm:px-1"><Cable className="size-4 shrink-0" /><span className="hidden truncate text-sm font-semibold sm:block">{t("s_2de736aa52")}</span></div>
         <nav aria-label={t("s_a8c7ae4f8e")} className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-1 sm:px-0">
           {sections().map((section) => {

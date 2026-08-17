@@ -1,6 +1,7 @@
 import { ideaApi } from "@/lib/idea";
 import { t } from "@/lib/i18n";
-import type { OpenCodeConfig } from "@/lib/opencode";
+import { openCodeApi } from "@/lib/opencode";
+import type { ModelInfo, OpenCodeConfig } from "@/lib/opencode";
 
 /**
  * MCP servers as configured on disk, skipping the disabled ones.
@@ -16,6 +17,25 @@ export const enabledMcpNames = async (): Promise<string[]> => {
   return Object.entries(mcp)
     .filter(([, config]) => config.enabled !== false)
     .map(([name]) => name);
+};
+
+/**
+ * Models available to pick, filtered by the configuration file that the settings page edits.
+ * OpenCode caches its own config at startup, so `/api/model` can still publish a model immediately
+ * after it was disabled. Reading the disk snapshot makes every picker reflect the saved switch
+ * without waiting for an externally managed OpenCode service to restart.
+ */
+export const selectableConfiguredModels = async (directory?: string): Promise<ModelInfo[]> => {
+  const [models, snapshot] = await Promise.all([
+    openCodeApi.listModels(directory),
+    ideaApi.getOpenCodeConfig().catch(() => undefined),
+  ]);
+  const config = snapshot?.config as OpenCodeConfig | undefined;
+  if (!config) return models;
+  const disabledProviders = new Set(config.disabled_providers ?? []);
+  return models.filter((model) =>
+    !disabledProviders.has(model.providerID)
+    && !(config.provider?.[model.providerID]?.blacklist ?? []).includes(model.id));
 };
 
 export interface ConfigApplyResult {

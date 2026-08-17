@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Cable, Github, Languages, MessagesSquare, Palette, RotateCcw } from "lucide-react";
+import { Cable, Github, Info, Languages, MessagesSquare, Palette, RotateCcw } from "lucide-react";
 
 import { AppearanceSettings } from "@/components/assistant/AppearanceSettings";
 import { ConfirmDialog } from "@/components/assistant/ConfirmDialog";
@@ -7,7 +7,7 @@ import { LanguageSettings } from "@/components/assistant/LanguageSettings";
 import { OpenCodeRequirementNotice } from "@/components/assistant/OpenCodeRequirementNotice";
 import { OpenSourceAttribution } from "@/components/assistant/OpenSourceAttribution";
 import { SessionTabSettings } from "@/components/assistant/SessionTabSettings";
-import { SettingsMessage, useConfirm, useSettingsFeedback } from "@/components/assistant/settingsShared";
+import { SettingsHeader, SettingsMessage, useConfirm, useSettingsFeedback } from "@/components/assistant/settingsShared";
 import { errorMessage } from "@/components/assistant/shared";
 import { UpdateNotice } from "@/components/assistant/UpdateNotice";
 import { Button } from "@/components/ui/button";
@@ -87,11 +87,11 @@ export function ConnectionSettings({
   };
 
   return (
-    <section className="mx-auto flex w-full max-w-5xl flex-col gap-5">
-      <nav aria-label={t("connection.sections")} className="sticky top-0 z-10 -mx-1 flex min-w-0 gap-1 overflow-x-auto border-b border-border/60 bg-background/95 px-1 backdrop-blur-sm">
+    <section className="mx-auto w-full max-w-4xl">
+      <nav aria-label={t("connection.sections")} className="mb-1 flex min-w-0 flex-wrap gap-1 rounded-md bg-muted/45 p-1">
         {sectionLinks.map(({ icon: Icon, id, label }) => (
           <a
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 border-b-2 border-transparent px-2 text-xs text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded px-2 text-[11px] text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             href={`#${id}`}
             key={id}
             onClick={(event) => {
@@ -105,24 +105,21 @@ export function ConnectionSettings({
         ))}
       </nav>
 
-      <div className="flex scroll-mt-4 flex-col gap-5" id="connection-runtime">
+      <div className="flex scroll-mt-6 flex-col gap-4 border-b border-border/60 py-7" id="connection-runtime">
+        <SettingsHeader
+          actions={(
+            <Button disabled={restarting} onClick={() => void restart(false)} size="sm" type="button" variant="secondary">
+              <RotateCcw className={cn("size-3.5", restarting && "animate-spin")} />
+              {t("s_b02ebe307b")}
+            </Button>
+          )}
+          description={t("s_ce3e014483")}
+          icon={<Cable className="mt-1 size-5 shrink-0 text-muted-foreground" />}
+          title={t("s_7328deebb5")}
+        />
+
         <OpenCodeRequirementNotice />
         <UpdateNotice status={updateStatus} />
-
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-2">
-            <Cable className="mt-1 size-5 shrink-0 text-muted-foreground" />
-            <div className="min-w-0">
-              <h2 className="text-lg font-semibold">{t("s_7328deebb5")}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{t("s_ce3e014483")}</p>
-            </div>
-          </div>
-          <Button disabled={restarting} onClick={() => void restart(false)} size="sm" type="button" variant="outline">
-            <RotateCcw className={cn("size-3.5", restarting && "animate-spin")} />
-            {t("s_b02ebe307b")}
-          </Button>
-        </header>
-
         <SettingsMessage error={error} notice={notice} />
 
         {external && (
@@ -157,8 +154,8 @@ export function ConnectionSettings({
           </div>
         )}
 
-        <div className="overflow-hidden rounded-lg border border-border bg-card">
-          <div className="flex items-center gap-3 border-b border-border px-4 py-4">
+        <div className="divide-y divide-border/50 border-y border-border/60">
+          <div className="flex items-center gap-3 py-3.5">
             <span className={cn("size-2 rounded-full", connected ? "bg-emerald-500" : "bg-destructive")} />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">{connected ? t("s_aeeba1b5f4") : t("s_4ca5bf9106")}</p>
@@ -167,36 +164,39 @@ export function ConnectionSettings({
               </p>
             </div>
           </div>
-          <dl className="grid gap-4 px-4 py-4 sm:grid-cols-2">
-            <div>
+          <dl className="divide-y divide-border/50">
+            <div className="grid gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-start sm:gap-4">
               <dt className="text-xs text-muted-foreground">{t("s_86e118291e")}</dt>
-              <dd className="mt-1 break-all font-mono text-xs">{baseUrl}</dd>
+              <dd className="break-all font-mono text-xs leading-5">{baseUrl}</dd>
             </div>
-            <div>
+            <div className="grid gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-start sm:gap-4">
               <dt className="text-xs text-muted-foreground">{t("s_a1ff8da47d")}</dt>
-              <dd className="mt-1 break-all font-mono text-xs">{projectPath ?? t("s_e332687e33")}</dd>
+              <dd className="break-all font-mono text-xs leading-5">{projectPath ?? t("s_e332687e33")}</dd>
             </div>
           </dl>
         </div>
 
-        <p className="text-xs text-muted-foreground">{t("s_7e74e791fb")}</p>
+        <p className="flex items-start gap-2 text-[11px] leading-5 text-muted-foreground">
+          <Info className="mt-0.5 size-3.5 shrink-0" />
+          <span>{t("s_7e74e791fb")}</span>
+        </p>
       </div>
 
-      <div className="scroll-mt-4 border-t border-border pt-5" id="connection-language">
+      <div className="scroll-mt-6 border-b border-border/60 py-7" id="connection-language">
         <LanguageSettings onChange={onLanguageChange} value={language} />
       </div>
 
       {nativeTitleActions && (
-        <div className="scroll-mt-4 border-t border-border pt-5" id="connection-tabs">
+        <div className="scroll-mt-6 border-b border-border/60 py-7" id="connection-tabs">
           <SessionTabSettings onChange={onSessionTabsChange} value={sessionTabs} />
         </div>
       )}
 
-      <div className="scroll-mt-4 border-t border-border pt-5" id="connection-appearance">
+      <div className="scroll-mt-6 border-b border-border/60 py-7" id="connection-appearance">
         <AppearanceSettings />
       </div>
 
-      <div className="scroll-mt-4 border-t border-border pt-5" id="connection-open-source">
+      <div className="scroll-mt-6 py-7" id="connection-open-source">
         <OpenSourceAttribution />
       </div>
 

@@ -1,5 +1,6 @@
 import { Languages } from "lucide-react";
 
+import { SettingsHeader } from "@/components/assistant/settingsShared";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
 import { detectLocale, resolveLocale, setLocale, type LocalePreference } from "@/lib/i18n";
@@ -25,20 +26,17 @@ export function LanguageSettings({ onChange, value }: LanguageSettingsProps) {
   ];
 
   return (
-    <section className="grid gap-3">
-      {/* Matches SettingsHeader rather than inventing its own scale, so the connection tab reads
-          as one page instead of a section that shrank. */}
-      <div className="flex items-start gap-2">
-        <Languages className="mt-1 size-5 shrink-0 text-muted-foreground" />
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold">{t("i18n.title")}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t("i18n.description")}</p>
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-2">
+    <section className="flex flex-col gap-5">
+      <SettingsHeader
+        description={t("i18n.description")}
+        icon={<Languages className="mt-1 size-5 shrink-0 text-muted-foreground" />}
+        title={t("i18n.title")}
+      />
+      <div className="grid gap-1 rounded-md bg-muted/45 p-1 sm:grid-cols-3">
         {options.map((option) => (
           <Button
-            className={cn("h-auto flex-1 justify-start gap-0 px-3 py-2 text-left", value === option.id && "ring-1 ring-ring/50")}
+            aria-pressed={value === option.id}
+            className={cn("h-auto min-h-12 justify-start px-3 py-2 text-left font-normal", value === option.id && "bg-background shadow-sm hover:bg-background")}
             key={option.id}
             onClick={() => {
               onChange(option.id);
@@ -48,7 +46,7 @@ export function LanguageSettings({ onChange, value }: LanguageSettingsProps) {
             }}
             size="sm"
             type="button"
-            variant={value === option.id ? "secondary" : "outline"}
+            variant="ghost"
           >
             <span className="min-w-0">
               <span className="block text-xs font-medium">{option.label}</span>

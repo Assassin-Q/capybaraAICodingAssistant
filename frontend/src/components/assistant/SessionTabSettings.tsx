@@ -1,5 +1,6 @@
 import { MessagesSquare } from "lucide-react";
 
+import { SettingsHeader } from "@/components/assistant/settingsShared";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -14,23 +15,15 @@ export function SessionTabSettings({
   value: SessionTabPreferences;
 }) {
   return (
-    <section>
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-2">
-          <MessagesSquare className="mt-1 size-5 shrink-0 text-muted-foreground" />
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold">{t("tabs.settingsTitle")}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{t("tabs.settingsHint")}</p>
-          </div>
-        </div>
-        <Switch
-          aria-label={t("tabs.multiMode")}
-          checked={value.enabled}
-          onCheckedChange={(enabled) => onChange({ ...value, enabled })}
-        />
-      </div>
+    <section className="flex flex-col gap-5">
+      <SettingsHeader
+        actions={<Switch aria-label={t("tabs.multiMode")} checked={value.enabled} onCheckedChange={(enabled) => onChange({ ...value, enabled })} />}
+        description={t("tabs.settingsHint")}
+        icon={<MessagesSquare className="mt-1 size-5 shrink-0 text-muted-foreground" />}
+        title={t("tabs.settingsTitle")}
+      />
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 border-y border-border/60 py-4 sm:grid-cols-2">
         <div className="grid gap-1.5 text-xs font-medium">
           <span>{t("tabs.maxOpen")}</span>
           <div className="flex items-center gap-2">

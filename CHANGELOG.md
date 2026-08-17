@@ -15,6 +15,8 @@
 - Fixed selection line numbers to use document offsets, preserving blank lines and avoiding visual-line errors from code folding or soft wrapping.
 - Renamed the IDEA context-menu group to `Capybara AI Coding` and applied the bundled 16×16 Capybara icon in light and dark themes.
 - Expanded model ID suggestions across every provider with case-sensitive fuzzy matching, a pre-indexed non-blocking search path, a scrollable full result list, focus-aware dismissal, and full hover titles for truncated model/provider names.
+- Filtered every conversation, vision, and memory model picker from the saved provider/model disable lists, even when an externally managed OpenCode process still has an older configuration cached.
+- Reorganized the connection settings into a clearer hierarchy and reduced the desktop settings sidebar to 160px so short navigation labels leave more room for configuration content.
 
 ## 3.0.0 - 2026-08-17
 

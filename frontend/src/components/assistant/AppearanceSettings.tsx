@@ -128,7 +128,7 @@ export function AppearanceSettings() {
   };
 
   return (
-    <section className="flex max-w-3xl flex-col gap-5">
+    <section className="flex flex-col gap-5">
       <SettingsHeader
         actions={(
           <Button disabled={!dirty || saving || loading} onClick={() => void save()} size="sm" type="button">

@@ -17,7 +17,7 @@ import { errorMessage, modelKey } from "@/components/assistant/shared";
 import { reconcileSessionMessages } from "@/components/assistant/liveEvents";
 import type { ContextChip as ContextChipData } from "@/components/assistant/shared";
 import { modelRefWithAvailableVariant, modelSupportsVariant } from "@/components/assistant/modelVariants";
-import { enabledMcpNames } from "@/lib/configApply";
+import { enabledMcpNames, selectableConfiguredModels } from "@/lib/configApply";
 import { sendDraftFirstPrompt } from "@/lib/draftFirstPrompt";
 import { ideaApi, type IdeContextEvent, type PanelAction, type UpdateStatus } from "@/lib/idea";
 import {
@@ -326,7 +326,7 @@ function App() {
     setRefreshing(true);
     try {
       const [nextModels, nextAgents, nextSessions, nextCommands, nextSkills, nextMcpNames] = await Promise.all([
-        openCodeApi.listModels(projectPath),
+        selectableConfiguredModels(projectPath),
         openCodeApi.listAgents(projectPath),
         openCodeApi.listSessions(projectPath),
         openCodeApi.listCommands(projectPath),
@@ -408,7 +408,7 @@ function App() {
 
         const [health, nextModels, nextAgents, initialSessions, nextCommands, nextSkills, nextMcpNames, nextPreferences] = await Promise.all([
           openCodeApi.health(),
-          openCodeApi.listModels(directory),
+          selectableConfiguredModels(directory),
           openCodeApi.listAgents(directory),
           openCodeApi.listSessions(directory),
           openCodeApi.listCommands(directory),
