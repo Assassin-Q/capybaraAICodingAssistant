@@ -3,34 +3,22 @@
     <name>Capybara AI Coding Assistant</name>
     <vendor email="1270374419@qq.com" url="https://gitee.com/qianguanshui/capybaraAICodingAssistant">AI Coding Team</vendor>
     <description><![CDATA[
-        <h2>Capybara AI Coding Assistant</h2>
+        <h3>English</h3>
         <p>
-            An open-source AI coding assistant for IntelliJ IDEA, powered by the OpenCode V2 server.
-            It brings streaming conversations, IDE context, file operations, model configuration and
-            native IDEA workflows into one compact tool window.
+            Capybara AI Coding Assistant is an open-source AI coding assistant for IntelliJ IDEA,
+            powered by the OpenCode V2 server. It brings streaming conversations, IDE context,
+            file operations, model configuration and native IDEA workflows into one focused tool window.
         </p>
-        <p>
-            基于 OpenCode V2 的开源 IntelliJ IDEA AI 编程助手。将流式对话、IDE 上下文、文件操作、模型配置和
-            IDEA 原生工作流集中到一个紧凑的工具窗口中。
-        </p>
-
-        <h3>Features</h3>
+        <h4>Features</h4>
         <ul>
             <li><b>Streaming AI Chat</b> — real-time Markdown, reasoning, tool groups, questions, todos and context usage.</li>
-            <li><b>流式 AI 对话</b> — 实时 Markdown、思考过程、工具调用、问答卡片、任务清单和上下文用量展示。</li>
             <li><b>OpenCode V2 Models</b> — configured providers, custom models, reasoning variants, multimodal models and usage details.</li>
-            <li><b>OpenCode V2 模型</b> — 供应商、自定义模型、思考档位、多模态能力和本轮 Token 用量管理。</li>
             <li><b>IDEA Native Integration</b> — editor context, file and symbol navigation, native modal diffs, file refresh and save dialogs.</li>
-            <li><b>IDEA 原生集成</b> — 编辑器上下文、文件与符号跳转、原生 Diff、文件刷新和保存对话框。</li>
             <li><b>Safe Approval Modes</b> — request approval, auto-approve or full access for file, command and network operations.</li>
-            <li><b>安全审批模式</b> — 对文件、命令和联网操作进行请求批准、替我审批或完全访问控制。</li>
             <li><b>Skills, Plugins, MCP and Memory</b> — manage OpenCode capabilities from responsive settings pages.</li>
-            <li><b>Skills、插件、MCP 与记忆</b> — 在响应式设置页中管理 OpenCode 能力。</li>
             <li><b>IDEA Session Tabs</b> — native conversation tabs with rename, overflow navigation and tab-only close.</li>
-            <li><b>IDEA 原生会话标签</b> — 支持改名、溢出导航和仅关闭标签，不会删除或终止会话。</li>
         </ul>
-
-        <h3>Getting Started</h3>
+        <h4>Getting Started</h4>
         <ol>
             <li>Install OpenCode and start its local server.</li>
             <li>Open the <b>Capybara AI Assistant</b> tool window from IntelliJ IDEA.</li>
@@ -40,8 +28,33 @@
         <p>
             <b>Requirements:</b> IntelliJ IDEA 2023.2 or later and a locally available OpenCode V2 server.
         </p>
+
+        <h3>简体中文</h3>
         <p>
-            <b>开源项目：</b>
+            水豚 AI 编程助手是一款开源的 IntelliJ IDEA AI 编程插件，基于 OpenCode V2 服务。
+            它将流式对话、IDE 上下文、文件操作、模型配置和 IDEA 原生工作流集中到一个专注的工具窗口中。
+        </p>
+        <h4>核心功能</h4>
+        <ul>
+            <li><b>流式 AI 对话</b> — 实时 Markdown、思考过程、工具调用、问答卡片、任务清单和上下文用量展示。</li>
+            <li><b>OpenCode V2 模型</b> — 支持供应商、自定义模型、思考档位、多模态能力和本轮 Token 用量。</li>
+            <li><b>IDEA 原生集成</b> — 支持编辑器上下文、文件与符号跳转、原生 Diff、文件刷新和保存对话框。</li>
+            <li><b>安全审批模式</b> — 对文件、命令和联网操作提供请求批准、替我审批和完全访问选项。</li>
+            <li><b>技能、插件、MCP 与记忆</b> — 在响应式设置页面中管理 OpenCode 能力。</li>
+            <li><b>IDEA 会话标签</b> — 支持会话改名、标签溢出导航和仅关闭标签，不会删除或终止会话。</li>
+        </ul>
+        <h4>快速开始</h4>
+        <ol>
+            <li>安装 OpenCode 并启动本地服务。</li>
+            <li>在 IntelliJ IDEA 中打开<b>水豚 AI 助手</b>工具窗口。</li>
+            <li>在<b>设置 → 模型</b>中配置供应商和模型，然后开始对话。</li>
+            <li>使用 IDEA 右键菜单解释选中代码，或将文件、文件夹作为附件加入提示词。</li>
+        </ol>
+        <p>
+            <b>运行要求：</b>IntelliJ IDEA 2023.2 或更高版本，以及本地可访问的 OpenCode V2 服务。
+        </p>
+        <p>
+            <b>Open Source / 开源项目：</b>
             <a href="https://gitee.com/qianguanshui/capybaraAICodingAssistant">Gitee</a>
             · <a href="https://github.com/Assassin-Q/capybaraAICodingAssistant">GitHub</a>
             · MIT License
