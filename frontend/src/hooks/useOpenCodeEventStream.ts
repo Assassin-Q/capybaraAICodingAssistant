@@ -177,7 +177,9 @@ export function useOpenCodeEventStream({
         if (type === "session.created" || type === "session.deleted" || type === "session.renamed") {
           scheduleRefresh();
         }
-        if (sourceSessionID && (finished || eventChangesFiles(event))) {
+        // File tools can emit a success event before the session is associated with a visible
+        // tab. Refreshing by event shape keeps IDEA's VFS and project tree current in that case.
+        if (finished || eventChangesFiles(event)) {
           void ideaApi.reloadFileSystem().catch(() => undefined);
         }
         setConnected(true);

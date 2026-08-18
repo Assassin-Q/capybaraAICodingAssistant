@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.2 - 2026-08-18
+
+### Git and IDEA synchronization
+
+- Added a manual Git status scan button to the top Git panel. Automatic status polling remains enabled every 5 seconds, while the refresh action gives users an immediate scan on demand.
+- Refreshed IDEA's VFS and project tree after OpenCode reports file edits, writes, patches, or a completed task, including events that arrive before a visible session tab is attached.
+
 ## 3.0.1 - 2026-08-17
 
 ### Conversation and settings polish

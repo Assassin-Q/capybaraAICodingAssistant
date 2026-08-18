@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, FileDiff, GitBranch, GitCommitHorizontal, Sparkles, Upload } from "lucide-react";
+import { AlertTriangle, FileDiff, GitBranch, GitCommitHorizontal, RefreshCw, Sparkles, Upload } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,10 +22,13 @@ interface GitStatusButtonProps {
   variant?: string;
 }
 
+const GIT_STATUS_POLL_INTERVAL_MS = 5000;
+
 export function GitStatusButton({ model, nativeTrigger = false, openRequest = 0, projectPath, variant }: GitStatusButtonProps) {
   const [status, setStatus] = useState<GitStatusResponse>();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState("");
+  const [manualRefresh, setManualRefresh] = useState(false);
   const [message, setMessage] = useState("");
   useAssistantOverlayDismiss(() => setOpen(false));
 
@@ -33,7 +36,8 @@ export function GitStatusButton({ model, nativeTrigger = false, openRequest = 0,
   const [, setSessionBranch] = useState<string>();
   const [branchChanged, setBranchChanged] = useState<string>();
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (showBusy = false) => {
+    if (showBusy) setManualRefresh(true);
     try {
       const next = await gitApi.status();
       setStatus(next);
@@ -45,13 +49,15 @@ export function GitStatusButton({ model, nativeTrigger = false, openRequest = 0,
       });
     } catch {
       setStatus(undefined);
+    } finally {
+      if (showBusy) setManualRefresh(false);
     }
   }, []);
 
   useEffect(() => {
     void refresh();
-    // Cheap enough to poll; git status on a warm repo is a few milliseconds.
-    const timer = window.setInterval(() => void refresh(), 5000);
+    // Git status on a warm repo is cheap; the popover also exposes an explicit scan button.
+    const timer = window.setInterval(() => void refresh(), GIT_STATUS_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [refresh]);
 
@@ -123,6 +129,18 @@ export function GitStatusButton({ model, nativeTrigger = false, openRequest = 0,
           <span className="min-w-0 flex-1 truncate text-xs font-medium">{status.branch ?? t("s_433d7578c0")}</span>
           {status.ahead > 0 && <Badge variant="secondary">↑{status.ahead}</Badge>}
           {status.behind > 0 && <Badge variant="secondary">↓{status.behind}</Badge>}
+          <Button
+            aria-label={t("git.statusRefreshNow")}
+            className="size-6 shrink-0"
+            disabled={manualRefresh || busy !== ""}
+            onClick={() => void refresh(true)}
+            size="icon"
+            title={t("git.statusRefreshNow")}
+            type="button"
+            variant="ghost"
+          >
+            <RefreshCw className={cn("size-3.5", manualRefresh && "animate-spin")} />
+          </Button>
         </div>
 
         {branchChanged && (
@@ -242,7 +260,7 @@ export function GitStatusButton({ model, nativeTrigger = false, openRequest = 0,
             </Button>
           </div>
           <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-            {t("s_da4bc814da")}
+            {t("git.statusAutoRefresh", { seconds: GIT_STATUS_POLL_INTERVAL_MS / 1000 })}
           </p>
         </div>
       </PopoverContent>

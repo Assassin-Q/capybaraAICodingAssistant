@@ -30,6 +30,8 @@ export const zhSystem = {
   "run.cancelRetry": "取消重试",
   "run.requestTimeout": "发送请求超时。请检查 OpenCode 服务状态后重试。",
   "connection.sections": "连接设置目录",
+  "git.statusAutoRefresh": "每 {seconds} 秒自动扫描 · 点击刷新按钮立即扫描",
+  "git.statusRefreshNow": "立即扫描 Git 状态",
 
   "todo.stoppedAt": "停在第 {current}/{total} 步",
   "run.todoTab": "任务清单",

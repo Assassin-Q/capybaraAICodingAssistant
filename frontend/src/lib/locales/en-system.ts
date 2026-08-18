@@ -25,6 +25,8 @@ export const enSystem = {
   "run.cancelRetry": "Cancel retry",
   "run.requestTimeout": "The request timed out. Check the OpenCode service and try again.",
   "connection.sections": "Connection settings sections",
+  "git.statusAutoRefresh": "Automatically scans every {seconds}s · use the refresh button to scan now",
+  "git.statusRefreshNow": "Scan Git status now",
 
   "todo.stoppedAt": "Stopped at step {current} of {total}",
   "run.todoTab": "Tasks",
