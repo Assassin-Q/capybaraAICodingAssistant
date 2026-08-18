@@ -18,6 +18,7 @@ export const enSystem = {
   "update.promptDescription": "Capybara AI Coding Assistant {p0} is available.",
   "update.promptCurrent": "Current version {p0}",
   "update.ignoreVersion": "Don't remind me for this version",
+  "update.openPluginCenter": "Update in IDEA Plugin Center",
 
   "memoryPlugin.opencode-mem": "A local Turso/libSQL vector store with automatic capture, a cross-project user profile and a management UI. Automatic capture costs one extra model call.",
   "memoryPlugin.opencode-agent-memory": "A local memory harness built on editable memory blocks and AGENTS.md.",

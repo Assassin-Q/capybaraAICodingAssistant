@@ -1,4 +1,4 @@
-import { Download, X } from "lucide-react";
+import { Download, Puzzle, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,9 @@ import {
 } from "@/components/ui/dialog";
 import { ideaApi, type UpdateStatus } from "@/lib/idea";
 import { t } from "@/lib/i18n";
+
+const IDEA_PLUGIN_CENTER_URL =
+  "jetbrains://plugins.jetbrains.com/pluginManager?action=install&pluginId=com.aicoding.ai-coding-plugin";
 
 /** Startup-only update prompt; the status dot and settings notice remain independent. */
 export function UpdatePrompt({ status }: { status?: UpdateStatus }) {
@@ -43,6 +46,12 @@ export function UpdatePrompt({ status }: { status?: UpdateStatus }) {
           <Button onClick={ignore} size="sm" type="button" variant="ghost">
             <X className="size-3.5" />
             {t("update.ignoreVersion")}
+          </Button>
+          <Button asChild onClick={close} size="sm" type="button" variant="outline">
+            <a href={IDEA_PLUGIN_CENTER_URL} rel="noreferrer">
+              <Puzzle className="size-3.5" />
+              {t("update.openPluginCenter")}
+            </a>
           </Button>
           <Button asChild onClick={close} size="sm" type="button">
             <a href={status?.downloadUrl} rel="noreferrer" target="_blank">
