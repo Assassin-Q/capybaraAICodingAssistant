@@ -134,7 +134,7 @@ select {
  */
 .capybara-prose {
   font-size: 0.875rem;
-  line-height: 1.75;
+  line-height: 1.65;
   letter-spacing: 0.01em;
   text-wrap: pretty;
 }
@@ -142,7 +142,7 @@ select {
 .capybara-prose p,
 .capybara-prose blockquote,
 .capybara-prose table {
-  margin-block: 0.75em;
+  margin-block: 0.4em;
 }
 
 .capybara-prose h1,
@@ -152,7 +152,7 @@ select {
   font-weight: 600;
   line-height: 1.4;
   letter-spacing: 0;
-  margin-block: 1.6em 0.6em;
+  margin-block: 1em 0.4em;
 }
 
 .capybara-prose h1 { font-size: 1.25rem; }
@@ -162,19 +162,19 @@ select {
 
 .capybara-prose ul,
 .capybara-prose ol {
-  margin-block: 0.75em;
+  margin-block: 0.4em;
   padding-inline-start: 1.5em;
 }
 
 .capybara-prose ul { list-style: disc; }
 .capybara-prose ol { list-style: decimal; }
-.capybara-prose li { margin-block: 0.35em; }
-.capybara-prose li > p { margin-block: 0.25em; }
+.capybara-prose li { margin-block: 0.2em; }
+.capybara-prose li > p { margin-block: 0.15em; }
 
 /* Nested lists sit tighter so the hierarchy reads without extra vertical noise. */
 .capybara-prose li > ul,
 .capybara-prose li > ol {
-  margin-block: 0.35em;
+  margin-block: 0.2em;
 }
 
 .capybara-prose strong { font-weight: 600; }
@@ -202,7 +202,7 @@ select {
 }
 
 .capybara-prose hr {
-  margin-block: 1.5em;
+  margin-block: 0.8em;
   border-color: var(--border);
 }
 

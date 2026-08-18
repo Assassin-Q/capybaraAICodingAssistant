@@ -106,7 +106,7 @@ export const Reasoning = memo(({
   return (
     <ReasoningContext.Provider value={context}>
       <Collapsible
-        className={cn("not-prose mb-2", className)}
+        className={cn("not-prose mb-0", className)}
         onOpenChange={setIsOpen}
         open={isOpen}
         {...props}
@@ -136,7 +136,7 @@ export const ReasoningTrigger = memo(({
   const { isStreaming, isOpen, duration } = useReasoning();
   return (
     <CollapsibleTrigger
-      className={cn("flex w-fit max-w-full items-center gap-1.5 rounded px-0.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground", className)}
+      className={cn("flex w-fit max-w-full items-center gap-1.5 rounded px-0 py-0.5 text-xs leading-5 text-muted-foreground transition-colors hover:text-foreground", className)}
       {...props}
     >
       {children ?? <><BrainIcon className="size-3.5 shrink-0" />{getThinkingMessage(isStreaming, duration)}<ChevronRightIcon className={cn("ml-auto size-3.5 transition-transform", isOpen ? "rotate-90" : "rotate-0")} /></>}
@@ -152,7 +152,7 @@ export type ReasoningContentProps = ComponentProps<typeof CollapsibleContent> & 
 export const ReasoningContent = memo(({ className, children, streaming = false, ...props }: ReasoningContentProps) => (
   <CollapsibleContent
     className={cn(
-      "ml-1 mt-1 border-l border-border/40 py-1 pl-3 text-xs leading-5 text-muted-foreground outline-none",
+      "ml-0 mt-0.5 border-l border-border/40 py-0.5 pl-3 text-xs leading-5 text-muted-foreground outline-none",
       className
     )}
     {...props}

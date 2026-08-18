@@ -422,7 +422,7 @@ const Narrative = memo(function Narrative({
     );
   }
   if (!part.text.trim()) return null;
-  return <div className="max-w-full py-1 text-sm leading-6"><MarkdownResponse isAnimating={false} mode={isStreaming ? "streaming" : "static"}>{part.text}</MarkdownResponse></div>;
+  return <div className="max-w-full py-0.5 text-sm leading-6"><MarkdownResponse isAnimating={false} mode={isStreaming ? "streaming" : "static"}>{part.text}</MarkdownResponse></div>;
 }, (previous, next) =>
   previous.isStreaming === next.isStreaming
   && previous.part.id === next.part.id
@@ -450,7 +450,7 @@ function ProcessBlocks({
     block.type === "tools" || Boolean(block.part.text.trim())
   );
   return (
-    <div className="space-y-2 pl-0.5">
+    <div className="space-y-1 pl-0">
       {blocks.map((block, index) => {
         const blockIsStreaming = isStreaming && index === lastVisibleBlockIndex;
         if (block.type === "narrative") {
@@ -535,7 +535,7 @@ export function AssistantProcess({
           </span>
         </ChainOfThoughtHeader>
       )}
-      <ChainOfThoughtContent className="space-y-2 pl-0.5">{processBlocks}</ChainOfThoughtContent>
+      <ChainOfThoughtContent className="space-y-1 pl-0">{processBlocks}</ChainOfThoughtContent>
     </ChainOfThought>
   );
 }
