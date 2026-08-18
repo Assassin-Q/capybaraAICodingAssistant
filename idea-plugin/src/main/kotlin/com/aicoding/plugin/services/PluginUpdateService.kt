@@ -1,6 +1,7 @@
 package com.aicoding.plugin.services
 
 import com.intellij.ide.ActivityTracker
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.ide.plugins.PluginManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.extensions.PluginId
@@ -24,6 +25,8 @@ data class PluginUpdateStatus(
     val downloadUrl: String = "",
     /** True when the check itself could not run — offline, blocked, or rate limited. */
     val unavailable: Boolean = true,
+    /** Version explicitly dismissed by the user; does not affect [hasUpdate]. */
+    val ignoredVersion: String = "",
 )
 
 @Serializable
@@ -52,6 +55,7 @@ class PluginUpdateService {
     companion object {
         private const val PLUGIN_ID = "com.aicoding.ai-coding-plugin"
         private const val CACHE_TTL_MS = 30 * 60 * 1000L
+        private const val IGNORED_VERSION_KEY = "capybara.ai.update.ignored.version"
 
         val instance: PluginUpdateService by lazy { PluginUpdateService() }
     }
@@ -74,7 +78,12 @@ class PluginUpdateService {
 
     /** The last answer requested by the panel. Never blocks, so title actions can call it safely. */
     fun cachedStatus(): PluginUpdateStatus = latestStatus
-        ?: PluginUpdateStatus(currentVersion = currentVersion, latestVersion = currentVersion)
+        ?.withIgnoredVersion()
+        ?: PluginUpdateStatus(
+            currentVersion = currentVersion,
+            latestVersion = currentVersion,
+            ignoredVersion = ignoredVersion(),
+        )
 
     /** The HTTP route runs off the IDEA UI thread and may wait for the shared request. */
     fun statusForClient(language: String, force: Boolean = false): PluginUpdateStatus {
@@ -82,10 +91,16 @@ class PluginUpdateService {
         val current = cached[source]
         if (!force && current != null && System.currentTimeMillis() - current.checkedAt < CACHE_TTL_MS) {
             latestStatus = current.status
-            return current.status
+            return current.status.withIgnoredVersion()
         }
-        return runCatching { refresh(source).get(12, TimeUnit.SECONDS) }
-            .getOrElse { current?.status ?: cachedStatus() }
+        return runCatching { refresh(source).get(12, TimeUnit.SECONDS).withIgnoredVersion() }
+            .getOrElse { current?.status?.withIgnoredVersion() ?: cachedStatus() }
+    }
+
+    fun ignoreVersion(version: String): PluginUpdateStatus {
+        val normalized = version.trim()
+        if (normalized.isNotEmpty()) PropertiesComponent.getInstance().setValue(IGNORED_VERSION_KEY, normalized)
+        return cachedStatus()
     }
 
     /** Concurrent callers for the same mirror share one network request. */
@@ -140,4 +155,8 @@ class PluginUpdateService {
         }
         return 0
     }
+
+    private fun ignoredVersion(): String = PropertiesComponent.getInstance().getValue(IGNORED_VERSION_KEY).orEmpty()
+
+    private fun PluginUpdateStatus.withIgnoredVersion(): PluginUpdateStatus = copy(ignoredVersion = ignoredVersion())
 }

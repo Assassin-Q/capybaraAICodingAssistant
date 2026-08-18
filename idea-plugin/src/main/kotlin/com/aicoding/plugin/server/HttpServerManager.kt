@@ -9,6 +9,7 @@ import com.aicoding.plugin.services.AtomicFileIO
 import com.aicoding.plugin.services.BrowserControlRequest
 import com.aicoding.plugin.services.BrowserControlResponse
 import com.aicoding.plugin.services.BrowserControlService
+import com.aicoding.plugin.services.BrowserDownloadService
 import com.aicoding.plugin.services.ChatMessage
 import com.aicoding.plugin.services.DevelopmentEnvironmentsRequest
 import com.aicoding.plugin.services.MemoryEmbeddingDownloadRequest
@@ -147,7 +148,6 @@ class HttpServerManager(
         // The panel owns the instance; services only need a way to reach broadcastSse.
         active[project] = this
     }
-
     private val json = Json { encodeDefaults = false; ignoreUnknownKeys = true }
 
     /**
@@ -180,6 +180,7 @@ class HttpServerManager(
     private val gitStatusService = project.getService(GitStatusService::class.java)
     private val openCodeConfigService = project.getService(OpenCodeConfigService::class.java)
     private val workspacePreferences = project.getService(WorkspacePreferencesService::class.java)
+    private val browserDownloads = BrowserDownloadService()
     private var branchWatcher: java.util.concurrent.ScheduledExecutorService? = null
     private var refreshScheduler: java.util.concurrent.ScheduledExecutorService? = null
     @Volatile private var pendingRefresh: ScheduledFuture<*>? = null
@@ -203,14 +204,13 @@ class HttpServerManager(
     }
 
     fun start() {
-        if (server != null) {
-            return
-        }
+        if (server != null) return
 
         val createdServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         createdServer.createContext("/api", ApiHandler())
         // Shares this server and port — the built-in browser never opens one of its own.
         createdServer.createContext("/browser", BrowserHandler())
+        createdServer.createContext("/browser-download", browserDownloads)
         createdServer.createContext("/", StaticHandler())
         executor = Executors.newCachedThreadPool()
         sseExecutor = Executors.newSingleThreadExecutor { runnable ->
@@ -410,6 +410,8 @@ class HttpServerManager(
                                 force = queryParam(exchange, "force") == "true",
                             ),
                         )
+                    exchange.requestURI.path == "/api/plugin-update/ignore" && exchange.requestMethod == "POST" ->
+                        writeJson(exchange, 200, PluginUpdateService.instance.ignoreVersion(queryParam(exchange, "version").orEmpty()))
                     exchange.requestURI.path == "/api/health" && exchange.requestMethod == "GET" ->
                         writeJson(exchange, 200, HealthResponse(true, port))
                     exchange.requestURI.path == "/api/server-info" && exchange.requestMethod == "GET" ->

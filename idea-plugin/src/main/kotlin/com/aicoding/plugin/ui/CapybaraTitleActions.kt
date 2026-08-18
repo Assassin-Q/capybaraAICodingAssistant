@@ -4,10 +4,10 @@ import com.aicoding.plugin.server.HttpServerManager
 import com.aicoding.plugin.services.IdeThemeService
 import com.aicoding.plugin.services.PluginUpdateService
 import com.intellij.icons.AllIcons
+import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.IconLoader
 import com.intellij.ui.JBColor
@@ -17,7 +17,6 @@ import java.awt.Dimension
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.RenderingHints
-import java.awt.datatransfer.StringSelection
 import com.intellij.openapi.actionSystem.ex.DefaultCustomComponentAction
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
@@ -118,17 +117,15 @@ private class StatusAction(private val project: Project) : AnAction() {
         }
         event.presentation.text = when {
             !running -> "未连接"
-            status.hasUpdate -> "有新版本 ${status.latestVersion}，点击复制下载地址"
+            status.hasUpdate -> "有新版本 ${status.latestVersion}，点击打开下载页面"
             else -> "已连接 · 版本 ${status.currentVersion}"
         }
     }
 
     override fun actionPerformed(event: AnActionEvent) {
         val status = PluginUpdateService.instance.cachedStatus()
-        // Copying beats opening a browser from a toolbar the user may have clicked by accident,
-        // and the panel's connection page still offers the link itself.
         if (status.hasUpdate && status.downloadUrl.isNotBlank()) {
-            CopyPasteManager.getInstance().setContents(StringSelection(status.downloadUrl))
+            BrowserUtil.browse(status.downloadUrl)
         }
     }
 }

@@ -1,7 +1,9 @@
 package com.aicoding.plugin.ui
 
 import com.aicoding.plugin.server.HttpServerManager
+import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
@@ -12,6 +14,7 @@ import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandler.ErrorCode
 import org.cef.handler.CefLoadHandlerAdapter
+import org.cef.handler.CefRequestHandler
 import java.awt.BorderLayout
 import java.awt.CardLayout
 import java.awt.Color
@@ -19,6 +22,8 @@ import java.awt.Dimension
 import java.awt.Font
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
+import java.lang.reflect.Proxy
+import java.net.URI
 import javax.swing.BorderFactory
 import javax.swing.JLabel
 import javax.swing.JPanel
@@ -75,6 +80,7 @@ class AICodingPanel(
         cards.add(statusLabel, "status")
         add(cards, BorderLayout.CENTER)
         installLoadHandler()
+        installExternalNavigationHandler()
         enforceMinimumWidth()
         startFrontend()
         Disposer.register(project, this)
@@ -167,6 +173,58 @@ class AICodingPanel(
                 }
             }
         }, browser.cefBrowser)
+    }
+
+    /** Keep the assistant local, but let the user's system browser handle every external URL. */
+    private fun installExternalNavigationHandler() {
+        val browser = browser ?: return
+        val handler = Proxy.newProxyInstance(
+            CefRequestHandler::class.java.classLoader,
+            arrayOf(CefRequestHandler::class.java),
+        ) { _, method, args ->
+            when (method.name) {
+                "onBeforeBrowse", "onOpenURLFromTab" -> {
+                    val url = navigationUrl(args)
+                    if (url != null && shouldOpenExternally(url)) {
+                        ApplicationManager.getApplication().invokeLater { BrowserUtil.browse(url) }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                "hashCode" -> System.identityHashCode(this)
+                "equals" -> args?.getOrNull(0) === this
+                "toString" -> "CapybaraExternalNavigationHandler"
+                else -> defaultNavigationReturn(method.returnType)
+            }
+        } as CefRequestHandler
+        runCatching { browser.jbCefClient.addRequestHandler(handler, browser.cefBrowser) }
+    }
+
+    private fun navigationUrl(args: Array<out Any?>?): String? = args?.firstNotNullOfOrNull { arg ->
+        when (arg) {
+            is String -> arg.takeIf { it.isNotBlank() }
+            null -> null
+            else -> runCatching {
+                arg.javaClass.getMethod("getURL").invoke(arg) as? String
+            }.getOrNull()
+        }
+    }
+
+    private fun shouldOpenExternally(url: String): Boolean {
+        val scheme = runCatching { URI(url).scheme?.lowercase() }.getOrNull() ?: return false
+        if (scheme !in setOf("http", "https", "mailto", "file")) return false
+        if (url.startsWith("http://127.0.0.1:" + httpServer.getPort() + "/browser-download")) return true
+        val uri = runCatching { URI(url) }.getOrNull() ?: return true
+        val localHost = uri.host == "127.0.0.1" || uri.host == "localhost"
+        return !(localHost && uri.port == httpServer.getPort())
+    }
+
+    private fun defaultNavigationReturn(type: Class<*>): Any? = when (type) {
+        java.lang.Boolean.TYPE -> false
+        Integer.TYPE -> 0
+        java.lang.Long.TYPE -> 0L
+        else -> null
     }
 
     private fun showStatus(message: String) {

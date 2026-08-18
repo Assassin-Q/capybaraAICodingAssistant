@@ -69,6 +69,7 @@ export interface UpdateStatus {
   downloadUrl: string;
   /** True when the Kotlin-side release check could not reach the release service. */
   unavailable: boolean;
+  ignoredVersion?: string;
 }
 
 export type PanelAction =
@@ -425,6 +426,19 @@ export const ideaApi = {
 
   getPluginUpdate: (language: "zh" | "en", force = false) =>
     request<UpdateStatus>(`/plugin-update?language=${language}&force=${force}`),
+
+  ignorePluginUpdate: (version: string) =>
+    request<UpdateStatus>("/plugin-update/ignore?version=" + encodeURIComponent(version), { method: "POST" }),
+
+  prepareBrowserDownload: async (filename: string, content: string) => {
+    const response = await fetch(window.location.origin + "/browser-download", {
+      body: JSON.stringify({ content, filename }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    if (!response.ok) throw new Error("Browser download preparation failed with " + response.status);
+    return (await response.json()) as { url: string };
+  },
 
   /** Whether OpenCode is installed and new enough for the v2 session API this panel relies on. */
   openCodeRequirement: () => request<OpenCodeRequirement>("/ide/opencode-requirement"),

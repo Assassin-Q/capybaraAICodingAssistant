@@ -44,6 +44,7 @@ import { SessionDialog } from "@/components/assistant/SessionDialog";
 import { sessionTabTitle } from "@/components/assistant/SessionTabs";
 import { SlashCommandMenu } from "@/components/assistant/SlashCommandMenu";
 import { TodoPanel } from "@/components/assistant/TodoPanel";
+import { UpdatePrompt } from "@/components/assistant/UpdatePrompt";
 import { UserMessage } from "@/components/assistant/UserMessage";
 import { VirtualConversation } from "@/components/assistant/VirtualConversation";
 import { errorMessage } from "@/components/assistant/shared";
@@ -732,6 +733,7 @@ export function AssistantShell(props: AssistantShellProps) {
         </DialogContent>
       </Dialog>
       <WorkspaceDialog nativeTitleActions={nativeTitleActions} updateStatus={updateStatus} baseUrl={getOpenCodeBaseUrl()} connected={connected === true} initialSection={workspaceSection} mcpNames={mcpNames} models={selectableModels} onConfigurationChanged={onConfigurationChanged} onOpenChange={onWorkspaceOpenChange} onPreferencesChanged={onPreferencesChanged} open={workspaceDialogOpen} projectID={currentSession?.projectID} projectPath={projectPath} skills={skills} />
+      <UpdatePrompt status={updateStatus} />
     </TooltipProvider>
   );
 }

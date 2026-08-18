@@ -146,10 +146,11 @@ export const ConversationDownload = ({
   const handleDownload = useCallback(async () => {
     const markdown = messagesToMarkdown(messages, formatMessage);
     try {
-      const result = await ideaApi.saveFile(filename, markdown);
-      if (result.saved) return;
+      const result = await ideaApi.prepareBrowserDownload(filename, markdown);
+      window.location.assign(result.url);
+      return;
     } catch {
-      // Development browsers do not expose the IDEA bridge; use normal download there.
+      // Development browsers do not expose the plugin download route; use a Blob there.
     }
     const blob = new Blob([markdown], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);

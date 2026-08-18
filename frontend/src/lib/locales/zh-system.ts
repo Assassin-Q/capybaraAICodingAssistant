@@ -19,6 +19,10 @@ export const zhSystem = {
   "update.unavailable": "无法检查更新",
   "update.download": "下载",
   "update.tooltip": "有可用更新",
+  "update.promptTitle": "发现新版本",
+  "update.promptDescription": "Capybara AI Coding Assistant 有新版本 {p0} 可用。",
+  "update.promptCurrent": "当前版本 {p0}",
+  "update.ignoreVersion": "该版本不再提醒",
 
   "memoryPlugin.opencode-mem": "本地 Turso/libSQL 向量库，自动捕获、跨项目用户画像与管理面板。自动捕获会额外调用一次模型。",
   "memoryPlugin.opencode-agent-memory": "基于可编辑记忆块和 AGENTS.md 的本地记忆 harness。",
