@@ -49,7 +49,7 @@ object IdeThemeService {
 
     fun currentTheme(): String {
         val manager = runCatching { LafManager.getInstance() }.getOrNull()
-        return if (manager?.currentLookAndFeel?.let(::isDark) == true) "dark" else "light"
+        return if (manager?.let(::currentLookAndFeel)?.let(::isDark) == true) "dark" else "light"
     }
 
     fun settings(): IdeThemeResponse {
@@ -68,12 +68,12 @@ object IdeThemeService {
             ?: return IdeThemeResponse(false, currentTheme(), message = "无法访问 IDEA 主题管理器")
         val wantDark = requestedMode == "dark"
         val targetId = mappedThemeId(manager, wantDark)
-        val target = manager.installedLookAndFeels.firstOrNull { themeId(it) == targetId }
+        val target = installedLookAndFeels(manager).firstOrNull { themeId(it) == targetId }
             ?: return snapshot(manager, false, "映射的 IDEA 主题已经不可用，请重新选择")
 
         return runCatching {
             runOnUiThread {
-                if (themeId(manager.currentLookAndFeel) != themeId(target)) {
+                if (themeId(currentLookAndFeel(manager)) != themeId(target)) {
                     switchTheme(manager, target)
                 }
             }
@@ -87,7 +87,7 @@ object IdeThemeService {
     fun updateMapping(request: IdeThemeMappingRequest): IdeThemeResponse {
         val manager = runCatching { LafManager.getInstance() }.getOrNull()
             ?: return IdeThemeResponse(false, currentTheme(), message = "无法访问 IDEA 主题管理器")
-        val installed = manager.installedLookAndFeels.toList()
+        val installed = installedLookAndFeels(manager)
         val light = installed.firstOrNull { themeId(it) == request.lightThemeId }
             ?: return snapshot(manager, false, "选择的明亮主题已经不可用")
         val dark = installed.firstOrNull { themeId(it) == request.darkThemeId }
@@ -107,8 +107,8 @@ object IdeThemeService {
                 if (request.syncWithOs != null && manager.autodetectSupported) {
                     manager.autodetect = request.syncWithOs
                 }
-                val target = if (isDark(manager.currentLookAndFeel)) dark else light
-                if (themeId(manager.currentLookAndFeel) != themeId(target)) {
+                val target = if (isDark(currentLookAndFeel(manager))) dark else light
+                if (themeId(currentLookAndFeel(manager)) != themeId(target)) {
                     switchTheme(manager, target)
                 }
             }
@@ -124,8 +124,9 @@ object IdeThemeService {
         success: Boolean,
         message: String? = null,
     ): IdeThemeResponse {
-        val currentId = themeId(manager.currentLookAndFeel)
-        val options = manager.installedLookAndFeels.map { info ->
+        val current = currentLookAndFeel(manager)
+        val currentId = themeId(current)
+        val options = installedLookAndFeels(manager).map { info ->
             IdeThemeOption(
                 id = themeId(info),
                 name = info.name,
@@ -135,9 +136,9 @@ object IdeThemeService {
         }
         return IdeThemeResponse(
             success = success,
-            theme = if (isDark(manager.currentLookAndFeel)) "dark" else "light",
+            theme = if (isDark(current)) "dark" else "light",
             currentThemeId = currentId,
-            currentThemeName = manager.currentLookAndFeel?.name,
+            currentThemeName = current?.name,
             lightThemeId = mappedThemeId(manager, false),
             darkThemeId = mappedThemeId(manager, true),
             syncWithOs = manager.autodetectSupported && manager.autodetect,
@@ -150,13 +151,27 @@ object IdeThemeService {
     private fun mappedThemeId(manager: LafManager, dark: Boolean): String {
         val propertyKey = if (dark) DARK_THEME_KEY else LIGHT_THEME_KEY
         val stored = PropertiesComponent.getInstance().getValue(propertyKey)
-        if (stored != null && manager.installedLookAndFeels.any { themeId(it) == stored && isDark(it) == dark }) {
+        if (stored != null && installedLookAndFeels(manager).any { themeId(it) == stored && isDark(it) == dark }) {
             return stored
         }
         val default = defaultLaf(manager, dark)
         return default?.takeIf { isDark(it) == dark }?.let(::themeId)
-            ?: manager.installedLookAndFeels.firstOrNull { isDark(it) == dark }?.let(::themeId)
+            ?: installedLookAndFeels(manager).firstOrNull { isDark(it) == dark }?.let(::themeId)
             .orEmpty()
+    }
+
+    /** Access LafManager's moving look-and-feel accessors without linking to scheduled APIs. */
+    private fun currentLookAndFeel(manager: LafManager): UIManager.LookAndFeelInfo? {
+        (callNoArg(manager, "getCurrentLookAndFeel") as? UIManager.LookAndFeelInfo)?.let { return it }
+        val activeClass = UIManager.getLookAndFeel()?.javaClass?.name ?: return null
+        return installedLookAndFeels(manager).firstOrNull { it.className == activeClass }
+    }
+
+    private fun installedLookAndFeels(manager: LafManager): List<UIManager.LookAndFeelInfo> {
+        val fromManager = (callNoArg(manager, "getInstalledLookAndFeels") as? Array<*>)
+            ?.filterIsInstance<UIManager.LookAndFeelInfo>()
+            ?.takeIf { it.isNotEmpty() }
+        return fromManager ?: UIManager.getInstalledLookAndFeels().toList()
     }
 
     /**

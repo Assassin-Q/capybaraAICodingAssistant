@@ -6,7 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.io.File
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
 
 @Serializable
@@ -306,7 +306,7 @@ class MemoryEmbeddingService {
         for (host in HOSTS) {
             val url = "$host/$model/resolve/main/$remotePath"
             try {
-                val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                val connection = (URI.create(url).toURL().openConnection() as HttpURLConnection).apply {
                     connectTimeout = 20_000
                     readTimeout = 120_000
                     instanceFollowRedirects = true

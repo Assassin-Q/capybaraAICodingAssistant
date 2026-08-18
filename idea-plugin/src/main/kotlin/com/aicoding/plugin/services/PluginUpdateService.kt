@@ -1,7 +1,7 @@
 package com.aicoding.plugin.services
 
 import com.intellij.ide.ActivityTracker
-import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.ide.plugins.PluginManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.extensions.PluginId
 import kotlinx.serialization.Serializable
@@ -70,7 +70,7 @@ class PluginUpdateService {
     @Volatile private var latestStatus: PluginUpdateStatus? = null
 
     private val currentVersion: String
-        get() = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.version.orEmpty()
+        get() = PluginManager.getInstance().findEnabledPlugin(PluginId.getId(PLUGIN_ID))?.version.orEmpty()
 
     /** The last answer requested by the panel. Never blocks, so title actions can call it safely. */
     fun cachedStatus(): PluginUpdateStatus = latestStatus

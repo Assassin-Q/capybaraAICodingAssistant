@@ -6,14 +6,14 @@ import com.intellij.execution.ProgramRunnerUtil
 import com.intellij.execution.RunManager
 import com.intellij.execution.executors.DefaultDebugExecutor
 import com.intellij.execution.executors.DefaultRunExecutor
-import com.intellij.execution.process.ProcessAdapter
+import com.intellij.execution.process.ProcessListener
 import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.runners.ExecutionEnvironment
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.ide.plugins.PluginManager
 import com.intellij.openapi.externalSystem.model.ProjectSystemId
 import com.intellij.openapi.externalSystem.model.execution.ExternalSystemTaskExecutionSettings
 import com.intellij.openapi.externalSystem.util.ExternalSystemUtil
@@ -137,7 +137,7 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 )
                 buffers[id] = buffer
                 trimBuffers()
-                handler.addProcessListener(object : ProcessAdapter() {
+                handler.addProcessListener(object : ProcessListener {
                     override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
                         buffer.append(stripControlSequences(event.text))
                     }
@@ -314,7 +314,7 @@ class IdeaExecutionService(private val project: Project) : Disposable {
     private fun disabledBridgeFile(): Path = bridgeFile().resolveSibling("capybara-idea.ts.disabled")
 
     private fun pluginEnabled(id: String): Boolean =
-        PluginManagerCore.getPlugin(PluginId.getId(id))?.isEnabled == true
+        PluginManager.getInstance().findEnabledPlugin(PluginId.getId(id)) != null
 
     private fun sanitizeTasks(tasks: List<String>): List<String> {
         val clean = tasks.map(String::trim).filter(String::isNotBlank)

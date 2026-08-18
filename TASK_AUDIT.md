@@ -1,5 +1,26 @@
 # Capybara AI Coding Assistant V3 - Completion Audit
 
+## T20 - IntelliJ IDEA 2026.2 JCEF/API 兼容性修复 `[x]`
+
+### Implementation record (2026-08-18)
+
+- `CapybaraBrowserPanel` 不再静态链接已从新 JCEF 移除的 `CefBrowser.getFrame(String)`；帧枚举通过兼容反射同时支持 IDEA 2023.2 的数字 ID/重载 `getFrame` 与 IDEA 2026.2 的字符串 ID/`getFrameByIdentifier`、`getFrameByName`，避免 `NoSuchMethodError`。
+- 浏览器显示处理器改用 `CefDisplayHandlerAdapter`，并补充 `onFullscreenModeChange(CefBrowser, Boolean)` 的 JVM 方法实现，避免 IDEA 2026.2 的 `AbstractMethodError`。
+- `PluginManagerCore.getPlugin` 改为公开的 `PluginManager.getInstance().findEnabledPlugin`，不再引用内部 API，也不再直接调用已弃用的 `PluginDescriptor.isEnabled`。
+- 清理兼容性报告中可安全替换的 API：主题状态不再直接调用 `UIUtil.isUnderDarcula` 或静态链接 `LafManager` 的主题列表/当前主题访问器；读操作改用 `ReadAction.computeCancellable`；进程监听改用 `ProcessListener`；VCS 动作改用 `ActionUtil.performActionDumbAwareWithCallbacks`；保存器使用扩展名参数；网络 URL 使用 `URI.create(...).toURL()`。
+- 工具栏刷新不再调用弃用的 `ActionToolbar.updateActionsImmediately`，改为触发 `ActivityTracker` 并刷新 Swing 组件。
+
+### Verification (2026-08-18)
+
+- `pnpm.cmd exec tsc --noEmit` passed.
+- `pnpm.cmd build` passed.
+- `gradle -p idea-plugin buildPlugin` passed against IntelliJ IDEA 2023.2.4.
+- `gradle -p idea-plugin verifyPlugin` passed.
+- `git diff --check` passed; changed Kotlin source files remain below 1000 lines.
+- Local IntelliJ Plugin Verifier 1.409 successfully loaded the latest 3.0.2 package and IDEA 2026.2 SDK for analysis. The Gradle verifier task could not finish its online verifier download because the network connection timed out; a subsequent standalone run was blocked by a Windows lock in the verifier's temporary extraction directory. The final compatibility verdict still needs one clean JetBrains verifier run in CI or after clearing that lock.
+
+---
+
 ## T19 - DeepSeek 审计修复、双源版本检查与 README 星标 `[x]`
 
 ### Implementation record (2026-08-17)

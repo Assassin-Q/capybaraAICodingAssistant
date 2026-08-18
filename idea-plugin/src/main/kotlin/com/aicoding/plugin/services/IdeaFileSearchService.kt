@@ -207,7 +207,7 @@ class IdeaFileSearchService(private val project: Project) {
         return 100 + gaps
     }
 
-    private fun <T> read(action: () -> T): T = ReadAction.compute<T, RuntimeException>(action)
+    private fun <T> read(action: () -> T): T = ReadAction.computeCancellable<T, RuntimeException>(action)
 
     private companion object {
         /** Stops a pathological project from turning a name lookup into a long scan. */

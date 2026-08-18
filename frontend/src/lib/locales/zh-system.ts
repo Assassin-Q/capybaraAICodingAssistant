@@ -32,6 +32,7 @@ export const zhSystem = {
   "connection.sections": "连接设置目录",
   "git.statusAutoRefresh": "每 {seconds} 秒自动扫描 · 点击刷新按钮立即扫描",
   "git.statusRefreshNow": "立即扫描 Git 状态",
+  "git.statusUnavailable": "Git 状态暂不可用，请重新扫描。",
 
   "todo.stoppedAt": "停在第 {current}/{total} 步",
   "run.todoTab": "任务清单",

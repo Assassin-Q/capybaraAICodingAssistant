@@ -21,11 +21,14 @@ import java.awt.FlowLayout
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.MouseInfo
+import java.awt.Point
 import java.awt.RenderingHints
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
+import java.util.Collections
+import java.util.IdentityHashMap
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JComponent
@@ -117,6 +120,18 @@ private class TabChip : JPanel(BorderLayout()) {
  * and the offset is the only piece of state involved.
  */
 private class TabStripPanel : JPanel(null) {
+    /**
+     * The width the title bar actually budgets for this strip. Newer IDEA title bars can leave
+     * the component wider than the clipped region, so using only `width` makes the scroll range
+     * collapse to zero even though tabs are hidden behind the right-side actions.
+     */
+    var viewportWidth = 0
+        set(value) {
+            field = value.coerceAtLeast(0)
+            offset = offset
+            repaint()
+        }
+
     var offset = 0
         set(value) {
             val clamped = value.coerceIn(0, maxOffset())
@@ -151,9 +166,11 @@ private class TabStripPanel : JPanel(null) {
         super.paint(graphics)
         val span = maxOffset()
         if (!indicatorShown || span <= 0 || width <= 0) return
+        val trackWidth = effectiveViewportWidth().coerceAtMost(width)
+        if (trackWidth <= 0) return
         val content = contentWidth()
-        val thumbWidth = (width.toLong() * width / content).toInt().coerceAtLeast(JBUI.scale(20))
-        val thumbX = ((width - thumbWidth).toLong() * offset / span).toInt()
+        val thumbWidth = (trackWidth.toLong() * trackWidth / content).toInt().coerceAtLeast(JBUI.scale(20))
+        val thumbX = ((trackWidth - thumbWidth).toLong() * offset / span).toInt()
         val canvas = graphics.create() as Graphics2D
         try {
             canvas.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
@@ -169,7 +186,9 @@ private class TabStripPanel : JPanel(null) {
     /** Total width of the tabs, independent of how much of it is on screen. */
     fun contentWidth(): Int = components.sumOf { it.preferredSize.width }
 
-    fun maxOffset(): Int = (contentWidth() - width).coerceAtLeast(0)
+    fun effectiveViewportWidth(): Int = viewportWidth.takeIf { it > 0 } ?: width
+
+    fun maxOffset(): Int = (contentWidth() - effectiveViewportWidth()).coerceAtLeast(0)
 
     /** Left edge of a tab within the whole row, ignoring the current offset. */
     fun tabX(component: Component): Int {
@@ -232,8 +251,8 @@ class NativeSessionTabsController(
      */
     private var hoveredTabID: String? = null
 
-    /** The header resize listener is installed the first time the strip has a parent. */
-    private var headerObserved = false
+    /** All title-bar ancestors can participate in layout changes across IDEA generations. */
+    private val observedHeaderComponents = Collections.newSetFromMap(IdentityHashMap<Component, Boolean>())
 
     init {
         configureNavigationButton(previous, previousComponent)
@@ -273,7 +292,7 @@ class NativeSessionTabsController(
         }
         // The toolbar is built after this controller, so the first measurements are re-taken over
         // a few passes while the header settles.
-        listOf(0, 120, 400).forEach { delay ->
+        listOf(0, 120, 400, 900, 1800).forEach { delay ->
             javax.swing.Timer(delay) { updateViewportWidth() }.apply { isRepeats = false }.start()
         }
     }
@@ -346,16 +365,40 @@ class NativeSessionTabsController(
      * the two arrows — is subtracted at its own preferred width. The constant survives only as a
      * first-frame fallback, before any of this has been laid out.
      */
+    private fun fallbackStripWidth(): Int {
+        val minimum = JBUI.scale(MIN_TAB_VIEWPORT_WIDTH)
+        val guessed = toolWindow.component.width -
+            JBUI.scale(HEADER_CHROME_RESERVED_WIDTH) -
+            previous.preferredSize.width -
+            next.preferredSize.width
+        return guessed.coerceAtLeast(minimum)
+    }
+
+    /**
+     * Returns the right edge visible through every ancestor clip. This is intentionally separate
+     * from the preferred-width calculation: 2026.2 wraps title actions differently, but Swing still
+     * clips the same pixels when the toolbar runs past the native header.
+     */
+    private fun clippedStripWidth(): Int? {
+        var ancestor = stripComponent.parent ?: return null
+        var available = Int.MAX_VALUE
+        while (true) {
+            val origin = SwingUtilities.convertPoint(stripComponent, Point(0, 0), ancestor)
+            val right = ancestor.width - origin.x
+            if (right > 0) available = minOf(available, right)
+            if (ancestor === toolWindow.component || ancestor.parent == null) break
+            ancestor = ancestor.parent
+        }
+        return available.takeIf { it != Int.MAX_VALUE && it > 0 }
+    }
+
     private fun availableStripWidth(): Int {
         val minimum = JBUI.scale(MIN_TAB_VIEWPORT_WIDTH)
+        val fallback = fallbackStripWidth()
         val toolbar = stripComponent.parent
         val west = toolbar?.parent
         if (toolbar == null || west == null || west.width <= 0) {
-            val guessed = toolWindow.component.width -
-                JBUI.scale(HEADER_CHROME_RESERVED_WIDTH) -
-                previous.preferredSize.width -
-                next.preferredSize.width
-            return guessed.coerceAtLeast(minimum)
+            return minOf(fallback, clippedStripWidth() ?: fallback).coerceAtLeast(minimum)
         }
         var used = 0
         west.components.forEach { child ->
@@ -364,7 +407,10 @@ class NativeSessionTabsController(
         toolbar.components.forEach { child ->
             if (child !== stripComponent) used += child.preferredSize.width
         }
-        return (west.width - used).coerceAtLeast(minimum)
+        val measured = (west.width - used).coerceAtLeast(minimum)
+        // Keep a conservative cap for title-bar implementations that report the toolbar's full
+        // preferred width instead of the pixels left beside IDEA's native actions.
+        return minOf(measured, fallback, clippedStripWidth() ?: fallback).coerceAtLeast(minimum)
     }
 
     /**
@@ -375,12 +421,16 @@ class NativeSessionTabsController(
      * budget above would only ever be recomputed when the whole tool window changed size.
      */
     private fun observeHeaderWidth() {
-        if (headerObserved) return
-        val west = stripComponent.parent?.parent ?: return
-        headerObserved = true
-        west.addComponentListener(object : ComponentAdapter() {
-            override fun componentResized(event: ComponentEvent) = updateViewportWidth()
-        })
+        var ancestor = stripComponent.parent ?: return
+        while (true) {
+            if (observedHeaderComponents.add(ancestor)) {
+                ancestor.addComponentListener(object : ComponentAdapter() {
+                    override fun componentResized(event: ComponentEvent) = updateViewportWidth()
+                })
+            }
+            if (ancestor === toolWindow.component || ancestor.parent == null) break
+            ancestor = ancestor.parent
+        }
     }
 
     private fun updateViewportWidth() {
@@ -391,6 +441,7 @@ class NativeSessionTabsController(
         observeHeaderWidth()
         val height = JBUI.scale(TAB_HEIGHT)
         val viewportSize = Dimension(availableStripWidth(), height)
+        tabsPanel.viewportWidth = viewportSize.width
         stripComponent.minimumSize = Dimension(0, height)
         stripComponent.preferredSize = viewportSize
         stripComponent.maximumSize = viewportSize
@@ -642,7 +693,7 @@ class NativeSessionTabsController(
         val active = tabsPanel.components.firstOrNull { it.name == state.activeTabID } ?: return
         val start = tabsPanel.tabX(active)
         val end = start + active.preferredSize.width
-        val visible = tabsPanel.width.takeIf { it > 0 } ?: return
+        val visible = tabsPanel.effectiveViewportWidth().takeIf { it > 0 } ?: return
         tabsPanel.offset = when {
             start < tabsPanel.offset -> start
             end > tabsPanel.offset + visible -> end - visible

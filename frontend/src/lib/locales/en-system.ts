@@ -27,6 +27,7 @@ export const enSystem = {
   "connection.sections": "Connection settings sections",
   "git.statusAutoRefresh": "Automatically scans every {seconds}s · use the refresh button to scan now",
   "git.statusRefreshNow": "Scan Git status now",
+  "git.statusUnavailable": "Git status is not available yet. Try scanning again.",
 
   "todo.stoppedAt": "Stopped at step {current} of {total}",
   "run.todoTab": "Tasks",

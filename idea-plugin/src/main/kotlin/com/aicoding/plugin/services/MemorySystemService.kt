@@ -22,8 +22,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URLEncoder
-import java.net.URL
 import java.security.MessageDigest
 
 @Serializable
@@ -770,7 +770,7 @@ class MemorySystemService(
         body: String? = null,
         headers: Map<String, String> = emptyMap(),
     ): HttpResult? = runCatching {
-        val connection = URL(target).openConnection() as HttpURLConnection
+        val connection = URI.create(target).toURL().openConnection() as HttpURLConnection
         connection.connectTimeout = 2_500
         connection.readTimeout = 30_000
         connection.requestMethod = method

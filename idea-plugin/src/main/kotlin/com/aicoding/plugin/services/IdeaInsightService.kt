@@ -382,7 +382,7 @@ class IdeaInsightService(private val project: Project) {
         .replace(Regex("\\s+"), " ")
         .trim()
 
-    private fun <T> read(action: () -> T): T = ReadAction.compute<T, RuntimeException>(action)
+    private fun <T> read(action: () -> T): T = ReadAction.computeCancellable<T, RuntimeException>(action)
 
     private fun Sdk.presentableName(): String = versionString?.let { "$name ($it)" } ?: name
 

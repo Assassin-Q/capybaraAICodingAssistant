@@ -4,6 +4,7 @@ import com.aicoding.plugin.services.BrowserControlService
 import com.aicoding.plugin.services.BrowserElementPick
 import com.aicoding.plugin.services.BrowserElementRect
 import com.aicoding.plugin.services.CapybaraBrowserHost
+import com.intellij.ide.ActivityTracker
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.Disposable
@@ -36,7 +37,7 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
-import org.cef.handler.CefDisplayHandler
+import org.cef.handler.CefDisplayHandlerAdapter
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.handler.CefRequestHandler
 import java.awt.BorderLayout
@@ -315,7 +316,7 @@ class CapybaraBrowserPanel(private val project: Project) : JPanel(BorderLayout()
     }
 
     private fun installHandlers() {
-        browser.jbCefClient.addDisplayHandler(object : CefDisplayHandler {
+        browser.jbCefClient.addDisplayHandler(object : CefDisplayHandlerAdapter() {
             override fun onAddressChange(cefBrowser: CefBrowser, frame: CefFrame, url: String) {
                 if (!frame.isMain) return
                 address = url
@@ -333,6 +334,13 @@ class CapybaraBrowserPanel(private val project: Project) : JPanel(BorderLayout()
             override fun onTitleChange(cefBrowser: CefBrowser, title: String) {
                 SwingUtilities.invokeLater { onTitleChanged?.invoke(title) }
             }
+
+            // This method was added to CefDisplayHandler after the 2023.2 baseline.  Declaring
+            // it without `override` keeps the source binary-compatible with the old adapter;
+            // on newer JCEF versions the JVM dispatches the matching virtual method normally.
+            @Suppress("UNUSED_PARAMETER")
+            fun onFullscreenModeChange(cefBrowser: CefBrowser, fullscreen: Boolean) = Unit
+
             override fun onTooltip(cefBrowser: CefBrowser, text: String): Boolean = false
             override fun onStatusMessage(cefBrowser: CefBrowser, value: String) = Unit
             override fun onConsoleMessage(
@@ -431,7 +439,12 @@ class CapybaraBrowserPanel(private val project: Project) : JPanel(BorderLayout()
     }
 
     private fun refreshToolbar() {
-        if (::actionToolbar.isInitialized) actionToolbar.updateActionsImmediately()
+        if (!::actionToolbar.isInitialized) return
+        // The old updateActionsImmediately() call is deprecated in newer IDEs.  Bumping the
+        // platform activity tracker schedules the same action refresh without linking to it.
+        ActivityTracker.getInstance().inc()
+        actionToolbar.component.revalidate()
+        actionToolbar.component.repaint()
     }
 
     override fun setPickerEnabled(enabled: Boolean) {
@@ -483,14 +496,7 @@ class CapybaraBrowserPanel(private val project: Project) : JPanel(BorderLayout()
     }
 
     private fun installPickerInAllFrames() {
-        val frames = linkedSetOf<CefFrame>()
-        runCatching { frames.add(browser.cefBrowser.mainFrame) }
-        runCatching {
-            browser.cefBrowser.frameNames.forEach { name ->
-                browser.cefBrowser.getFrame(name)?.let(frames::add)
-            }
-        }.onFailure { logger.info("Unable to enumerate browser frames: ${it.message}") }
-        frames.forEach(::installPicker)
+        browserFrames().forEach(::installPicker)
     }
 
     private fun installPicker(frame: CefFrame) {
@@ -507,18 +513,60 @@ class CapybaraBrowserPanel(private val project: Project) : JPanel(BorderLayout()
 
     private fun executeInAllFrames(script: String) {
         if (!loaded) return
-        val frames = linkedSetOf<CefFrame>()
-        runCatching { frames.add(browser.cefBrowser.mainFrame) }
-        runCatching {
-            browser.cefBrowser.frameNames.forEach { name ->
-                browser.cefBrowser.getFrame(name)?.let(frames::add)
-            }
-        }
-        frames.forEach { frame ->
+        browserFrames().forEach { frame ->
             runCatching { frame.executeJavaScript(script, frame.url ?: currentUrl, 0) }
                 .onFailure { logger.info("Unable to update picker frame: ${it.message}") }
         }
     }
+
+    /**
+     * Enumerates child frames across the JCEF API generations supported by the plugin.
+     *
+     * IDEA 2023.2 exposes numeric identifiers and overloaded `getFrame(...)`; newer JCEF
+     * exposes string identifiers plus `getFrameByIdentifier`/`getFrameByName`.  Reflection is
+     * intentional here: a direct reference to either generation's removed method makes the
+     * plugin fail with NoSuchMethodError before it can render the browser.
+     */
+    private fun browserFrames(): LinkedHashSet<CefFrame> {
+        val frames = linkedSetOf<CefFrame>()
+        runCatching { frames.add(browser.cefBrowser.mainFrame) }
+
+        val cefBrowser = browser.cefBrowser
+        val cefType = CefBrowser::class.java
+        runCatching {
+            val identifiers = cefType.getMethod("getFrameIdentifiers").invoke(cefBrowser) as? Iterable<*>
+                ?: emptyList<Any?>()
+            val byIdentifier = cefType.findMethod("getFrameByIdentifier", String::class.java)
+            val legacyLong = cefType.findMethod("getFrame", Long::class.javaPrimitiveType!!)
+            val legacyString = cefType.findMethod("getFrame", String::class.java)
+
+            identifiers.forEach { identifier ->
+                val frame = when {
+                    identifier is String && byIdentifier != null -> byIdentifier.invoke(cefBrowser, identifier)
+                    identifier is Number && legacyLong != null -> legacyLong.invoke(cefBrowser, identifier.toLong())
+                    identifier is String && legacyString != null -> legacyString.invoke(cefBrowser, identifier)
+                    else -> null
+                } as? CefFrame
+                frame?.let(frames::add)
+            }
+
+            val names = cefType.getMethod("getFrameNames").invoke(cefBrowser) as? Iterable<*>
+                ?: emptyList<Any?>()
+            val byName = cefType.findMethod("getFrameByName", String::class.java)
+            names.filterIsInstance<String>().forEach { name ->
+                val frame = when {
+                    byName != null -> byName.invoke(cefBrowser, name)
+                    legacyString != null -> legacyString.invoke(cefBrowser, name)
+                    else -> null
+                } as? CefFrame
+                frame?.let(frames::add)
+            }
+        }.onFailure { logger.info("Unable to enumerate browser frames: ${it.message}") }
+        return frames
+    }
+
+    private fun java.lang.Class<*>.findMethod(name: String, vararg parameterTypes: java.lang.Class<*>): java.lang.reflect.Method? =
+        runCatching { getMethod(name, *parameterTypes) }.getOrNull()
 
     private fun JsonObject.string(key: String): String =
         this[key]?.jsonPrimitive?.contentOrNull.orEmpty()

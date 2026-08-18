@@ -1,6 +1,7 @@
 package com.aicoding.plugin.ui
 
 import com.aicoding.plugin.server.HttpServerManager
+import com.aicoding.plugin.services.IdeThemeService
 import com.aicoding.plugin.services.PluginUpdateService
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -11,7 +12,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.IconLoader
 import com.intellij.ui.JBColor
 import com.intellij.ui.scale.JBUIScale
-import com.intellij.util.ui.UIUtil
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.Graphics
@@ -57,7 +57,7 @@ private class ThemeAction(private val project: Project) : AnAction("切换明暗
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
     override fun update(event: AnActionEvent) {
-        val dark = UIUtil.isUnderDarcula()
+        val dark = IdeThemeService.currentTheme() == "dark"
         event.presentation.icon = if (dark) switchToLight else switchToDark
         event.presentation.text = if (dark) "切换为浅色" else "切换为深色"
         event.presentation.isEnabled = HttpServerManager.forProject(project)?.isRunning() == true

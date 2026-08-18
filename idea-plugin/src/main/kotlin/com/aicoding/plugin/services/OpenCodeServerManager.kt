@@ -6,7 +6,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.ServerSocket
-import java.net.URL
+import java.net.URI
 import java.util.concurrent.TimeUnit
 
 @Serializable
@@ -316,7 +316,7 @@ class OpenCodeServerManager(private val projectPath: String?) {
     }
 
     private fun request(target: String): Pair<Int, String>? = runCatching {
-        val connection = URL(target).openConnection() as HttpURLConnection
+        val connection = URI.create(target).toURL().openConnection() as HttpURLConnection
         connection.connectTimeout = CONNECT_TIMEOUT_MS
         connection.readTimeout = READ_TIMEOUT_MS
         connection.requestMethod = "GET"

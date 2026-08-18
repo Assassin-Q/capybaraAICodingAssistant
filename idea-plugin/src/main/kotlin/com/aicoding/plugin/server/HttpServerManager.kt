@@ -73,7 +73,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFileManager
-import com.intellij.util.ui.UIUtil
 import com.intellij.util.messages.MessageBusConnection
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpHandler
@@ -312,7 +311,7 @@ class HttpServerManager(
 
     fun isRunning(): Boolean = server != null
 
-    private fun currentIdeaTheme(): String = if (UIUtil.isUnderDarcula()) "dark" else "light"
+    private fun currentIdeaTheme(): String = IdeThemeService.currentTheme()
 
     fun setProjectPath(projectPath: String) {
         this.projectPath = projectPath
@@ -577,7 +576,7 @@ class HttpServerManager(
         val filename = request.filename.substringAfterLast('/').substringAfterLast('\\').ifBlank { "conversation.md" }
         var target: File? = null
         val chooseTarget = Runnable {
-            val descriptor = FileSaverDescriptor("保存对话", "选择文件保存位置")
+            val descriptor = FileSaverDescriptor("保存对话", "选择文件保存位置", "md")
             val dialog = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project)
             val projectDirectory = project.basePath?.let { path ->
                 LocalFileSystem.getInstance().findFileByPath(path)

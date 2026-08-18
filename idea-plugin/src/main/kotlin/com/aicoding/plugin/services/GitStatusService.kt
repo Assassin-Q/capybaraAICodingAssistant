@@ -205,13 +205,14 @@ class GitStatusService(private val project: Project) {
             logger.info("VCS action not available: $actionID")
             return
         }
-        ActionUtil.invokeAction(
+        val dataContext = SimpleDataContext.getProjectContext(project)
+        val event = com.intellij.openapi.actionSystem.AnActionEvent.createFromAnAction(
             action,
-            SimpleDataContext.getProjectContext(project),
+            null,
             "CapybaraGit",
-            null,
-            null,
+            dataContext,
         )
+        ActionUtil.performActionDumbAwareWithCallbacks(action, event)
     }
 
     private fun parseStatusLine(line: String): GitChangedFile? {
