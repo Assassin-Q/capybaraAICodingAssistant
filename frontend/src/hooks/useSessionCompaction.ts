@@ -15,6 +15,14 @@ interface SessionCompactionOptions {
   setError: Dispatch<SetStateAction<string>>;
 }
 
+const COMPACTION_POLL_INTERVAL = 250;
+const COMPACTION_IDLE_CHECKS = 3;
+const COMPACTION_MAX_POLLS = 80;
+
+const wait = (milliseconds: number) => new Promise<void>((resolve) => {
+  window.setTimeout(resolve, milliseconds);
+});
+
 /** Drives manual compaction from the request lifecycle; OpenCode has no `compacting` status. */
 export function useSessionCompaction({
   projectPath,
@@ -41,6 +49,20 @@ export function useSessionCompaction({
       const request = openCodeApi.compactSession(sessionID, selectedModel, projectPath);
       runtime.setRunStatus(sessionID, "streaming");
       await request;
+      // The summarize endpoint acknowledges the job before rewritten history is available.
+      // Reading immediately here raced the server and delayed the visible result until the next
+      // prompt. Wait for a stable idle status before fetching authoritative history.
+      let idleChecks = 0;
+      for (let attempt = 0; attempt < COMPACTION_MAX_POLLS; attempt += 1) {
+        const status = await openCodeApi.getSessionStatus(sessionID, projectPath);
+        if (status.type === "busy") {
+          idleChecks = 0;
+        } else {
+          idleChecks += 1;
+          if (idleChecks >= COMPACTION_IDLE_CHECKS) break;
+        }
+        await wait(COMPACTION_POLL_INTERVAL);
+      }
       const incoming = await openCodeApi.getMessages(sessionID, projectPath);
       /**
        * Say that it finished, whether or not the server left a trace.

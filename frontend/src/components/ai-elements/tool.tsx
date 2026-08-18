@@ -27,7 +27,7 @@ export type ToolProps = ComponentProps<typeof Collapsible>;
 
 export const Tool = ({ className, ...props }: ToolProps) => (
   <Collapsible
-    className={cn("group not-prose mb-1 w-fit max-w-full overflow-hidden rounded-md bg-transparent data-[state=open]:w-full", className)}
+    className={cn("group not-prose mb-0 w-fit max-w-full overflow-hidden rounded-md bg-transparent data-[state=open]:w-full", className)}
     {...props}
   />
 );
@@ -88,7 +88,7 @@ export const ToolHeader = ({
   const Wrapper = expandable ? CollapsibleTrigger : "div";
   return (
     <Wrapper
-      className={cn("inline-flex h-7 w-fit max-w-full items-center justify-start gap-1.5 rounded-md px-1.5 py-1 text-left leading-none outline-none focus-visible:ring-0", expandable && "hover:bg-muted/60", className)}
+      className={cn("inline-flex h-7 w-fit max-w-full items-center justify-start gap-1.5 rounded-md px-0 py-0.5 text-left leading-none outline-none focus-visible:ring-0", expandable && "hover:bg-muted/60", className)}
       {...props}
     >
       <div className="flex min-w-0 items-center gap-1.5 leading-none">
@@ -107,7 +107,7 @@ export type ToolContentProps = ComponentProps<typeof CollapsibleContent>;
 export const ToolContent = ({ className, ...props }: ToolContentProps) => (
   <CollapsibleContent
     className={cn(
-      "ml-5 space-y-2 rounded-md bg-muted/30 px-2.5 py-2.5 text-xs outline-none",
+      "ml-5 space-y-2 rounded-md bg-muted/30 px-2.5 py-2 text-xs outline-none",
       className
     )}
     {...props}

@@ -452,6 +452,14 @@ export function AssistantShell(props: AssistantShellProps) {
     });
   }, [conversationTurns, diffsByMessageID, isGenerating, lastUserTurnIndex, onSelectSession, streamingAssistantID, streamingAssistantParentID]);
 
+  // An empty assistant message is itself the streaming placeholder. Do not add a second footer
+  // Shimmer for the same run while OpenCode is between its first event and first visible part.
+  const hasStreamingAssistantMessage = isGenerating && conversationTurns.some((message) => {
+    if (message.type !== "assistant") return false;
+    return message.sourceIDs.includes(streamingAssistantID ?? "")
+      || Boolean(streamingAssistantParentID && message.parentID === streamingAssistantParentID);
+  });
+
   const lastTurn = conversationTurns[conversationTurns.length - 1];
   /**
    * Whether anything is *visibly* in progress at the tail of the newest turn.
@@ -480,7 +488,9 @@ export function AssistantShell(props: AssistantShellProps) {
     // Between two assistant messages OpenCode reports "generating" with nothing streaming yet.
     // Showing the placeholder on that gap left a spinner parked under a finished turn, so it only
     // appears while the newest turn genuinely has no content of its own.
-    isGenerating && !compacting && !tailIsBusy ? <AssistantThinking key="thinking" /> : null,
+    isGenerating && !compacting && !tailIsBusy && !hasStreamingAssistantMessage
+      ? <AssistantThinking key="thinking" />
+      : null,
     currentPermissions[0]
       ? <PermissionInline key={currentPermissions[0].id} onReply={(reply) => onPermissionReply(currentPermissions[0], reply)} request={currentPermissions[0]} />
       : null,
