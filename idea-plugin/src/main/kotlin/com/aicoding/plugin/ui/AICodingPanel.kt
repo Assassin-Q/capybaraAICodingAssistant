@@ -213,7 +213,7 @@ class AICodingPanel(
 
     private fun shouldOpenExternally(url: String): Boolean {
         val scheme = runCatching { URI(url).scheme?.lowercase() }.getOrNull() ?: return false
-        if (scheme !in setOf("http", "https", "mailto", "file")) return false
+        if (scheme !in setOf("http", "https", "mailto", "file", "jetbrains")) return false
         if (url.startsWith("http://127.0.0.1:" + httpServer.getPort() + "/browser-download")) return true
         val uri = runCatching { URI(url) }.getOrNull() ?: return true
         val localHost = uri.host == "127.0.0.1" || uri.host == "localhost"

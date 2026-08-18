@@ -1,7 +1,10 @@
-import { ArrowUpCircle, ExternalLink } from "lucide-react";
+import { ArrowUpCircle, ExternalLink, Puzzle } from "lucide-react";
 
 import { t } from "@/lib/i18n";
 import type { UpdateStatus } from "@/lib/idea";
+
+const IDEA_PLUGIN_CENTER_URL =
+  "jetbrains://plugins.jetbrains.com/pluginManager?action=install&pluginId=com.aicoding.ai-coding-plugin";
 
 /**
  * States the installed version, and points at the release when a newer one exists.
@@ -28,6 +31,14 @@ export function UpdateNotice({ status }: { status?: UpdateStatus }) {
           >
             <ExternalLink className="size-3" />
             {t("update.download")}
+          </a>
+          <a
+            className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+            href={IDEA_PLUGIN_CENTER_URL}
+            rel="noreferrer"
+          >
+            <Puzzle className="size-3" />
+            {t("update.openPluginCenter")}
           </a>
         </>
       ) : (

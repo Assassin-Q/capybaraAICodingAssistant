@@ -23,6 +23,7 @@ export const zhSystem = {
   "update.promptDescription": "Capybara AI Coding Assistant 有新版本 {p0} 可用。",
   "update.promptCurrent": "当前版本 {p0}",
   "update.ignoreVersion": "该版本不再提醒",
+  "update.openPluginCenter": "在 IDEA 插件中心更新",
 
   "memoryPlugin.opencode-mem": "本地 Turso/libSQL 向量库，自动捕获、跨项目用户画像与管理面板。自动捕获会额外调用一次模型。",
   "memoryPlugin.opencode-agent-memory": "基于可编辑记忆块和 AGENTS.md 的本地记忆 harness。",

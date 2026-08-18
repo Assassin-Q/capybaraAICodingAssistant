@@ -24,6 +24,9 @@ import java.awt.BorderLayout
 import javax.swing.JPanel
 import javax.swing.Icon
 
+private const val IDEA_PLUGIN_CENTER_URL =
+    "jetbrains://plugins.jetbrains.com/pluginManager?action=install&pluginId=com.aicoding.ai-coding-plugin"
+
 /**
  * The panel's controls, as native tool-window title actions.
  *
@@ -117,7 +120,7 @@ private class StatusAction(private val project: Project) : AnAction() {
         }
         event.presentation.text = when {
             !running -> "未连接"
-            status.hasUpdate -> "有新版本 ${status.latestVersion}，点击打开下载页面"
+            status.hasUpdate -> "有新版本 ${status.latestVersion}，点击打开 IDEA 插件中心"
             else -> "已连接 · 版本 ${status.currentVersion}"
         }
     }
@@ -125,7 +128,7 @@ private class StatusAction(private val project: Project) : AnAction() {
     override fun actionPerformed(event: AnActionEvent) {
         val status = PluginUpdateService.instance.cachedStatus()
         if (status.hasUpdate && status.downloadUrl.isNotBlank()) {
-            BrowserUtil.browse(status.downloadUrl)
+            BrowserUtil.browse(IDEA_PLUGIN_CENTER_URL)
         }
     }
 }
