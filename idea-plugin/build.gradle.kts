@@ -77,18 +77,12 @@ tasks {
         // the build rather than plugin.xml so it travels with the version it describes.
         changeNotes.set(
             """
-            <h3>3.0.2</h3>
+            <h3>3.0.3</h3>
             <ul>
-              <li><b>Git 状态：</b>顶部 Git 面板继续每 5 秒自动扫描，并新增手动刷新按钮，可立即重新扫描当前仓库状态。</li>
-              <li><b>IDEA 文件同步：</b>AI 完成编辑、写入、补丁或任务后会主动刷新 IDEA VFS 与项目树；即使事件早于会话标签建立，也能触发刷新。</li>
-              <li><b>流式滚动：</b>发送后自动跟随输出，向上滚轮、拖动滚动条或触摸会立即暂停；最终 Token 用量出现 500ms 后补充一次受控到底滚动，切换超长会话 1.5 秒后完成最终定位，用户主动滚动时均会取消。</li>
-              <li><b>IDEA 路径操作：</b>文件树与编辑器右键新增复制绝对路径、复制相对路径；两者都会为代码选区附带准确的真实行号范围。右键分组统一为 Capybara AI Coding，并使用适配明暗主题的 16×16 水豚图标。</li>
-              <li><b>模型设置：</b>模型 ID 支持跨全部供应商、区分大小写的模糊搜索；通过预索引和延迟查询改善输入响应，并提供完整可滚动列表、失焦关闭及截断内容悬停查看全称。</li>
-              <li><b>模型停用：</b>对话、视觉和记忆模型选择器直接按已保存配置过滤停用供应商与模型，即使外部 OpenCode 服务尚未重启也不会继续展示。</li>
-              <li><b>界面修复：</b>打开设置前关闭命令、模型、档位、Git 等临时弹层；连接页新增滚动悬浮的锚点导航、统一一级标题与内容层级，并将设置侧栏收窄到 160px。</li>
-              <li><b>会话修复：</b>合并 OpenCode 连续返回的模型与档位切换事件，避免相同模型切换分隔线重复显示。</li>
-              <li><b>系统浏览器：</b>设置、消息内容与更新提示中的外部链接统一交给系统默认浏览器；对话导出通过一次性下载地址触发浏览器原生下载，不再依赖 JCEF。</li>
-              <li><b>更新提醒：</b>插件启动检查到新版本时弹出中英文提醒，可直接下载或按版本永久忽略弹窗；忽略后顶部绿点和设置页更新状态仍然保留。</li>
+              <li><b>快捷键兼容：</b>移除插件内置的 Ctrl+/ 全局快捷键，避免与 IntelliJ IDEA 的行注释操作发生冲突。</li>
+              <li><b>入口保留：</b>打开或关闭水豚 AI 助手的操作仍保留在 Tools 菜单中；需要快捷键的用户可在 IDEA Keymap 中自行分配。</li>
+              <li><b>Shortcut compatibility:</b> Removed the bundled Ctrl+/ shortcut so IntelliJ IDEA's line-comment action is never intercepted by the plugin.</li>
+              <li><b>Action availability:</b> The panel toggle remains available under Tools, and users can assign a preferred shortcut from IDEA Keymap settings.</li>
             </ul>
             """.trimIndent()
         )
