@@ -77,16 +77,16 @@ tasks {
         // the build rather than plugin.xml so it travels with the version it describes.
         changeNotes.set(
             """
-            <h3>3.0.4</h3>
+            <h3>3.0.5</h3>
             <ul>
-              <li><b>IDEA 日志桥接：</b>Run、Debug、Maven 与 Gradle 控制台新增加入对话、分析日志和分析问题操作，AI 可直接读取当前控制台输出。</li>
-              <li><b>OpenCode 维护：</b>准确识别未安装状态，提供官方 npm 命令、一键安装、版本检查、应用内更新与安全重启。</li>
-              <li><b>会话与模型：</b>新增本轮文件修改回滚，并修复 OpenCode 重启期间模型选择器短暂显示全部模型的问题。</li>
-              <li><b>交互兼容：</b>下载和网页链接改由系统默认浏览器打开；外部启动的 OpenCode 服务不再被应用内更新误终止。</li>
-              <li><b>IDEA log bridge:</b> Added console actions for Run, Debug, Maven, and Gradle output, including attach, analyze log, and analyze problem.</li>
-              <li><b>OpenCode maintenance:</b> Added accurate installation detection, one-click install/update, periodic version checks, and managed restart behavior.</li>
-              <li><b>Sessions and models:</b> Added turn-level file revert and fixed the model picker exposing every model while OpenCode configuration reloads.</li>
-              <li><b>Desktop integration:</b> Downloads and web links now use the system browser, while externally managed OpenCode processes remain untouched.</li>
+              <li><b>安全安装：</b>一键安装与更新改为在隔离目录下载并验证，通过后才切换插件使用的 OpenCode，不再覆盖正在运行的全局 CLI。</li>
+              <li><b>故障恢复：</b>修复 Windows 下 npm postinstall 卡住后破坏现有 OpenCode 启动文件的问题；失败或超时会保留旧版本。</li>
+              <li><b>状态识别：</b>区分“未安装”和“已安装但无法启动”，并提供明确的一键修复入口和下载状态提示。</li>
+              <li><b>进程清理：</b>安装超时时会完整终止 npm 子进程树，避免后台安装长期占用文件。</li>
+              <li><b>Safe installation:</b> One-click install and update now download and verify OpenCode in isolation before switching the plugin to the new binary.</li>
+              <li><b>Recovery:</b> Failed or timed-out installs preserve the working version instead of corrupting a running global CLI on Windows.</li>
+              <li><b>Status detection:</b> The UI now distinguishes a missing installation from a damaged executable and exposes a dedicated repair action.</li>
+              <li><b>Process cleanup:</b> Timed-out npm installs terminate their complete child-process tree.</li>
             </ul>
             """.trimIndent()
         )

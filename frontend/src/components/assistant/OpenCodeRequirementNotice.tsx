@@ -42,8 +42,10 @@ export function OpenCodeRequirementNotice({
 
   // Silence is the healthy state: nothing is shown while the check is in flight or when it passes.
   const needsInstall = Boolean(requirement && !requirement.installed);
-  const needsUpgrade = Boolean(requirement && requirement.installed && (!requirement.supported || requirement.updateAvailable));
-  const healthy = Boolean(requirement && !needsInstall && !needsUpgrade);
+  const needsRepair = Boolean(requirement && requirement.installed && requirement.launchable === false);
+  const needsUpgrade = Boolean(requirement && requirement.installed && !needsRepair && (!requirement.supported || requirement.updateAvailable));
+  const needsMaintenance = needsRepair || needsUpgrade;
+  const healthy = Boolean(requirement && !needsInstall && !needsMaintenance);
   if (!requirement || (healthy && !showHealthy)) return null;
 
   const copy = (command: string) => {
@@ -55,12 +57,12 @@ export function OpenCodeRequirementNotice({
 
   const install = async () => {
     setInstalling(true);
-    setActionMessage("");
+    setActionMessage(t(needsInstall ? "opencode.installing" : needsRepair ? "opencode.repairing" : "opencode.updating"));
     try {
-      const result = await ideaApi.installOpenCode(needsUpgrade);
+      const result = await ideaApi.installOpenCode(needsMaintenance);
       if (result.requirement) setRequirement(result.requirement);
       if (result.runtime?.baseUrl) setOpenCodeBaseUrl(result.runtime.baseUrl);
-      setActionMessage(result.message ?? (needsUpgrade ? t("opencode.updateFailed") : t("opencode.installFailed")));
+      setActionMessage(result.message ?? (needsInstall ? t("opencode.installFailed") : t("opencode.updateFailed")));
       if (result.success) onChanged?.();
     } catch (error) {
       setActionMessage(error instanceof Error ? error.message : String(error));
@@ -84,6 +86,8 @@ export function OpenCodeRequirementNotice({
               ? t("opencode.statusTitle", { version: requirement.version })
               : needsInstall
               ? t("opencode.installTitle")
+              : needsRepair
+                ? t("opencode.repairTitle")
               : requirement.updateAvailable
                 ? t("opencode.updateTitle")
                 : t("opencode.upgradeTitle")}
@@ -122,8 +126,8 @@ export function OpenCodeRequirementNotice({
                 type="button"
                 variant="secondary"
               >
-                {installing ? <LoaderCircle className="size-3 animate-spin" /> : needsUpgrade ? <ArrowUpCircle className="size-3" /> : <Download className="size-3" />}
-                {installing ? t("opencode.working") : needsUpgrade ? t("opencode.updateInApp") : t("opencode.installInApp")}
+                {installing ? <LoaderCircle className="size-3 animate-spin" /> : needsMaintenance ? <ArrowUpCircle className="size-3" /> : <Download className="size-3" />}
+                {installing ? t("opencode.working") : needsRepair ? t("opencode.repairInApp") : needsUpgrade ? t("opencode.updateInApp") : t("opencode.installInApp")}
               </Button>
             </div>
           ))}

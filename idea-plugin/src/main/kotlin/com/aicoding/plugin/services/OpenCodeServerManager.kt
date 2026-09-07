@@ -62,9 +62,10 @@ class OpenCodeServerManager(private val projectPath: String?) {
             return endpoint
         }
 
-        val executable = resolveExecutable()
-        val missing = !File(executable).isFile && ExecutableLookup.which(executable).isEmpty()
+        val discovered = findExecutable()
+        val missing = discovered == null
         var freePortFound = false
+        var launchAttempted = false
         for (port in FIRST_PORT..LAST_PORT) {
             when (probe(port)) {
                 PortState.OPEN_CODE -> {
@@ -80,7 +81,8 @@ class OpenCodeServerManager(private val projectPath: String?) {
 
                 PortState.FREE -> {
                     freePortFound = true
-                    if (!missing) {
+                    if (!missing && !launchAttempted) {
+                        launchAttempted = true
                         val started = runCatching { startManaged(port, frontendPort) }.getOrNull()
                         if (started?.connected == true) return started
                     }
@@ -282,16 +284,21 @@ class OpenCodeServerManager(private val projectPath: String?) {
      * anything the user could fix, on a machine where `opencode --version` worked fine.
      */
     internal fun resolveExecutable(): String {
+        return findExecutable() ?: if (ExecutableLookup.isWindows) "opencode.cmd" else "opencode"
+    }
+
+    /** Returns null only when no configured, managed, or PATH installation exists. */
+    internal fun findExecutable(): String? {
         val configured = System.getenv("OPENCODE_BIN_PATH")
         if (!configured.isNullOrBlank() && File(configured).exists()) {
             return configured
         }
 
-        if (!ExecutableLookup.isWindows) {
-            return ExecutableLookup.resolve("opencode") ?: "opencode"
-        }
+        ManagedOpenCodeInstallation.currentExecutable()?.let { return it }
 
-        ExecutableLookup.resolve("opencode.exe")?.let { return it }
+        if (!ExecutableLookup.isWindows) {
+            return ExecutableLookup.resolve("opencode")
+        }
 
         val command = ExecutableLookup.resolve("opencode.cmd")
         if (command != null) {
@@ -303,7 +310,7 @@ class OpenCodeServerManager(private val projectPath: String?) {
             return command
         }
 
-        return "opencode.cmd"
+        return ExecutableLookup.resolve("opencode.exe", "opencode.ps1")
     }
 
     private fun probe(port: Int): PortState {

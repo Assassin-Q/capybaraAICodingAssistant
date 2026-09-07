@@ -94,6 +94,7 @@ export const zhSystem = {
   "model.suggestionSource": "该模型规格来自供应商「{p0}」，选中后会填入这里",
 
   "opencode.installTitle": "尚未安装 OpenCode",
+  "opencode.repairTitle": "OpenCode 需要修复",
   "opencode.upgradeTitle": "OpenCode 版本过低",
   "opencode.updateTitle": "发现 OpenCode 新版本",
   "opencode.statusTitle": "OpenCode {version}",
@@ -103,8 +104,12 @@ export const zhSystem = {
   "opencode.officialDocs": "官方安装文档",
   "opencode.restartHint": "安装或升级后插件会尝试重启服务；如果服务由终端启动，请按提示手动重启。",
   "opencode.installInApp": "一键安装",
+  "opencode.repairInApp": "一键修复",
   "opencode.updateInApp": "应用内更新",
   "opencode.working": "处理中",
+  "opencode.installing": "正在下载并验证 OpenCode，请稍候…",
+  "opencode.repairing": "正在隔离目录中修复 OpenCode，现有版本不会被覆盖…",
+  "opencode.updating": "正在隔离目录中更新并验证 OpenCode，现有版本不会被覆盖…",
   "opencode.installFailed": "OpenCode 安装失败",
   "opencode.updateFailed": "OpenCode 更新失败",
 

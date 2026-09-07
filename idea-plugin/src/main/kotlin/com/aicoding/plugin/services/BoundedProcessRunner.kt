@@ -34,9 +34,7 @@ object BoundedProcessRunner {
         }
         val completed = process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS)
         if (!completed) {
-            process.destroy()
-            if (!process.waitFor(500, TimeUnit.MILLISECONDS)) process.destroyForcibly()
-            process.waitFor(2, TimeUnit.SECONDS)
+            terminateTree(process)
         }
         val output = runCatching { outputFuture.get(2, TimeUnit.SECONDS) }
             .getOrElse {
@@ -65,5 +63,15 @@ object BoundedProcessRunner {
             }
         }
         return output.toByteArray()
+    }
+
+    private fun terminateTree(process: Process) {
+        val descendants = runCatching { process.descendants().toList().asReversed() }.getOrDefault(emptyList())
+        descendants.forEach { child -> runCatching { child.destroy() } }
+        runCatching { process.destroy() }
+        runCatching { process.waitFor(500, TimeUnit.MILLISECONDS) }
+        descendants.filter(ProcessHandle::isAlive).forEach { child -> runCatching { child.destroyForcibly() } }
+        if (process.isAlive) runCatching { process.destroyForcibly() }
+        runCatching { process.waitFor(2, TimeUnit.SECONDS) }
     }
 }

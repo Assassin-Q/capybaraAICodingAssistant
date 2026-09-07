@@ -19,6 +19,8 @@ data class OpenCodeRequirement(
     val installed: Boolean,
     /** False when the installed build predates the v2 session API this panel depends on. */
     val supported: Boolean,
+    /** False when an installation exists but its executable cannot start on this machine. */
+    val launchable: Boolean = false,
     val version: String = "",
     val minimumVersion: String = MINIMUM_OPENCODE_VERSION,
     val executable: String = "",
@@ -56,23 +58,35 @@ const val MINIMUM_OPENCODE_VERSION = "1.18.0"
 class OpenCodeRequirementService(private val project: Project) {
 
     fun check(forceLatest: Boolean = false): OpenCodeRequirement = runCatching {
-        val executable = OpenCodeServerManager(project.basePath).resolveExecutable()
-        val version = readVersion(executable)
-        if (version.isBlank()) {
+        val executable = OpenCodeServerManager(project.basePath).findExecutable()
+        if (executable == null) {
             return OpenCodeRequirement(
                 installed = false,
                 supported = false,
-                executable = executable,
                 methods = INSTALL_METHODS,
                 message = "未检测到 OpenCode。可复制官方 npm 命令安装，或点击一键安装。",
             )
         }
+        val probe = ManagedOpenCodeInstallation.probe(executable)
+        if (!probe.launchable) {
+            val detail = probe.output.lineSequence().firstOrNull { it.isNotBlank() }.orEmpty()
+            return OpenCodeRequirement(
+                installed = true,
+                supported = false,
+                launchable = false,
+                executable = executable,
+                methods = INSTALL_METHODS,
+                message = "已检测到 OpenCode，但当前可执行文件无法启动。可点击修复，旧版本和用户配置不会被覆盖。${detail.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()}",
+            )
+        }
+        val version = probe.version
         val supported = compareVersions(version, MINIMUM_OPENCODE_VERSION) >= 0
         val latest = latestVersion(forceLatest)
         val updateAvailable = latest.version.isNotBlank() && compareVersions(latest.version, version) > 0
         OpenCodeRequirement(
             installed = true,
             supported = supported,
+            launchable = true,
             version = version,
             executable = executable,
             methods = if (supported && !updateAvailable) emptyList() else INSTALL_METHODS,
@@ -96,29 +110,19 @@ class OpenCodeRequirementService(private val project: Project) {
     }
 
     fun installOrUpdate(update: Boolean): OpenCodeInstallResult = runCatching {
-        val command = if (update) {
-            val executable = OpenCodeServerManager(project.basePath).resolveExecutable()
-            require(readVersion(executable).isNotBlank()) { "未检测到可升级的 OpenCode，请先执行安装" }
-            ExecutableLookup.buildCommand(executable, listOf("upgrade"))
-        } else {
-            val npm = ExecutableLookup.resolve("npm.cmd", "npm")
-                ?: error("未检测到 npm。请先安装 Node.js，或复制页面中的 npm 命令在终端执行。")
-            ExecutableLookup.buildCommand(npm, listOf("install", "--global", "opencode-ai@latest"))
-        }
-        val result = BoundedProcessRunner.run(
-            command = command,
-            timeoutMillis = INSTALL_TIMEOUT_MILLIS,
-            maxOutputBytes = 2 * 1024 * 1024,
-        )
-        val output = result.output.toString(Charsets.UTF_8).trim()
-        if (result.timedOut) error(if (update) "OpenCode 更新超时" else "OpenCode 安装超时")
-        if (result.exitCode != 0) error(output.ifBlank { if (update) "OpenCode 更新失败" else "OpenCode 安装失败" })
+        val npm = ExecutableLookup.resolve("npm.cmd", "npm")
+            ?: error("未检测到 npm。请先安装 Node.js，或复制页面中的 npm 命令在终端执行。")
+        val installed = ManagedOpenCodeInstallation.installLatest(npm)
         val requirement = check(forceLatest = true)
-        require(requirement.installed) { "命令执行完成，但仍未检测到 OpenCode 可执行文件" }
+        require(requirement.installed && requirement.launchable) { "安装完成，但 OpenCode 启动验证失败" }
         OpenCodeInstallResult(
             success = true,
-            message = if (update) "OpenCode 已更新到 ${requirement.version}" else "OpenCode ${requirement.version} 安装完成",
-            output = output,
+            message = if (update) {
+                "OpenCode 已安全更新到 ${requirement.version}，旧版本未被覆盖"
+            } else {
+                "OpenCode ${requirement.version} 已安装到插件专用目录"
+            },
+            output = installed.output,
             requirement = requirement,
         )
     }.getOrElse { error ->
@@ -128,20 +132,6 @@ class OpenCodeRequirementService(private val project: Project) {
             requirement = check(),
         )
     }
-
-    /**
-     * `opencode --version` prints the bare version, but older builds also print a banner, so the
-     * first version-shaped token wins rather than the whole first line.
-     */
-    private fun readVersion(executable: String): String = runCatching {
-        val result = BoundedProcessRunner.run(
-            ExecutableLookup.buildCommand(executable, listOf("--version")),
-            timeoutMillis = VERSION_TIMEOUT_MILLIS,
-            maxOutputBytes = 64 * 1024,
-        )
-        if (result.timedOut || result.exitCode != 0) return ""
-        Regex("""\d+\.\d+\.\d+""").find(result.output.toString(Charsets.UTF_8))?.value.orEmpty()
-    }.getOrDefault("")
 
     private fun latestVersion(force: Boolean): LatestVersion {
         val now = System.currentTimeMillis()
@@ -181,8 +171,6 @@ class OpenCodeRequirementService(private val project: Project) {
     }
 
     private companion object {
-        const val VERSION_TIMEOUT_MILLIS = 10_000L
-        const val INSTALL_TIMEOUT_MILLIS = 300_000L
         const val LATEST_TIMEOUT_MILLIS = 5_000
         const val LATEST_CACHE_MILLIS = 30 * 60 * 1_000L
         val LATEST_LOCK = Any()

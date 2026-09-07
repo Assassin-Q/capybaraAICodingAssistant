@@ -89,6 +89,7 @@ export const enSystem = {
   "model.suggestionSource": "Spec published by the {p0} provider; selecting it fills these fields",
 
   "opencode.installTitle": "OpenCode is not installed",
+  "opencode.repairTitle": "OpenCode needs repair",
   "opencode.upgradeTitle": "OpenCode is too old",
   "opencode.updateTitle": "OpenCode update available",
   "opencode.statusTitle": "OpenCode {version}",
@@ -98,8 +99,12 @@ export const enSystem = {
   "opencode.officialDocs": "Official install guide",
   "opencode.restartHint": "The plugin will try to restart the service after install or upgrade; manually restart a terminal-managed service if prompted.",
   "opencode.installInApp": "Install",
+  "opencode.repairInApp": "Repair",
   "opencode.updateInApp": "Update in app",
   "opencode.working": "Working",
+  "opencode.installing": "Downloading and verifying OpenCode…",
+  "opencode.repairing": "Repairing OpenCode in an isolated directory without overwriting the current version…",
+  "opencode.updating": "Updating and verifying OpenCode in an isolated directory without overwriting the current version…",
   "opencode.installFailed": "OpenCode installation failed",
   "opencode.updateFailed": "OpenCode update failed",
 

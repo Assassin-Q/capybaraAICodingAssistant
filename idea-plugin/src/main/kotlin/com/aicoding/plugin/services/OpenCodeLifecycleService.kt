@@ -27,11 +27,11 @@ class OpenCodeLifecycleService(
         val current = manager.endpoint()
         val externalServiceRunning = request.update && current.connected && !current.managed
         // Never terminate a service started from the user's terminal as an implicit side effect of
-        // an in-app update. It may be shared with another IDE/project; the user can explicitly
-        // choose the force-restart action when they want to replace that process.
-        if (request.update && !externalServiceRunning) manager.stopForUpdate()
+        // an in-app update. The replacement is installed and verified first as well, so a failed
+        // download cannot take a working plugin-managed service offline.
         val result = requirementService.installOrUpdate(request.update)
-        val runtime = if (result.success || request.update) {
+        if (result.success && request.update && !externalServiceRunning) manager.stopForUpdate()
+        val runtime = if (result.success) {
             runCatching { manager.start(frontendPort) }.getOrElse { error ->
                 OpenCodeEndpoint(projectPath = projectPath, error = error.message ?: "无法启动 OpenCode 服务。")
             }

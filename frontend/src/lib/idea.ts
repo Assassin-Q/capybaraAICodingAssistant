@@ -25,6 +25,7 @@ export interface OpenCodeInstallMethod {
 export interface OpenCodeRequirement {
   installed: boolean;
   supported: boolean;
+  launchable?: boolean;
   version: string;
   minimumVersion: string;
   executable: string;
