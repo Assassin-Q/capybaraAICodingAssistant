@@ -14,6 +14,7 @@ import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandler.ErrorCode
 import org.cef.handler.CefLoadHandlerAdapter
+import org.cef.handler.CefLifeSpanHandler
 import org.cef.handler.CefRequestHandler
 import java.awt.BorderLayout
 import java.awt.CardLayout
@@ -81,6 +82,7 @@ class AICodingPanel(
         add(cards, BorderLayout.CENTER)
         installLoadHandler()
         installExternalNavigationHandler()
+        installExternalPopupHandler()
         enforceMinimumWidth()
         startFrontend()
         Disposer.register(project, this)
@@ -199,6 +201,32 @@ class AICodingPanel(
             }
         } as CefRequestHandler
         runCatching { browser.jbCefClient.addRequestHandler(handler, browser.cefBrowser) }
+    }
+
+    /** target=_blank and window.open use the life-span handler, not CefRequestHandler. */
+    private fun installExternalPopupHandler() {
+        val browser = browser ?: return
+        val handler = Proxy.newProxyInstance(
+            CefLifeSpanHandler::class.java.classLoader,
+            arrayOf(CefLifeSpanHandler::class.java),
+        ) { _, method, args ->
+            when (method.name) {
+                "onBeforePopup" -> {
+                    val url = args?.getOrNull(2) as? String
+                    if (url != null && shouldOpenExternally(url)) {
+                        ApplicationManager.getApplication().invokeLater { BrowserUtil.browse(url) }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                "hashCode" -> System.identityHashCode(this)
+                "equals" -> args?.getOrNull(0) === this
+                "toString" -> "CapybaraExternalPopupHandler"
+                else -> defaultNavigationReturn(method.returnType)
+            }
+        } as CefLifeSpanHandler
+        runCatching { browser.jbCefClient.addLifeSpanHandler(handler, browser.cefBrowser) }
     }
 
     private fun navigationUrl(args: Array<out Any?>?): String? = args?.firstNotNullOfOrNull { arg ->

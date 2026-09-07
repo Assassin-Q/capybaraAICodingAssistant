@@ -143,5 +143,29 @@
                 text="复制相对路径"
                 description="复制项目相对路径；编辑器选区会附带行号范围" />
         </group>
+
+        <group
+            id="com.aicoding.plugin.ConsoleAICodingMenu"
+            text="Capybara AI Coding"
+            description="将当前 IDEA 控制台输出发送给助手"
+            icon="/Capybara.svg"
+            popup="true">
+            <add-to-group group-id="ConsoleView.PopupMenu" anchor="first" />
+            <action
+                id="com.aicoding.plugin.AddConsoleToConversationAction"
+                class="com.aicoding.plugin.actions.AddConsoleToConversationAction"
+                text="加入对话"
+                description="将选中的输出或当前控制台日志作为附件加入对话" />
+            <action
+                id="com.aicoding.plugin.AnalyzeConsoleLogAction"
+                class="com.aicoding.plugin.actions.AnalyzeConsoleLogAction"
+                text="分析日志"
+                description="立即发送当前控制台日志并总结执行结果" />
+            <action
+                id="com.aicoding.plugin.AnalyzeConsoleProblemAction"
+                class="com.aicoding.plugin.actions.AnalyzeConsoleProblemAction"
+                text="分析问题"
+                description="立即发送当前控制台日志并定位错误根因" />
+        </group>
     </actions>
 </idea-plugin>

@@ -77,12 +77,15 @@ export const isTextFile = (file: File): boolean => {
 /** A function, not a constant: a module-level t() freezes the string to the load-time locale. */
 const contextInstructions = (): Record<ContextChip["action"], string> => ({
   add_to_chat: t("s_c57401eb1d"),
+  analyze_issue: t("console.analyzeIssueInstruction"),
+  analyze_log: t("console.analyzeLogInstruction"),
   explain_code: t("s_a19aef03da"),
   generate_test: t("s_f98a9b921b"),
   optimize_code: t("s_1c34089065"),
 });
 
 const contextMime = (context: ContextChip): string => {
+  if (context.kind === "log") return "text/x-idea-console-log";
   if (context.kind === "skill") return "text/x-idea-skill";
   if (context.kind === "directory") return "text/x-idea-directory";
   if (context.kind === "selection") return "text/x-idea-selection";
@@ -91,6 +94,7 @@ const contextMime = (context: ContextChip): string => {
 };
 
 const contextName = (context: ContextChip, index: number): string => {
+  if (context.kind === "log") return context.displayName || t("console.attachmentName", { index: index + 1 });
   // Named by the skill, not by its file — every one of them is called SKILL.md.
   if (context.kind === "skill") return context.fileName || t("s_a814b933ae", { p0: index + 1 });
   const location = context.fileName?.split(/[\\/]/).filter(Boolean).pop();

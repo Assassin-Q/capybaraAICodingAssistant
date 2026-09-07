@@ -234,6 +234,10 @@ export interface SessionInfo {
   projectID: string;
   agent?: string;
   model?: ModelRef;
+  revert?: {
+    messageID: string;
+    partID?: string;
+  };
   title: string;
   location: LocationRef;
   subpath?: string;

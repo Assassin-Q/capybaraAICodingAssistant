@@ -21,6 +21,8 @@ import com.aicoding.plugin.services.FileAttachRequest
 import com.aicoding.plugin.services.FrontendLogRequest
 import com.aicoding.plugin.services.FrontendLogService
 import com.aicoding.plugin.services.OpenCodeRequirementService
+import com.aicoding.plugin.services.OpenCodeInstallRequest
+import com.aicoding.plugin.services.OpenCodeLifecycleService
 import com.aicoding.plugin.services.PluginUpdateService
 import com.aicoding.plugin.services.FileSearchRequest
 import com.aicoding.plugin.services.GitStatusService
@@ -121,6 +123,7 @@ private data class IdeContextEvent(
     val content: String,
     val kind: String? = null,
     val fileName: String? = null,
+    val displayName: String? = null,
     val lineRange: LineRange? = null,
     val timestamp: Long,
 )
@@ -175,6 +178,7 @@ class HttpServerManager(
     private val fileSearchService = IdeaFileSearchService(project)
     private val frontendLogService = FrontendLogService()
     private val requirementService = OpenCodeRequirementService(project)
+    private val openCodeLifecycle = OpenCodeLifecycleService(openCodeServer, requirementService, project.basePath)
     private val approvalModeService = project.getService(ApprovalModeService::class.java)
     private val browserService = project.getService(BrowserControlService::class.java)
     private val gitStatusService = project.getService(GitStatusService::class.java)
@@ -323,6 +327,7 @@ class HttpServerManager(
         content = content,
         kind = kind,
         fileName = fileName,
+        displayName = displayName,
         lineRange = lineRange,
         timestamp = timestamp,
     )
@@ -664,21 +669,8 @@ class HttpServerManager(
     }
 
     private fun handleRestartOpenCode(exchange: HttpExchange) {
-        val body = exchange.requestBody.bufferedReader(Charsets.UTF_8).use { it.readText() }
-        val force = body.takeIf { it.isNotBlank() }
-            ?.let { runCatching { json.decodeFromString<RestartRequest>(it).force }.getOrDefault(false) }
-            ?: false
-        openCodeEndpoint = runCatching {
-            openCodeServer.restart(port, force)
-        }.getOrElse { error ->
-            OpenCodeEndpoint(
-                projectPath = projectPath,
-                error = error.message ?: "无法重启 OpenCode 服务。",
-            )
-        }.copy(
-            frontendPort = port,
-            ideaTheme = currentIdeaTheme(),
-        )
+        val force = runCatching { body<RestartRequest>(exchange).force }.getOrDefault(false)
+        openCodeEndpoint = openCodeLifecycle.restart(port, force, currentIdeaTheme())
         // Lets any other connected view refresh without polling.
         broadcastSse("opencode.restarted", responseJson.encodeToString(openCodeEndpoint))
         writeJson(exchange, 200, openCodeEndpoint)
@@ -850,12 +842,10 @@ class HttpServerManager(
             route == "/gradle" && method == "POST" ->
                 writeJson(exchange, 200, executionService.runGradle(body<IdeaBuildRequest>(exchange)))
             route == "/logs" && method == "GET" -> {
-                val configurationID = exchange.requestURI.rawQuery
-                    ?.split('&')
-                    ?.firstOrNull { it.startsWith("configurationID=") }
-                    ?.substringAfter('=')
-                    ?.let { URLDecoder.decode(it, Charsets.UTF_8) }
-                writeJson(exchange, 200, executionService.logs(configurationID))
+                val configurationID = queryParam(exchange, "configurationID")
+                val executionID = queryParam(exchange, "executionID")?.toLongOrNull()
+                val latestOnly = queryParam(exchange, "latestOnly") == "true"
+                writeJson(exchange, 200, executionService.logs(configurationID, executionID, latestOnly))
             }
             route == "/project-context" && method == "GET" ->
                 writeJson(exchange, 200, insightService.projectContext())
@@ -868,7 +858,9 @@ class HttpServerManager(
             route == "/navigate" && method == "POST" ->
                 writeJson(exchange, 200, insightService.navigate(body<IdeaNavigateRequest>(exchange)))
             route == "/opencode-requirement" && method == "GET" ->
-                writeJson(exchange, 200, requirementService.check())
+                writeJson(exchange, 200, requirementService.check(queryParam(exchange, "force") == "true"))
+            route == "/opencode-install" && method == "POST" ->
+                handleOpenCodeInstall(exchange)
             route == "/client-log" && method == "POST" ->
                 writeJson(exchange, 200, frontendLogService.append(body<FrontendLogRequest>(exchange)))
             route == "/client-log" && method == "GET" -> {
@@ -916,6 +908,13 @@ class HttpServerManager(
             sseClients.remove(output)
             runCatching { output.close() }
         }
+    }
+
+    private fun handleOpenCodeInstall(exchange: HttpExchange) {
+        val result = openCodeLifecycle.install(port, body<OpenCodeInstallRequest>(exchange), currentIdeaTheme())
+        result.runtime?.let { openCodeEndpoint = it }
+        if (openCodeEndpoint.connected) broadcastSse("opencode.restarted", responseJson.encodeToString(openCodeEndpoint))
+        writeJson(exchange, 200, result)
     }
 
     companion object {

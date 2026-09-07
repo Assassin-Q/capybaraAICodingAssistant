@@ -6,10 +6,11 @@ export interface IdeLineRange {
 
 export interface IdeContextEvent {
   id: string;
-  action: "add_to_chat" | "explain_code" | "optimize_code" | "generate_test";
+  action: "add_to_chat" | "explain_code" | "optimize_code" | "generate_test" | "analyze_log" | "analyze_issue";
   content: string;
-  kind?: "file" | "directory" | "selection" | "binary" | "skill" | "agent" | "mcp";
+  kind?: "file" | "directory" | "selection" | "binary" | "skill" | "agent" | "mcp" | "log";
   fileName?: string;
+  displayName?: string;
   lineRange?: IdeLineRange;
   timestamp: number;
 }
@@ -30,6 +31,10 @@ export interface OpenCodeRequirement {
   docsUrl: string;
   methods: OpenCodeInstallMethod[];
   message: string;
+  latestVersion?: string;
+  updateAvailable?: boolean;
+  updateCheckedAt?: number;
+  updateError?: string;
 }
 
 export interface IdeaRuntimeConfig {
@@ -371,7 +376,9 @@ const normalizeContextEvent = (raw: unknown): IdeContextEvent | null => {
     action !== "add_to_chat" &&
     action !== "explain_code" &&
     action !== "optimize_code" &&
-    action !== "generate_test"
+    action !== "generate_test" &&
+    action !== "analyze_log" &&
+    action !== "analyze_issue"
   ) {
     return null;
   }
@@ -383,10 +390,11 @@ const normalizeContextEvent = (raw: unknown): IdeContextEvent | null => {
   return {
     action,
     content,
-    kind: data.kind === "directory" || data.kind === "selection" || data.kind === "binary" || data.kind === "file" || data.kind === "skill" || data.kind === "agent"
+    kind: data.kind === "directory" || data.kind === "selection" || data.kind === "binary" || data.kind === "file" || data.kind === "skill" || data.kind === "agent" || data.kind === "mcp" || data.kind === "log"
       ? data.kind
       : undefined,
     fileName: typeof data.fileName === "string" ? data.fileName : undefined,
+    displayName: typeof data.displayName === "string" ? data.displayName : undefined,
     id:
       typeof data.id === "number" || typeof data.id === "string"
         ? String(data.id)
@@ -441,7 +449,21 @@ export const ideaApi = {
   },
 
   /** Whether OpenCode is installed and new enough for the v2 session API this panel relies on. */
-  openCodeRequirement: () => request<OpenCodeRequirement>("/ide/opencode-requirement"),
+  openCodeRequirement: (force = false) =>
+    request<OpenCodeRequirement>(`/ide/opencode-requirement${force ? "?force=true" : ""}`),
+
+  /** Installs or upgrades OpenCode through its official npm package, then restarts the service. */
+  installOpenCode: (update = false) =>
+    request<{
+      success: boolean;
+      message?: string;
+      output?: string;
+      requirement?: OpenCodeRequirement;
+      runtime?: IdeaRuntimeConfig;
+    }>("/ide/opencode-install", {
+      body: JSON.stringify({ update }),
+      method: "POST",
+    }),
 
   /**
    * Re-discovers the local OpenCode server. A plugin-managed server is relaunched; an

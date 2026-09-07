@@ -219,7 +219,6 @@ const toModelRef = (value: unknown): ModelRef | undefined => {
   const variant = stringValue(record?.variant);
   return { id, providerID, ...(variant && variant !== "default" ? { variant } : {}) };
 };
-
 const toSession = (value: unknown, directory?: string): SessionInfo | undefined => {
   const record = asRecord(value);
   const id = stringValue(record?.id);
@@ -227,6 +226,8 @@ const toSession = (value: unknown, directory?: string): SessionInfo | undefined 
   const time = asRecord(record?.time);
   const location = asRecord(record?.location);
   const rawDirectory = stringValue(record?.directory) || stringValue(location?.directory, directory ?? "");
+  const revert = asRecord(record?.revert);
+  const revertMessageID = stringValue(revert?.messageID) || stringValue(revert?.messageId);
   return {
     agent: stringValue(record?.agent) || undefined,
     id,
@@ -237,6 +238,9 @@ const toSession = (value: unknown, directory?: string): SessionInfo | undefined 
     model: toModelRef(record?.model),
     parentID: stringValue(record?.parentID) || undefined,
     projectID: stringValue(record?.projectID),
+    revert: revertMessageID
+      ? { messageID: revertMessageID, partID: stringValue(revert?.partID) || stringValue(revert?.partId) || undefined }
+      : undefined,
     subpath: stringValue(record?.subpath) || stringValue(record?.path) || undefined,
     time: {
       archived: numberValue(time?.archived) || undefined,
@@ -247,6 +251,17 @@ const toSession = (value: unknown, directory?: string): SessionInfo | undefined 
   };
 };
 
+/** OpenCode keeps reverted history on the server for an eventual unrevert. The UI must stop at
+ * the recorded message or it would show work that the user just asked to roll back. */
+export const messagesBeforeRevert = (
+  messages: SessionMessage[],
+  session?: Pick<SessionInfo, "revert">,
+): SessionMessage[] => {
+  const messageID = session?.revert?.messageID;
+  if (!messageID) return messages;
+  const index = messages.findIndex((message) => message.id === messageID);
+  return index < 0 ? messages : messages.slice(0, index);
+};
 const toAssistantPart = (
   value: unknown
 ): AssistantTextPart | AssistantReasoningPart | AssistantToolPart | undefined => {

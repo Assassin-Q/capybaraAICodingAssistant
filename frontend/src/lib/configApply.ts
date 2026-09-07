@@ -3,6 +3,46 @@ import { t } from "@/lib/i18n";
 import { openCodeApi } from "@/lib/opencode";
 import type { ModelInfo, OpenCodeConfig } from "@/lib/opencode";
 
+const configCache = new Map<string, OpenCodeConfig>();
+const selectableModelCache = new Map<string, ModelInfo[]>();
+
+const configCacheKey = (directory?: string): string => directory?.trim() || "__default__";
+
+const wait = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+
+/**
+ * The bridge can answer while OpenCode is restarting with `{ success: false, config: {} }`.
+ * That object is a failure envelope, not an empty user configuration. Keep the last successful
+ * disk snapshot and retry briefly so a restart cannot make disabled providers reappear.
+ */
+interface ConfigReadResult {
+  /** A successful read, including an intentionally empty config on a fresh install. */
+  config?: OpenCodeConfig;
+  /** True when the bridge answered, even if it returned a failure envelope. */
+  responseReceived: boolean;
+}
+
+const readConfigSnapshot = async (directory?: string): Promise<ConfigReadResult> => {
+  const key = configCacheKey(directory);
+  let responseReceived = false;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const snapshot = await ideaApi.getOpenCodeConfig().catch(() => undefined);
+    responseReceived ||= snapshot !== undefined;
+    if (
+      snapshot?.success === true
+      && snapshot.config
+      && typeof snapshot.config === "object"
+    ) {
+      const config = snapshot.config as OpenCodeConfig;
+      configCache.set(key, config);
+      return { config, responseReceived: true };
+    }
+    if (attempt < 2) await wait(120 * (attempt + 1));
+  }
+  return { config: configCache.get(key), responseReceived };
+};
+
 /**
  * MCP servers as configured on disk, skipping the disabled ones.
  *
@@ -11,9 +51,9 @@ import type { ModelInfo, OpenCodeConfig } from "@/lib/opencode";
  * page writes opencode.jsonc, so reading the same file is what makes it show up at once. The
  * initial load also skipped the enabled check and offered servers the user had switched off.
  */
-export const enabledMcpNames = async (): Promise<string[]> => {
-  const snapshot = await ideaApi.getOpenCodeConfig().catch(() => undefined);
-  const mcp = (snapshot?.config as OpenCodeConfig | undefined)?.mcp ?? {};
+export const enabledMcpNames = async (directory?: string): Promise<string[]> => {
+  const { config } = await readConfigSnapshot(directory);
+  const mcp = config?.mcp ?? {};
   return Object.entries(mcp)
     .filter(([, config]) => config.enabled !== false)
     .map(([name]) => name);
@@ -28,14 +68,21 @@ export const enabledMcpNames = async (): Promise<string[]> => {
 export const selectableConfiguredModels = async (directory?: string): Promise<ModelInfo[]> => {
   const [models, snapshot] = await Promise.all([
     openCodeApi.listModels(directory),
-    ideaApi.getOpenCodeConfig().catch(() => undefined),
+    readConfigSnapshot(directory),
   ]);
-  const config = snapshot?.config as OpenCodeConfig | undefined;
-  if (!config) return models;
+  // A failed bridge response is not an empty configuration. Showing every live `/api/model`
+  // entry here would make disabled providers/models reappear immediately after a restart. Keep
+  // the last filtered list during a transient failure; if this is the first IDEA read, fail closed
+  // with no models. If the bridge is unavailable altogether (standalone web mode), preserve the
+  // old direct-API behavior.
+  if (!snapshot.config) return snapshot.responseReceived ? (selectableModelCache.get(configCacheKey(directory)) ?? []) : models;
+  const config = snapshot.config;
   const disabledProviders = new Set(config.disabled_providers ?? []);
-  return models.filter((model) =>
+  const selectable = models.filter((model) =>
     !disabledProviders.has(model.providerID)
     && !(config.provider?.[model.providerID]?.blacklist ?? []).includes(model.id));
+  selectableModelCache.set(configCacheKey(directory), selectable);
+  return selectable;
 };
 
 export interface ConfigApplyResult {

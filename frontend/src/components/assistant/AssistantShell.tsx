@@ -28,6 +28,7 @@ import {
   VariantPicker,
 } from "@/components/assistant/ModelPicker";
 import { ApprovalModePicker } from "@/components/assistant/ApprovalModePicker";
+import { OpenCodeRequirementNotice } from "@/components/assistant/OpenCodeRequirementNotice";
 import {
   annotationsAsPrompt,
   BrowserAnnotationChip,
@@ -156,6 +157,7 @@ export interface AssistantShellProps {
   onQuestionChange: (request: QuestionRequest, index: number, values: string[]) => void;
   onQuestionReject: (request: QuestionRequest) => void;
   onQuestionReply: (request: QuestionRequest) => void;
+  onRevertSession: (messageID: string) => Promise<void>;
   onQueueClear: () => void;
   onQueueDelete: (id: string) => void;
   onQueueEdit: (item: QueuedPrompt) => void;
@@ -377,6 +379,7 @@ export function AssistantShell(props: AssistantShellProps) {
     onQuestionChange,
     onQuestionReject,
     onQuestionReply,
+    onRevertSession,
     onQueueClear,
     onQueueDelete,
     onQueueEdit,
@@ -409,6 +412,17 @@ export function AssistantShell(props: AssistantShellProps) {
     (found, message, index) => (message.type === "user" ? index : found),
     -1
   );
+  const lastAssistantIndexByTurn = useMemo(() => {
+    const last = new Map<string, number>();
+    let latestUserMessageID: string | undefined;
+    conversationTurns.forEach((message, index) => {
+      if (message.type === "user") latestUserMessageID = message.id;
+      if (message.type === "assistant") {
+        last.set(message.parentID ?? latestUserMessageID ?? message.id, index);
+      }
+    });
+    return last;
+  }, [conversationTurns]);
 
   const renderedTurns = useMemo(() => {
     let latestUserMessageID: string | undefined;
@@ -425,6 +439,7 @@ export function AssistantShell(props: AssistantShellProps) {
       }
       if (message.type === "assistant") {
         const diffMessageID = message.parentID ?? latestUserMessageID ?? message.id;
+        const showTurnSummary = lastAssistantIndexByTurn.get(diffMessageID) === index;
         const messageIsStreaming = isGenerating && (
           message.sourceIDs.includes(streamingAssistantID ?? "")
           || Boolean(streamingAssistantParentID && message.parentID === streamingAssistantParentID)
@@ -437,6 +452,9 @@ export function AssistantShell(props: AssistantShellProps) {
               runActive={isGenerating && index > lastUserTurnIndex}
               message={message as AssistantMessageData}
               onOpenSession={onSelectSession}
+              onRevertSession={onRevertSession}
+              revertMessageID={diffMessageID}
+              showTurnSummary={showTurnSummary}
             />
           </ErrorBoundary>,
         ];
@@ -450,7 +468,7 @@ export function AssistantShell(props: AssistantShellProps) {
         />,
       ];
     });
-  }, [conversationTurns, diffsByMessageID, isGenerating, lastUserTurnIndex, onSelectSession, streamingAssistantID, streamingAssistantParentID]);
+  }, [conversationTurns, diffsByMessageID, isGenerating, lastAssistantIndexByTurn, lastUserTurnIndex, onRevertSession, onSelectSession, streamingAssistantID, streamingAssistantParentID]);
 
   // An empty assistant message is itself the streaming placeholder. Do not add a second footer
   // Shimmer for the same run while OpenCode is between its first event and first visible part.
@@ -534,6 +552,11 @@ export function AssistantShell(props: AssistantShellProps) {
         )}
 
         {error && <div className="flex shrink-0 items-start gap-2 border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"><CircleAlert className="mt-0.5 size-3.5 shrink-0" /><span className="min-w-0 flex-1 break-words">{error}</span><Button aria-label={t("s_7cc3cc83d6")} className="size-5 shrink-0" onClick={onClearError} size="icon" type="button" variant="ghost"><X className="size-3" /></Button></div>}
+        {connected === false && (
+          <div className="shrink-0 px-3 pt-3">
+            <OpenCodeRequirementNotice onChanged={onRefresh} />
+          </div>
+        )}
 
         {/* A subagent session is not in the session list, so this bar is the only way back out. */}
         {currentSession?.parentID && (

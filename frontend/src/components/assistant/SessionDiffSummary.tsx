@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Columns3, FilePenLine } from "lucide-react";
+import { ChevronDown, ChevronUp, Columns3, FilePenLine, Undo2 } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -16,6 +16,7 @@ import {
   CommitMetadata,
 } from "@/components/ai-elements/commit";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ideaApi } from "@/lib/idea";
 import type { SessionFileDiff } from "@/lib/opencode";
 import { t } from "@/lib/i18n";
@@ -94,28 +95,81 @@ export function DiffFileList({
   );
 }
 
-export function SessionDiffSummary({ diffs }: { diffs: SessionFileDiff[] }) {
+export function SessionDiffSummary({
+  diffs,
+  onRevert,
+}: {
+  diffs: SessionFileDiff[];
+  onRevert?: () => Promise<void>;
+}) {
+  const [revertOpen, setRevertOpen] = useState(false);
+  const [reverting, setReverting] = useState(false);
   if (diffs.length === 0) return null;
   const additions = diffs.reduce((total, diff) => total + diff.additions, 0);
   const deletions = diffs.reduce((total, diff) => total + diff.deletions, 0);
 
+  const confirmRevert = async () => {
+    if (!onRevert || reverting) return;
+    setReverting(true);
+    try {
+      await onRevert();
+      setRevertOpen(false);
+    } catch {
+      // The workspace-level error notice contains the server response; keep the dialog open.
+    } finally {
+      setReverting(false);
+    }
+  };
+
   return (
-    <Commit className="mt-2 overflow-hidden rounded-md border border-border/35 bg-background/45 shadow-none" defaultOpen>
-      <div className="flex items-center gap-2.5 px-3 py-2.5">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/70 text-muted-foreground">
-          <FilePenLine className="size-4" />
+    <>
+      <Commit className="mt-2 overflow-hidden rounded-md border border-border/35 bg-background/45 shadow-none" defaultOpen>
+        <div className="flex items-center gap-2.5 px-3 py-2.5">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/70 text-muted-foreground">
+            <FilePenLine className="size-4" />
+          </div>
+          <CommitInfo className="min-w-0 gap-0.5">
+            <CommitMessage className="truncate text-xs font-medium">{t("s_c367766fe1")} {diffs.length} {t("s_6218629ae2")}</CommitMessage>
+            <CommitMetadata className="gap-1.5">
+              <span className="text-emerald-600 dark:text-emerald-400">+{additions}</span>
+              <span className="text-red-600 dark:text-red-400">-{deletions}</span>
+            </CommitMetadata>
+          </CommitInfo>
+          {onRevert && (
+            <Button
+              aria-label={t("diff.revert")}
+              className="ml-auto size-7 shrink-0 text-muted-foreground hover:text-destructive"
+              disabled={reverting}
+              onClick={() => setRevertOpen(true)}
+              size="icon"
+              title={t("diff.revert")}
+              type="button"
+              variant="ghost"
+            >
+              <Undo2 className="size-3.5" />
+            </Button>
+          )}
         </div>
-        <CommitInfo className="min-w-0 gap-0.5">
-          <CommitMessage className="truncate text-xs font-medium">{t("s_c367766fe1")} {diffs.length} {t("s_6218629ae2")}</CommitMessage>
-          <CommitMetadata className="gap-1.5">
-            <span className="text-emerald-600 dark:text-emerald-400">+{additions}</span>
-            <span className="text-red-600 dark:text-red-400">-{deletions}</span>
-          </CommitMetadata>
-        </CommitInfo>
-      </div>
-      <CommitContent className="border-border/30 px-1.5 py-1">
-        <DiffFileList diffs={diffs} />
-      </CommitContent>
-    </Commit>
+        <CommitContent className="border-border/30 px-1.5 py-1">
+          <DiffFileList diffs={diffs} />
+        </CommitContent>
+      </Commit>
+      <Dialog onOpenChange={setRevertOpen} open={revertOpen}>
+        <DialogContent className="max-w-[calc(100vw-1.5rem)] gap-3 p-4 sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">{t("diff.revertTitle")}</DialogTitle>
+            <DialogDescription>{t("diff.revertDescription")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setRevertOpen(false)} type="button" variant="ghost">
+              {t("s_4d0b4688c7")}
+            </Button>
+            <Button disabled={reverting} onClick={() => void confirmRevert()} type="button" variant="destructive">
+              {reverting ? t("diff.reverting") : t("diff.revertConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

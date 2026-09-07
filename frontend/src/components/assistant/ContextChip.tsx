@@ -1,4 +1,4 @@
-import { Bot, FileCode2, FolderOpen, Server, Sparkles, X } from "lucide-react";
+import { Bot, FileCode2, FileTerminal, FolderOpen, Server, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { ContextChip as ContextChipData } from "@/components/assistant/shared";
@@ -10,8 +10,10 @@ const baseName = (value: string): string =>
 
 export function ContextChip({ context, onRemove }: { context: ContextChipData; onRemove: () => void }) {
   const fullPath = context.fileName ?? t("s_208eed345a");
-  const displayName = context.kind === "skill" || context.kind === "agent" || context.kind === "mcp"
-    ? fullPath
+  const displayName = context.kind === "log"
+    ? context.displayName || t("console.attachmentName", { index: 1 })
+    : context.kind === "skill" || context.kind === "agent" || context.kind === "mcp"
+      ? fullPath
     : baseName(fullPath);
   const lineRange = context.lineRange
     ? `${context.lineRange.start}${context.lineRange.end !== context.lineRange.start ? `-${context.lineRange.end}` : ""}`
@@ -20,7 +22,9 @@ export function ContextChip({ context, onRemove }: { context: ContextChipData; o
   // the location string, which is the conventional `path:line` an editor understands.
   const lineLabel = lineRange ? `[${lineRange}]` : "";
   const fullLocation = `${fullPath}${lineRange ? `:${lineRange}` : ""}`;
-  const Icon = context.kind === "agent"
+  const Icon = context.kind === "log"
+    ? FileTerminal
+    : context.kind === "agent"
     ? Bot
     : context.kind === "mcp"
       ? Server
@@ -29,7 +33,9 @@ export function ContextChip({ context, onRemove }: { context: ContextChipData; o
         : context.kind === "directory"
           ? FolderOpen
           : FileCode2;
-  const kindLabel = context.kind === "skill"
+  const kindLabel = context.kind === "log"
+    ? t("console.chipLabel")
+    : context.kind === "skill"
     ? t("skill.chipLabel")
     : context.kind === "mcp"
       ? "MCP"
@@ -40,7 +46,7 @@ export function ContextChip({ context, onRemove }: { context: ContextChipData; o
           : context.kind === "selection"
             ? t("s_41f497eb47")
             : t("s_49deaf7da2");
-  const canNavigate = Boolean(context.fileName)
+  const canNavigate = context.kind !== "log" && Boolean(context.fileName)
     && context.kind !== "skill"
     && context.kind !== "agent"
     && context.kind !== "mcp";

@@ -58,7 +58,10 @@ export const AssistantMessage = memo(function AssistantMessage({
   isStreaming,
   diffs = [],
   onOpenSession,
+  onRevertSession,
+  revertMessageID,
   runActive = false,
+  showTurnSummary = true,
 }: {
   diffs?: SessionFileDiff[];
   isStreaming: boolean;
@@ -71,6 +74,10 @@ export const AssistantMessage = memo(function AssistantMessage({
   message: AssistantMessageData;
   /** Opens the subagent session a task call created. */
   onOpenSession?: (sessionID: string) => void;
+  /** Reverts the user turn that produced this assistant work. */
+  onRevertSession?: (messageID: string) => Promise<void>;
+  revertMessageID?: string;
+  showTurnSummary?: boolean;
 }) {
   const visibleError = visibleMessageError(message.error);
   const lastProcessIndex = message.content.reduce(
@@ -112,8 +119,8 @@ export const AssistantMessage = memo(function AssistantMessage({
         {isStreaming && !hasProcess && !hasConclusion && <ThinkingLine />}
         <AssistantProcess conclusionPartID={conclusionPart?.id} isStreaming={isStreaming || runActive} message={message} onOpenSession={onOpenSession} />
         {conclusion.trim() && <MarkdownResponse isAnimating={false} mode={isStreaming ? "streaming" : "static"}>{conclusion}</MarkdownResponse>}
-        {!isStreaming && !runActive && <div className="mt-1.5"><SessionDiffSummary diffs={diffs} /></div>}
-        {!isStreaming && !runActive && <div className="mt-1.5"><TokenUsageSummary model={message.model} usage={message.tokens} /></div>}
+        {!isStreaming && !runActive && showTurnSummary && <div className="mt-1.5"><SessionDiffSummary diffs={diffs} onRevert={onRevertSession && revertMessageID ? () => onRevertSession(revertMessageID) : undefined} /></div>}
+        {!isStreaming && !runActive && showTurnSummary && <div className="mt-1.5"><TokenUsageSummary model={message.model} usage={message.tokens} /></div>}
       </MessageContent>
     </Message>
   );

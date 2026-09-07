@@ -44,12 +44,14 @@ import { useSessionComposerDrafts } from "@/hooks/useSessionComposerDrafts";
 import { useSessionDraftMaterialization } from "@/hooks/useSessionDraftMaterialization";
 import { useSessionPromptQueues } from "@/hooks/useSessionPromptQueues";
 import { useSessionRuntime } from "@/hooks/useSessionRuntime";
+import { useSessionRevert } from "@/hooks/useSessionRevert";
 import { useComposerAttachments } from "@/hooks/useComposerAttachments";
 import { useSessionAutoTitle } from "@/hooks/useSessionAutoTitle";
 import { useSessionSelectionSync } from "@/hooks/useSessionSelectionSync";
 import { useNativeSessionTabsBridge } from "@/hooks/useNativeSessionTabsBridge";
 import {
   createMessageID,
+  messagesBeforeRevert,
   openCodeApi,
   setOpenCodeBaseUrl,
 } from "@/lib/opencode";
@@ -142,9 +144,7 @@ function App() {
   const handledIdeaContextIDs = useRef(new Set<string>());
   const setContextsRef = useRef(setContexts);
   setContextsRef.current = setContexts;
-  const explainContextHandler = useRef<(context: ContextChipData) => Promise<boolean>>(
-    () => Promise.resolve(false)
-  );
+  const directContextHandler = useRef<(context: ContextChipData) => Promise<boolean>>(() => Promise.resolve(false));
   /** Prevents the new empty session fetch from replacing its first optimistic user message. */
   const skipNextSessionLoad = useRef("");
   const drainQueueRef = useRef<(sessionID: string) => void>(() => undefined);
@@ -213,11 +213,11 @@ function App() {
       ...current.filter((item) => item.id !== context.id),
       context,
     ]);
-    if (event.action !== "explain_code") {
+    if (event.action !== "explain_code" && event.action !== "analyze_log" && event.action !== "analyze_issue") {
       attach();
       return;
     }
-    void explainContextHandler.current(context)
+    void directContextHandler.current(context)
       .then((accepted) => { if (!accepted) attach(); })
       .catch(attach);
   }, []);
@@ -256,20 +256,18 @@ function App() {
     selectedSessionID,
     setError,
   });
-
-  const loadMessages = useCallback(async (sessionID: string, directory?: string) => {
+  const loadMessages = useCallback(async (sessionID: string, directory?: string, session?: SessionInfo) => {
     const nextMessages = await openCodeApi.getMessages(sessionID, directory);
-    sessionRuntime.controller.setMessages(sessionID, (current) => reconcileSessionMessages(current, nextMessages));
+    const visibleMessages = messagesBeforeRevert(nextMessages, session);
+    sessionRuntime.controller.setMessages(sessionID, (current) => reconcileSessionMessages(current, visibleMessages));
     sessionRuntime.controller.setMessagesLoaded(sessionID, true);
-    return nextMessages;
+    return visibleMessages;
   }, [sessionRuntime.controller]);
-
   const loadTodos = useCallback(async (sessionID: string, directory?: string) => {
     const nextTodos = await openCodeApi.getTodos(sessionID, directory);
     sessionRuntime.controller.setTodos(sessionID, nextTodos);
     return nextTodos;
   }, [sessionRuntime.controller]);
-
   const loadPending = useCallback(async (sessionID: string) => {
     // Both registries are read because a request lands in exactly one of them and neither list
     // sees the other's. Reading only the session-scoped one left genuinely blocked runs invisible.
@@ -298,7 +296,6 @@ function App() {
     syncQuestionAnswers(nextQuestions);
     return { permissions: nextPermissions, questions: nextQuestions };
   }, [projectPath, setPermissions, setQuestions, syncQuestionAnswers]);
-
   useInteractiveStatePolling({
     enabled: Boolean(projectPath),
     loadPending,
@@ -331,7 +328,7 @@ function App() {
         openCodeApi.listSessions(projectPath),
         openCodeApi.listCommands(projectPath),
         loadDiskSkills(),
-        enabledMcpNames(),
+        enabledMcpNames(projectPath),
       ]);
       const sessionID = selectedSessionID && nextSessions.some((session) => session.id === selectedSessionID)
         ? selectedSessionID
@@ -342,7 +339,9 @@ function App() {
       setMcpNames(nextMcpNames);
       setSkills(nextSkills);
       setSessions(nextSessions);
-      if (sessionID && includeMessages) await loadMessages(sessionID, projectPath);
+      if (sessionID && includeMessages) {
+        await loadMessages(sessionID, projectPath, nextSessions.find((session) => session.id === sessionID));
+      }
       if (sessionID) await loadPending(sessionID);
       setConnected(true);
     } catch (refreshError) {
@@ -353,7 +352,6 @@ function App() {
       setRefreshing(false);
     }
   }, [loadMessages, loadPending, projectPath, selectedSessionID]);
-
   useEffect(() => {
     refreshWorkspaceRef.current = refreshWorkspace;
   }, [refreshWorkspace]);
@@ -413,7 +411,7 @@ function App() {
           openCodeApi.listSessions(directory),
           openCodeApi.listCommands(directory),
           loadDiskSkills(),
-          enabledMcpNames(),
+          enabledMcpNames(directory),
           loadPersistedWorkspacePreferences(directory),
         ]);
         if (cancelled) return;
@@ -453,7 +451,6 @@ function App() {
       cancelled = true;
     };
   }, [applyIdeaTheme, bootstrapAttempt]);
-
   useEffect(() => {
     if (!selectedSessionID || !projectPath) return;
     if (skipNextSessionLoad.current === selectedSessionID) {
@@ -466,10 +463,11 @@ function App() {
       try {
         const cachedRuntime = sessionRuntime.controller.get(selectedSessionID);
         const cachedMessages = cachedRuntime.messagesLoaded ? cachedRuntime.messages : undefined;
-        const [nextMessages, , nextTodos, status, nextApprovalMode] = await Promise.all([
+        const [nextMessages, nextSession, , nextTodos, status, nextApprovalMode] = await Promise.all([
           cachedMessages
             ? Promise.resolve(undefined)
             : openCodeApi.getMessages(selectedSessionID, projectPath),
+          openCodeApi.getSession(selectedSessionID, projectPath),
           loadPending(selectedSessionID),
           openCodeApi.getTodos(selectedSessionID, projectPath),
           openCodeApi.getSessionStatus(selectedSessionID, projectPath),
@@ -482,12 +480,18 @@ function App() {
         ]);
         if (cancelled) return;
         const runtime = sessionRuntime.controller.get(selectedSessionID);
-        if (nextMessages) {
+        const visibleMessages = nextMessages
+          ? messagesBeforeRevert(nextMessages, nextSession)
+          : messagesBeforeRevert(cachedMessages ?? [], nextSession);
+        if (nextMessages || nextSession?.revert) {
           sessionRuntime.controller.setMessages(
             selectedSessionID,
-            (current) => reconcileSessionMessages(current, nextMessages),
+            (current) => reconcileSessionMessages(current, visibleMessages),
           );
           sessionRuntime.controller.setMessagesLoaded(selectedSessionID, true);
+        }
+        if (nextSession) {
+          setSessions((current) => current.map((session) => session.id === nextSession.id ? nextSession : session));
         }
         sessionRuntime.controller.setTodos(selectedSessionID, nextTodos);
         setApprovalMode(nextApprovalMode);
@@ -499,7 +503,7 @@ function App() {
             pollSessionStatus(selectedSessionID, currentPrompt.generation);
           } else {
             const generation = ++runtime.generation;
-            const restored = restoreActiveRun(nextMessages ?? cachedMessages ?? [], selectedSessionID, generation);
+            const restored = restoreActiveRun(visibleMessages, selectedSessionID, generation);
             runtime.activePrompt = restored.prompt;
             runtime.assistantMessageIDs.clear();
             restored.assistantIDs.forEach((messageID) => runtime.assistantMessageIDs.add(messageID));
@@ -640,9 +644,10 @@ function App() {
     });
   }, [contexts, editingQueuedPrompt, isGenerating, materializeDraft, pendingCommand, projectPath, promptQueues, selectedSessionID, sendPromptNow, sessionRuntime.controller, setContexts, setPendingCommand]);
 
-  explainContextHandler.current = (context) => handlePrompt({
+  directContextHandler.current = (context) => handlePrompt({
     files: [contextToPromptInputFile(context, 0)],
-    text: t("s_625cb72e0e"),
+    text: context.action === "explain_code" ? t("s_625cb72e0e")
+      : context.action === "analyze_issue" ? t("console.analyzeIssuePrompt") : t("console.analyzeLogPrompt"),
   });
 
   const drainSessionQueue = useCallback(async (sessionID: string) => {
@@ -818,7 +823,6 @@ function App() {
       setError(errorMessage(switchError));
     }
   }, [projectPath, selectedModel, selectedSessionID, selectedVariant]);
-
   const openModelSettings = useCallback(() => {
     setWorkspaceSection("models");
     handleWorkspaceOpenChange(true);
@@ -860,6 +864,13 @@ function App() {
     }
   }, [deletingSessionID, projectPath, selectedSessionID, sessionRuntime.controller, sessionTabs, sessions, setPermissions, setQuestions]);
 
+  const revertSession = useSessionRevert({
+    projectPath,
+    runtime: sessionRuntime.controller,
+    selectedSessionID,
+    setError,
+    setSessions,
+  });
   const handleProfessionalRoleChange = useCallback((roleId: string) => {
     const next = saveWorkspacePreferences(projectPath, {
       ...preferences,
@@ -867,7 +878,6 @@ function App() {
     });
     setPreferences(next);
   }, [preferences, projectPath]);
-
   const currentPermissions = permissions.filter((request) => request.sessionID === selectedSessionID);
   const currentQuestions = questions.filter((request) => request.sessionID === selectedSessionID);
   const conversationTurns = useMemo(() => {
@@ -927,6 +937,7 @@ function App() {
     onQuestionChange={handleQuestionChange}
     onQuestionReject={(request) => void handleQuestionReject(request)}
     onQuestionReply={(request) => void handleQuestionReply(request)}
+    onRevertSession={revertSession}
     onQueueClear={handleQueueClear}
     onQueueDelete={handleQueueDelete}
     onQueueEdit={handleQueueEdit}
@@ -985,5 +996,4 @@ function App() {
     workspaceSection={workspaceSection}
   /></ErrorBoundary>;
 }
-
 export default App;

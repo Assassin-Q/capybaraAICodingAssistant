@@ -77,12 +77,16 @@ tasks {
         // the build rather than plugin.xml so it travels with the version it describes.
         changeNotes.set(
             """
-            <h3>3.0.3</h3>
+            <h3>3.0.4</h3>
             <ul>
-              <li><b>快捷键兼容：</b>移除插件内置的 Ctrl+/ 全局快捷键，避免与 IntelliJ IDEA 的行注释操作发生冲突。</li>
-              <li><b>入口保留：</b>打开或关闭水豚 AI 助手的操作仍保留在 Tools 菜单中；需要快捷键的用户可在 IDEA Keymap 中自行分配。</li>
-              <li><b>Shortcut compatibility:</b> Removed the bundled Ctrl+/ shortcut so IntelliJ IDEA's line-comment action is never intercepted by the plugin.</li>
-              <li><b>Action availability:</b> The panel toggle remains available under Tools, and users can assign a preferred shortcut from IDEA Keymap settings.</li>
+              <li><b>IDEA 日志桥接：</b>Run、Debug、Maven 与 Gradle 控制台新增加入对话、分析日志和分析问题操作，AI 可直接读取当前控制台输出。</li>
+              <li><b>OpenCode 维护：</b>准确识别未安装状态，提供官方 npm 命令、一键安装、版本检查、应用内更新与安全重启。</li>
+              <li><b>会话与模型：</b>新增本轮文件修改回滚，并修复 OpenCode 重启期间模型选择器短暂显示全部模型的问题。</li>
+              <li><b>交互兼容：</b>下载和网页链接改由系统默认浏览器打开；外部启动的 OpenCode 服务不再被应用内更新误终止。</li>
+              <li><b>IDEA log bridge:</b> Added console actions for Run, Debug, Maven, and Gradle output, including attach, analyze log, and analyze problem.</li>
+              <li><b>OpenCode maintenance:</b> Added accurate installation detection, one-click install/update, periodic version checks, and managed restart behavior.</li>
+              <li><b>Sessions and models:</b> Added turn-level file revert and fixed the model picker exposing every model while OpenCode configuration reloads.</li>
+              <li><b>Desktop integration:</b> Downloads and web links now use the system browser, while externally managed OpenCode processes remain untouched.</li>
             </ul>
             """.trimIndent()
         )

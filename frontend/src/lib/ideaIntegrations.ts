@@ -118,6 +118,9 @@ export interface IdeaExecutionResponse {
   success: boolean;
   message?: string;
   logs: IdeaExecutionLog[];
+  executionID?: number;
+  configurationID?: string;
+  trackingID?: string;
 }
 
 export interface IdeaBridgeStatus {
@@ -363,11 +366,16 @@ export const ideaExecutionApi = {
 
   gradle: (tasks: string[]) => post<IdeaExecutionResponse>("/ide/gradle", { tasks }),
 
-  logs: (configurationID?: string) =>
+  logs: (options?: { configurationID?: string; executionID?: number; latestOnly?: boolean }) =>
     ideaRequest<IdeaExecutionResponse>(
-      configurationID
-        ? `/ide/logs?configurationID=${encodeURIComponent(configurationID)}`
-        : "/ide/logs"
+      (() => {
+        const params = new URLSearchParams();
+        if (options?.configurationID) params.set("configurationID", options.configurationID);
+        if (options?.executionID !== undefined) params.set("executionID", String(options.executionID));
+        if (options?.latestOnly) params.set("latestOnly", "true");
+        const query = params.toString();
+        return `/ide/logs${query ? `?${query}` : ""}`;
+      })()
     ),
 
   bridgeStatus: () => ideaRequest<IdeaBridgeStatus>("/ide/bridge"),

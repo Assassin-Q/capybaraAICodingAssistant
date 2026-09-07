@@ -18,6 +18,7 @@ data class ChatMessage(
     val content: String,
     val kind: String? = null,
     val fileName: String? = null,
+    val displayName: String? = null,
     val lineRange: LineRange? = null,
     val timestamp: Long = System.currentTimeMillis(),
 )
@@ -33,6 +34,7 @@ class MessageService {
         content: String,
         kind: String? = null,
         fileName: String? = null,
+        displayName: String? = null,
         lineRange: Pair<Int, Int>? = null,
     ): Long {
         val message = ChatMessage(
@@ -41,6 +43,7 @@ class MessageService {
             content = content,
             kind = kind,
             fileName = fileName,
+            displayName = displayName,
             lineRange = lineRange?.let { LineRange(it.first, it.second) },
         )
         if (listeners.isEmpty()) {

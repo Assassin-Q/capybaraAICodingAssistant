@@ -10,8 +10,11 @@ import com.intellij.execution.process.ProcessListener
 import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.runners.ExecutionEnvironment
+import com.intellij.execution.ui.RunContentManager
+import com.intellij.execution.ui.RunContentDescriptor
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.ide.plugins.PluginManager
 import com.intellij.openapi.externalSystem.model.ProjectSystemId
@@ -26,6 +29,10 @@ import org.jetbrains.idea.maven.execution.MavenRunnerParameters
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 @Serializable
 data class IdeaRunConfigurationInfo(
@@ -60,6 +67,9 @@ data class IdeaExecutionResponse(
     val success: Boolean,
     val message: String? = null,
     val logs: List<IdeaExecutionLog> = emptyList(),
+    val executionID: Long? = null,
+    val configurationID: String? = null,
+    val trackingID: String? = null,
 )
 
 @Serializable
@@ -82,13 +92,18 @@ data class IdeaBridgeToggleRequest(val enabled: Boolean)
 private const val MAVEN_PLUGIN_ID = "org.jetbrains.idea.maven"
 private const val GRADLE_PLUGIN_ID = "com.intellij.gradle"
 private val GRADLE_SYSTEM_ID = ProjectSystemId("GRADLE")
+/** The marker belongs to this service instance so reopening the tool window can reattach listeners. */
+private val TRACKED_PROCESS_KEY = Key.create<IdeaExecutionService>("capybara.idea.execution.tracked")
 
 private class ExecutionBuffer(
     val id: Long,
-    val configurationID: String,
-    val name: String,
-    val executor: String,
+    configurationID: String,
+    name: String,
+    executor: String,
 ) {
+    @Volatile var configurationID: String = configurationID
+    @Volatile var name: String = name
+    @Volatile var executor: String = executor
     val startedAt = System.currentTimeMillis()
     val text = StringBuilder()
     @Volatile var running = true
@@ -99,6 +114,20 @@ private class ExecutionBuffer(
     fun append(value: String) {
         text.append(value)
         if (text.length > MAX_LOG_CHARS) text.delete(0, text.length - MAX_LOG_CHARS)
+    }
+
+    /** ConsoleView can be discovered after the process event; merge its complete snapshot once. */
+    @Synchronized
+    fun sync(value: String) {
+        if (value.isEmpty()) return
+        val current = text.toString()
+        if (value == current) return
+        if (value.startsWith(current)) {
+            append(value.substring(current.length))
+        } else if (value.length > current.length) {
+            text.setLength(0)
+            append(value)
+        }
     }
 
     @Synchronized
@@ -123,33 +152,34 @@ class IdeaExecutionService(private val project: Project) : Disposable {
     private val logger = Logger.getInstance(IdeaExecutionService::class.java)
     private val buffers = ConcurrentHashMap<Long, ExecutionBuffer>()
     private val connection = project.messageBus.connect(this)
+    private val scanExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "capybara-idea-console-scan").apply { isDaemon = true }
+    }
+    private val trackingSequence = AtomicLong()
+    private val fallbackExecutionSequence = AtomicLong()
+    private val fallbackExecutionIDs = ConcurrentHashMap<ProcessHandler, Long>()
+    private val consoleScanQueued = AtomicBoolean()
 
     init {
         connection.subscribe(ExecutionManager.EXECUTION_TOPIC, object : ExecutionListener {
             override fun processStarted(executorId: String, env: ExecutionEnvironment, handler: ProcessHandler) {
                 val settings = env.runnerAndConfigurationSettings
-                val id = env.executionId
-                val buffer = ExecutionBuffer(
-                    id = id,
+                trackProcess(
+                    id = env.executionId,
                     configurationID = settings?.uniqueID ?: env.runProfile.name,
                     name = settings?.name ?: env.runProfile.name,
                     executor = executorId,
+                    handler = handler,
                 )
-                buffers[id] = buffer
-                trimBuffers()
-                handler.addProcessListener(object : ProcessListener {
-                    override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
-                        buffer.append(stripControlSequences(event.text))
-                    }
-
-                    override fun processTerminated(event: ProcessEvent) {
-                        buffer.running = false
-                        buffer.exitCode = event.exitCode
-                        buffer.completedAt = System.currentTimeMillis()
-                    }
-                }, this@IdeaExecutionService)
+                scheduleConsoleScan()
             }
         })
+        // A Maven/Gradle console can be attached after the process event, and users can start a
+        // run from IDEA without going through this panel. A light periodic scan catches both cases
+        // without forcing the model to know which IDE implementation created the console.
+        scanExecutor.scheduleWithFixedDelay({
+            queueConsoleScan()
+        }, 250L, 1_000L, TimeUnit.MILLISECONDS)
     }
 
     fun configurations(): List<IdeaRunConfigurationInfo> = RunManager.getInstance(project).allSettings
@@ -176,7 +206,13 @@ class IdeaExecutionService(private val project: Project) : Disposable {
         ApplicationManager.getApplication().invokeLater {
             ProgramRunnerUtil.executeConfiguration(settings, executor)
         }
-        IdeaExecutionResponse(true, "已在 IDEA 中启动 ${settings.name}")
+        scheduleConsoleScan()
+        IdeaExecutionResponse(
+            success = true,
+            message = "已在 IDEA 中启动 ${settings.name}，请使用 idea_read_run_log 读取控制台输出",
+            configurationID = settings.uniqueID,
+            trackingID = nextTrackingID(),
+        )
     }.getOrElse { IdeaExecutionResponse(false, it.message ?: "无法启动 Run Configuration") }
 
     fun runMaven(request: IdeaBuildRequest): IdeaExecutionResponse = runCatching {
@@ -189,7 +225,12 @@ class IdeaExecutionService(private val project: Project) : Disposable {
         ApplicationManager.getApplication().invokeLater {
             runner.run(parameters, runner.settings.clone(), null)
         }
-        IdeaExecutionResponse(true, "已在 IDEA Maven 中启动：${goals.joinToString(" ")}")
+        scheduleConsoleScan()
+        IdeaExecutionResponse(
+            success = true,
+            message = "已在 IDEA Maven 中启动：${goals.joinToString(" ")}，请使用 idea_read_run_log 读取控制台输出",
+            trackingID = nextTrackingID(),
+        )
     }.getOrElse { IdeaExecutionResponse(false, it.message ?: "无法启动 Maven 任务") }
 
     fun runGradle(request: IdeaBuildRequest): IdeaExecutionResponse = runCatching {
@@ -214,19 +255,42 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 GRADLE_SYSTEM_ID,
             )
         }
-        IdeaExecutionResponse(true, "已在 IDEA Gradle 中启动：${tasks.joinToString(" ")}")
+        scheduleConsoleScan()
+        IdeaExecutionResponse(
+            success = true,
+            message = "已在 IDEA Gradle 中启动：${tasks.joinToString(" ")}，请使用 idea_read_run_log 读取控制台输出",
+            trackingID = nextTrackingID(),
+        )
     }.getOrElse { IdeaExecutionResponse(false, it.message ?: "无法启动 Gradle 任务") }
 
-    fun logs(configurationID: String? = null): IdeaExecutionResponse {
-        val values = buffers.values
-            .asSequence()
-            .filter { configurationID.isNullOrBlank() || it.configurationID == configurationID }
-            .sortedByDescending { it.startedAt }
-            .take(20)
-            .map(ExecutionBuffer::snapshot)
-            .toList()
+    fun logs(configurationID: String? = null, executionID: Long? = null, latestOnly: Boolean = false): IdeaExecutionResponse {
+        scanRunContents()
+        var values = matchingLogs(configurationID, executionID, latestOnly)
+        // Launching from the bridge is asynchronous. Give IDEA a short window to publish the
+        // RunContentDescriptor so an immediate read does not misleadingly return an empty list.
+        if (latestOnly && values.isEmpty() && executionID == null) {
+            for (attempt in 0 until 4) {
+                Thread.sleep(150L)
+                scanRunContents()
+                values = matchingLogs(configurationID, executionID, latestOnly)
+                if (values.isNotEmpty()) break
+            }
+        }
         return IdeaExecutionResponse(true, logs = values)
     }
+
+    private fun matchingLogs(
+        configurationID: String?,
+        executionID: Long?,
+        latestOnly: Boolean,
+    ): List<IdeaExecutionLog> = buffers.values
+            .asSequence()
+            .filter { configurationID.isNullOrBlank() || it.configurationID == configurationID }
+            .filter { executionID == null || it.id == executionID }
+            .sortedByDescending { it.startedAt }
+            .take(if (latestOnly) 1 else 20)
+            .map(ExecutionBuffer::snapshot)
+            .toList()
 
     /**
      * Keeps the port hint fresh so an already-installed bridge plugin can reach this project's
@@ -304,8 +368,104 @@ class IdeaExecutionService(private val project: Project) : Disposable {
     }.getOrElse { logger.info("Unable to clear the IDEA bridge port: ${it.message}") }
 
     override fun dispose() {
+        scanExecutor.shutdownNow()
+        fallbackExecutionIDs.clear()
         buffers.clear()
     }
+
+    private fun nextTrackingID(): String = "idea-execution-${trackingSequence.incrementAndGet()}"
+
+    private fun trackProcess(
+        id: Long,
+        configurationID: String,
+        name: String,
+        executor: String,
+        handler: ProcessHandler,
+    ): ExecutionBuffer {
+        val effectiveID = if (id > 0L) id else fallbackExecutionIDs.computeIfAbsent(handler) {
+            -fallbackExecutionSequence.incrementAndGet()
+        }
+        val buffer = buffers.computeIfAbsent(effectiveID) {
+            ExecutionBuffer(effectiveID, configurationID, name, executor)
+        }
+        // A descriptor can be discovered before the execution callback. Refresh metadata when
+        // the callback later supplies the stable Run Configuration id instead of the display name.
+        if (configurationID != buffer.configurationID && configurationID != name) {
+            buffer.configurationID = configurationID
+        }
+        buffer.name = name
+        buffer.executor = executor
+        if (handler.getUserData(TRACKED_PROCESS_KEY) !== this) {
+            handler.putUserData(TRACKED_PROCESS_KEY, this)
+            handler.addProcessListener(object : ProcessListener {
+                override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
+                    buffer.append(stripControlSequences(event.text))
+                }
+
+                override fun processTerminated(event: ProcessEvent) {
+                    buffer.running = false
+                    buffer.exitCode = event.exitCode
+                    buffer.completedAt = System.currentTimeMillis()
+                }
+            }, this@IdeaExecutionService)
+        }
+        if (handler.isProcessTerminated) {
+            buffer.running = false
+            buffer.exitCode = handler.exitCode
+            buffer.completedAt = buffer.completedAt ?: System.currentTimeMillis()
+        }
+        trimBuffers()
+        return buffer
+    }
+
+    private fun scheduleConsoleScan() {
+        listOf(120L, 450L, 1_000L, 2_500L).forEach { delay ->
+            scanExecutor.schedule(::queueConsoleScan, delay, TimeUnit.MILLISECONDS)
+        }
+    }
+
+    private fun queueConsoleScan() {
+        if (project.isDisposed || !consoleScanQueued.compareAndSet(false, true)) return
+        ApplicationManager.getApplication().invokeLater({
+            try { scanRunContentsOnEdt() } finally { consoleScanQueued.set(false) }
+        }, ModalityState.any())
+    }
+
+    /** Covers consoles created without a processStarted callback and user-started runs. */
+    private fun scanRunContents() {
+        val application = ApplicationManager.getApplication()
+        if (application.isDispatchThread) {
+            scanRunContentsOnEdt()
+            return
+        }
+        runCatching {
+            application.invokeAndWait({ scanRunContentsOnEdt() }, ModalityState.any())
+        }.onFailure { logger.debug("Unable to scan IDEA run consoles: ${it.message}") }
+    }
+
+    private fun scanRunContentsOnEdt() {
+        if (project.isDisposed) return
+        val manager = RunContentManager.getInstanceIfCreated(project) ?: return
+        manager.allDescriptors.forEach { descriptor ->
+            val handler = descriptor.processHandler ?: return@forEach
+            val id = descriptor.executionId
+            val buffer = trackProcess(
+                id = id,
+                configurationID = buffers[id]?.configurationID ?: configurationIDFor(descriptor.displayName),
+                name = descriptor.displayName,
+                executor = descriptor.contentToolWindowId ?: "run",
+                handler = handler,
+            )
+            readConsoleText(descriptor)?.let { buffer.sync(stripControlSequences(it)) }
+        }
+    }
+
+    private fun configurationIDFor(displayName: String): String =
+        RunManager.getInstance(project).allSettings.firstOrNull { it.name == displayName }?.uniqueID ?: displayName
+
+    private fun readConsoleText(descriptor: RunContentDescriptor): String? = runCatching {
+        IdeaConsoleText.read(descriptor.executionConsole)
+    }.getOrNull()
 
     private fun bridgeFile(): Path =
         Path.of(System.getProperty("user.home")).resolve(".config/opencode/plugins/capybara-idea.ts")
@@ -410,6 +570,14 @@ class IdeaExecutionService(private val project: Project) : Disposable {
             if (!response.ok) throw new Error(`HTTP ${'$'}{response.status}`)
             return response.text()
           }
+          /** Route an IDE request to the project that owns the current OpenCode session. */
+          const callForSession = async (sessionID, route, init = {}) => {
+            const owner = await ownerOfSession(sessionID)
+            if (owner) return callPort(owner.port, route, init)
+            const ports = await allBridgePorts()
+            if (ports.length === 1) return callPort(ports[0], route, init)
+            return request("/api", route, init)
+          }
           const authorize = (context, permission, pattern = "*") =>
             context.ask({ permission, patterns: [pattern], always: [pattern], metadata: {} })
           // The built-in browser shares the same HTTP server; only the path prefix differs.
@@ -469,45 +637,6 @@ class IdeaExecutionService(private val project: Project) : Disposable {
           }
 
           return {
-            /**
-             * Reminds the model about task-list items it left open.
-             *
-             * A standing instruction in the system prompt was not enough: models routinely finish a
-             * turn without calling `todowrite` again, so the panel keeps showing a step that was
-             * actually done. This runs per request and only says anything when items are genuinely
-             * unfinished, naming them — a general rule is easy to skip past, a list of the exact
-             * items that are still open is not.
-             */
-            "experimental.chat.system.transform": async ({ sessionID }, output) => {
-              if (!sessionID || !output || !Array.isArray(output.system)) return
-              try {
-                const route = `session/${'$'}{encodeURIComponent(sessionID)}/todo` +
-                  `?directory=${'$'}{encodeURIComponent(directory)}`
-                const response = await fetch(new URL(route, serverUrl))
-                if (!response.ok) return
-                const todos = await response.json()
-                if (!Array.isArray(todos) || todos.length === 0) return
-                const open = todos.filter((todo) =>
-                  todo && todo.status !== "completed" && todo.status !== "cancelled")
-                if (open.length === 0) return
-                const lines = open
-                  .map((todo) => `- [${'$'}{todo.status}] ${'$'}{todo.content}`)
-                  .join("\n")
-                output.system.push(
-                  "<system-reminder>\n" +
-                    "These task-list items are still open:\n" +
-                    lines +
-                    "\n\nBefore you end this turn, call `todowrite` so every item reflects what you " +
-                    "actually did — completed, cancelled, or still pending. Do not leave an item " +
-                    "marked in_progress once you stop working on it. This reminder is generated " +
-                    "from the stored list; it is not a message from the user.\n" +
-                    "</system-reminder>",
-                )
-              } catch {
-                // A reminder is not worth failing a request over.
-              }
-            },
-
             /**
              * The real enforcement point.
              *
@@ -596,11 +725,41 @@ class IdeaExecutionService(private val project: Project) : Disposable {
               }
             },
             "experimental.chat.system.transform": async (input, output) => {
-              if (!input.sessionID) return
+              if (!input.sessionID || !output || !Array.isArray(output.system)) return
               // No owning project means this session belongs to an OpenCode running outside IDEA,
               // and it must not be told it has an IDE.
               const owner = await ownerOfSession(input.sessionID)
-              if (owner) output.system.push(ideaSystemPrompt(owner.path))
+              if (!owner) return
+              try {
+                const route = `session/${'$'}{encodeURIComponent(input.sessionID)}/todo` +
+                  `?directory=${'$'}{encodeURIComponent(owner.path)}`
+                const response = await fetch(new URL(route, serverUrl))
+                if (response.ok) {
+                  const todos = await response.json()
+                  const open = Array.isArray(todos)
+                    ? todos.filter((todo) =>
+                      todo && todo.status !== "completed" && todo.status !== "cancelled")
+                    : []
+                  if (open.length > 0) {
+                    const lines = open
+                      .map((todo) => `- [${'$'}{todo.status}] ${'$'}{todo.content}`)
+                      .join("\n")
+                    output.system.push(
+                      "<system-reminder>\n" +
+                        "These task-list items are still open:\n" +
+                        lines +
+                        "\n\nBefore you end this turn, call `todowrite` so every item reflects what you " +
+                        "actually did — completed, cancelled, or still pending. Do not leave an item " +
+                        "marked in_progress once you stop working on it. This reminder is generated " +
+                        "from the stored list; it is not a message from the user.\n" +
+                        "</system-reminder>",
+                    )
+                  }
+                }
+              } catch {
+                // A reminder is not worth failing a request over.
+              }
+              output.system.push(ideaSystemPrompt(owner.path))
             },
             tool: {
               idea_run_configuration: tool({
@@ -610,7 +769,8 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                   "lands in IDEA's Run window. " +
                   "Without id: returns [{ id, name, type, folder, temporary }] - id is what you pass back. " +
                   "With id (plus optional mode 'run' or 'debug', default 'run'): starts it and returns " +
-                  "{ success, message }. Starting is asynchronous - read the output with idea_read_run_log.",
+                  "{ success, message, configurationID, trackingID }. Starting is asynchronous - read the " +
+                  "output with idea_read_run_log using configurationID or latestOnly=true.",
                 args: {
                   id: tool.schema.string().optional(),
                   mode: tool.schema.enum(["run", "debug"]).optional(),
@@ -618,10 +778,10 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 async execute(args, context) {
                   if (!args.id) {
                     await authorize(context, "read", "idea:run-configurations")
-                    return call("/ide/run-configurations")
+                    return callForSession(context.sessionID, "/ide/run-configurations")
                   }
                   await authorize(context, "idea_run_configuration", args.id)
-                  return call("/ide/run", { method: "POST", body: JSON.stringify({ id: args.id, mode: args.mode ?? "run" }) })
+                  return callForSession(context.sessionID, "/ide/run", { method: "POST", body: JSON.stringify({ id: args.id, mode: args.mode ?? "run" }) })
                 },
               }),
               idea_read_run_log: tool({
@@ -631,12 +791,22 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                   "themselves. " +
                   "Returns { success, logs: [{ id, configurationID, name, executor, running, exitCode, " +
                   "startedAt, completedAt, text }] }; running=true means it is still going, so poll again. " +
+                  "Use executionID for one run, configurationID for one configuration, or latestOnly=true " +
+                  "to read the most recent Run/Debug/Maven/Gradle console, including runs the user started. " +
                   "text is ANSI-stripped and capped at the most recent ~1M characters.",
-                args: { configurationID: tool.schema.string().optional() },
+                args: {
+                  configurationID: tool.schema.string().optional(),
+                  executionID: tool.schema.number().optional(),
+                  latestOnly: tool.schema.boolean().optional(),
+                },
                 async execute(args, context) {
-                  await authorize(context, "idea_read_run_log", args.configurationID ?? "*")
-                  const query = args.configurationID ? `?configurationID=${'$'}{encodeURIComponent(args.configurationID)}` : ""
-                  return call(`/ide/logs${'$'}{query}`)
+                  await authorize(context, "idea_read_run_log", args.configurationID ?? (args.executionID ? String(args.executionID) : "*"))
+                  const query = [
+                    args.configurationID ? "configurationID=" + encodeURIComponent(args.configurationID) : "",
+                    args.executionID !== undefined ? "executionID=" + String(args.executionID) : "",
+                    args.latestOnly ? "latestOnly=true" : "",
+                  ].filter(Boolean).join("&")
+                  return callForSession(context.sessionID, `/ide/logs${'$'}{query ? "?" + query : ""}`)
                 },
               }),
               idea_project_context: tool({
@@ -668,7 +838,7 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 },
                 async execute(args, context) {
                   await authorize(context, "idea_editor_context", args.path ?? "*")
-                  return call("/ide/editor-context", { method: "POST", body: JSON.stringify(args) })
+                  return callForSession(context.sessionID, "/ide/editor-context", { method: "POST", body: JSON.stringify(args) })
                 },
               }),
               idea_diagnostics: tool({
@@ -687,7 +857,7 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 },
                 async execute(args, context) {
                   await authorize(context, "idea_diagnostics", args.path ?? "*")
-                  return call("/ide/diagnostics", { method: "POST", body: JSON.stringify(args) })
+                  return callForSession(context.sessionID, "/ide/diagnostics", { method: "POST", body: JSON.stringify(args) })
                 },
               }),
               idea_symbol: tool({
@@ -708,7 +878,7 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 },
                 async execute(args, context) {
                   await authorize(context, "idea_symbol", args.path ?? "*")
-                  return call("/ide/symbol", { method: "POST", body: JSON.stringify(args) })
+                  return callForSession(context.sessionID, "/ide/symbol", { method: "POST", body: JSON.stringify(args) })
                 },
               }),
               idea_navigate: tool({
@@ -725,7 +895,7 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 },
                 async execute(args, context) {
                   await authorize(context, "idea_navigate", args.path)
-                  return call("/ide/navigate", { method: "POST", body: JSON.stringify(args) })
+                  return callForSession(context.sessionID, "/ide/navigate", { method: "POST", body: JSON.stringify(args) })
                 },
               }),
               idea_refresh_project: tool({
@@ -737,7 +907,7 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                 args: {},
                 async execute(_args, context) {
                   await authorize(context, "idea_refresh_project")
-                  return call("/ide/refresh", { method: "POST", body: "{}" })
+                  return callForSession(context.sessionID, "/ide/refresh", { method: "POST", body: "{}" })
                 },
               }),
               idea_maven: tool({
@@ -746,12 +916,12 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                   "and settings.xml, and the output lands in the Maven tool window. Requires pom.xml in the " +
                   "project root and the Maven plugin enabled. " +
                   "Args: tasks - goals as an array, e.g. ['clean','test']. " +
-                  "Returns { success, message }; it starts asynchronously, so read the result with " +
-                  "idea_read_run_log.",
+                  "Returns { success, message, trackingID }; it starts asynchronously. Immediately call " +
+                  "idea_read_run_log with latestOnly=true, then poll while running=true.",
                 args: { tasks: tool.schema.array(tool.schema.string()) },
                 async execute(args, context) {
                   await authorize(context, "idea_maven", args.tasks.join(" "))
-                  return call("/ide/maven", { method: "POST", body: JSON.stringify({ tasks: args.tasks }) })
+                  return callForSession(context.sessionID, "/ide/maven", { method: "POST", body: JSON.stringify({ tasks: args.tasks }) })
                 },
               }),
               idea_gradle: tool({
@@ -759,12 +929,12 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                   "Gradle through IDEA's external build system, so it reuses the project's JDK, daemon and " +
                   "linked Gradle settings. Requires the Gradle plugin enabled. " +
                   "Args: tasks - task names as an array, e.g. ['clean','build']. " +
-                  "Returns { success, message }; it starts asynchronously, so read the result with " +
-                  "idea_read_run_log.",
+                  "Returns { success, message, trackingID }; it starts asynchronously. Immediately call " +
+                  "idea_read_run_log with latestOnly=true, then poll while running=true.",
                 args: { tasks: tool.schema.array(tool.schema.string()) },
                 async execute(args, context) {
                   await authorize(context, "idea_gradle", args.tasks.join(" "))
-                  return call("/ide/gradle", { method: "POST", body: JSON.stringify({ tasks: args.tasks }) })
+                  return callForSession(context.sessionID, "/ide/gradle", { method: "POST", body: JSON.stringify({ tasks: args.tasks }) })
                 },
               }),
               idea_browser: tool({
@@ -812,7 +982,8 @@ class IdeaExecutionService(private val project: Project) : Disposable {
                   const permission = readOnly.has(args.action) ? "read" : "idea_browser"
                   const target = args.selector ?? args.url ?? args.pickId ?? args.action
                   await authorize(context, permission, `${'$'}{args.action}:${'$'}{target}`)
-                  return browser(args)
+                  const owner = await ownerOfSession(context.sessionID)
+                  return owner ? callPort(owner.port, "/browser/control", { method: "POST", body: JSON.stringify(args) }) : browser(args)
                 },
               }),
             },

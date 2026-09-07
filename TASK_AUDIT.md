@@ -1,5 +1,48 @@
 # Capybara AI Coding Assistant V3 - Completion Audit
 
+## T21 - GitHub Issue #1 与 IDEA 执行日志桥接 `[x]`
+
+### Implementation record (2026-09-06)
+
+- Issue #1 的本轮文件改动卡新增应用内回滚入口。回滚前使用项目内 `Dialog` 二次确认，确认后调用
+  OpenCode `POST /session/{sessionID}/revert`，重新读取 session、消息和 todo，并按服务端的 `revert`
+  标记隐藏已回滚历史；没有使用浏览器原生 `confirm()` / `alert()`，也没有通过本地消息合并把旧消息拼回来。
+- `SessionInfo` 解析 `revert.messageID/partID`，`messagesBeforeRevert` 统一处理首次加载、切换会话、刷新
+  和回滚后的消息可见范围；回滚链路抽到 `useSessionRevert`，保持 `App.tsx` 在单文件 1000 行限制以内。
+- JCEF 外链处理补充 `CefLifeSpanHandler` 的 popup 拦截，`target="_blank"` 与 `window.open` 的外部链接统一
+  交给系统默认浏览器；插件自己的本地页面仍留在 JCEF 中。
+- IDEA 执行桥接抽取统一的进程追踪逻辑，使用 `ProcessHandler` 输出监听并以 `UserData` 防止重复监听；新增
+  `RunContentManager` 控制台扫描和 `ExecutionConsole.getText()` 反射回填，覆盖用户手动启动的 Run/Debug、
+  Maven、Gradle，以及监听时序错过的控制台内容。控制台文本保留最近约 1 MB，持续运行实例返回 `running=true`。
+- `/api/ide/logs` 支持 `configurationID`、`executionID`、`latestOnly`；启动响应增加配置/执行追踪字段，
+  `idea_read_run_log` 工具说明并加入对应参数，要求在启动后读取最近控制台并在运行期间继续轮询。
+- 控制台读取统一切回 IDEA EDT；每秒轻量扫描一次运行内容，覆盖稍晚挂载的 Maven/Gradle 控制台和用户手动
+  启动的 Run/Debug。无有效 execution id 的描述符使用进程级临时 ID，工具窗口重开后也会重新挂接监听，
+  不再因为旧服务实例留在 `ProcessHandler` 标记中而永久丢失后续日志。
+- `latestOnly=true` 在异步启动后短暂等待 IDEA 发布控制台，避免模型立即读取时得到误导性的空数组；OpenCode
+  工具调用根据 `context.sessionID` 定位会话所属 IDEA 项目端口，多项目共享一个 OpenCode 服务时不会读错日志。
+- 合并了桥接脚本中重复声明的 `experimental.chat.system.transform`。此前后声明会覆盖前声明，导致 Todo 提醒
+  与 IDEA 能力提示无法同时生效；现在二者在同一个钩子内按会话所属项目注入。
+- 保留原有 IDEA 原生 Maven/Gradle/Run 窗口，不把构建日志复制到另一套伪终端；AI 读取的是 IDEA 当前控制台
+  的实时快照和进程输出。
+
+### Verification
+
+- `pnpm.cmd exec tsc --noEmit` passed.
+- `pnpm.cmd build` passed.
+- `gradle -p idea-plugin compileKotlin -PintellijLocalPath="E:\\software\\IntelliJ IDEA 2023.2.4" --offline --no-daemon --max-workers=1` passed.
+- `gradle -p idea-plugin buildPlugin -PintellijLocalPath="E:\\software\\IntelliJ IDEA 2023.2.4" --offline --no-daemon --max-workers=1` passed.
+- `git diff --check` passed; all hand-written `.ts/.tsx/.kt` files remain at or below 1000 lines; no browser-native
+  `confirm()` / `alert()` was added.
+
+### Runtime boundary
+
+- The new execution scanner and JCEF popup handler compile and package against the IDEA 2023.2.4 SDK but still need
+  a click-through test in a running IDEA instance: start a manual Run/Debug or Maven/Gradle task, then ask the AI to
+  call `idea_read_run_log`; also verify an external `target="_blank"` link opens in the operating system browser.
+- The configured OpenCode endpoint at `127.0.0.1:65530` refused connections during verification, so the generated
+  bridge tools could not be exercised through a real OpenCode conversation in this run.
+
 ## T20 - IntelliJ IDEA 2026.2 JCEF/API 兼容性修复 `[x]`
 
 ### Implementation record (2026-08-18)
@@ -1061,3 +1104,21 @@ IDEA 的“跟随系统明暗模式”也没有复用插件的主题选择。
   根目录独有的真实旧条目通过 `/global/config` 迁移，测试探针跳过，验证成功后删除根目录敏感副本。
 - `.gitignore` 增加 `/config.json` 和备份文件保护，防止旧 OpenCode 客户端意外生成的工作区副本进入 Git。
 - 实测 `/global/config` 返回 200、用户级 `opencode.jsonc` 更新，项目根目录未重新生成 `config.json`。
+
+### T21 后续安全修正（2026-09-07）
+
+- 复核发现应用内更新路径在更新前会调用 `OpenCodeServerManager.stopForUpdate()`；当 OpenCode 是用户从终端启动的外部服务时，这会误终止共享进程。
+- `OpenCodeLifecycleService.install()` 现仅停止插件自己管理的服务。外部服务保持运行，更新完成后明确提示用户手动重启 OpenCode 才能加载新版本；需要强制重启时仍由连接页的显式确认流程处理。
+- 重新通过 `pnpm.cmd exec tsc --noEmit`、`pnpm.cmd build` 与 IDEA 2023.2.4 SDK 下的 `gradle buildPlugin` 验证；手写源码仍全部不超过 1000 行，未新增原生 `confirm()` / `alert()`。
+
+### 模型选择器重启瞬间过滤修正（2026-09-07）
+
+- 复核发现配置读取失败时，前端虽然没有把 `{ success: false, config: {} }` 当成有效空配置，但在没有缓存时仍会回退到 `/api/model` 的全部模型，停用的供应商/模型可能因此短暂重新出现。
+- `configApply.ts` 现区分“正常读取到空配置”和“读取失败”：正常空配置仍允许全部可用模型；重启期间失败优先保留最近一次成功过滤后的模型列表，没有缓存则暂时不展示模型，待配置读取成功后恢复；只有完全没有 IDEA 桥接的独立网页模式才使用直接 API 列表。
+- 重新通过 `pnpm.cmd exec tsc --noEmit`、`pnpm.cmd build` 和 IDEA 2023.2.4 SDK 下的 `gradle buildPlugin` 验证。
+
+### 3.0.4 发布记录（2026-09-07）
+
+- 版本从 3.0.3 升级为 3.0.4；Marketplace 更新日志与中英文 README 版本徽章同步更新。
+- 本版集中发布控制台日志桥接、OpenCode 安装与更新、会话文件回滚、系统浏览器下载，以及重启期间模型过滤修复。
+- 发布前重新执行前端类型检查和生产构建、IDEA 插件构建与签名、敏感信息扫描及 Git 差异检查。

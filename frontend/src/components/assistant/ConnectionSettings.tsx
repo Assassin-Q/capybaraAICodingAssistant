@@ -118,7 +118,7 @@ export function ConnectionSettings({
           title={t("s_7328deebb5")}
         />
 
-        <OpenCodeRequirementNotice />
+        <OpenCodeRequirementNotice onChanged={onChanged} showHealthy />
         <UpdateNotice status={updateStatus} />
         <SettingsMessage error={error} notice={notice} />
 

@@ -62,6 +62,9 @@ class OpenCodeServerManager(private val projectPath: String?) {
             return endpoint
         }
 
+        val executable = resolveExecutable()
+        val missing = !File(executable).isFile && ExecutableLookup.which(executable).isEmpty()
+        var freePortFound = false
         for (port in FIRST_PORT..LAST_PORT) {
             when (probe(port)) {
                 PortState.OPEN_CODE -> {
@@ -76,9 +79,10 @@ class OpenCodeServerManager(private val projectPath: String?) {
                 }
 
                 PortState.FREE -> {
-                    val started = runCatching { startManaged(port, frontendPort) }.getOrNull()
-                    if (started?.connected == true) {
-                        return started
+                    freePortFound = true
+                    if (!missing) {
+                        val started = runCatching { startManaged(port, frontendPort) }.getOrNull()
+                        if (started?.connected == true) return started
                     }
                 }
 
@@ -86,21 +90,32 @@ class OpenCodeServerManager(private val projectPath: String?) {
             }
         }
 
-        // Two very different failures used to share one message. Telling someone "all ports are
-        // occupied" when opencode simply is not on the IDE's PATH sends them looking in entirely
-        // the wrong place — which is exactly what happened on macOS.
-        val executable = resolveExecutable()
-        val missing = !File(executable).isFile && ExecutableLookup.which(executable).isEmpty()
+        if (missing) {
+            endpoint = OpenCodeEndpoint(
+                projectPath = projectPath,
+                error = "未安装 OpenCode。请使用官方 npm 命令 npm install --global opencode-ai@latest，或在插件中点击安装。",
+            )
+            return endpoint
+        }
         endpoint = OpenCodeEndpoint(
             projectPath = projectPath,
-            error = if (missing) {
-                "没有找到 opencode 可执行文件。若你在终端里能运行 opencode，通常是 IDE 启动时没有继承终端的 PATH：" +
-                    "可把它的绝对路径填到环境变量 OPENCODE_BIN_PATH（终端执行 which opencode 即可查到）。"
-            } else {
+            error = if (!freePortFound) {
                 "12001-12100 端口都已被占用，且未发现可用的 OpenCode 服务。"
+            } else {
+                "已检测到 OpenCode，但服务启动失败。请在连接设置中查看安装状态或重试。"
             },
         )
         return endpoint
+    }
+
+    /** Explicit maintenance action used by the in-app updater before replacing the executable. */
+    @Synchronized
+    fun stopForUpdate() {
+        // An update must never stop a service the user started outside IDEA. The explicit
+        // force-restart path is the only operation allowed to terminate an external process.
+        if (endpoint.managed) terminateFailedProcess()
+        process = null
+        endpoint = OpenCodeEndpoint(projectPath = projectPath)
     }
 
     @Synchronized
